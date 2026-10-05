@@ -1,0 +1,20 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "windows",
+      "displayName": "Windows (Visual Studio 2026 Build Tools, x64)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build"
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "displayName": "Release", "configurePreset": "windows", "configuration": "Release" },
+    { "name": "debug", "displayName": "Debug", "configurePreset": "windows", "configuration": "Debug" }
+  ],
+  "testPresets": [
+    { "name": "release", "displayName": "Release tests", "configurePreset": "windows", "configuration": "Release",
+      "output": { "outputOnFailure": true } }
+  ]
+}

@@ -1,0 +1,88 @@
+#pragma once
+// The colour graph popup: every Bitzkey alive over time, stacked in its own colour.
+//
+// Each bar is a moment in the run; each Bitzkey alive then is a slice of it in its exact ring or
+// dot colour, sorted so similar colours flow together. Bitzkeys are picked by clicking their
+// slice or dragging a box around slices, then copied or saved. The graph also travels in time:
+// drag the timeline beneath it, or right-click, to move the world to that turn. The mouse wheel
+// zooms into a stretch of the run.
+
+#include <map>
+#include <optional>
+#include <set>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include <SDL.h>
+
+#include "core/Simulation.hpp"
+#include "ui/Canvas.hpp"
+
+namespace bitzkey::ui {
+
+struct Bar {
+    int turn = 0;  // the last turn the bar covers; its Bitzkeys are those alive then
+    int left = 0, right = 0;
+    std::vector<std::tuple<int, double, double>> slices;  // (identifier, top, bottom)
+    bool future = false;  // after the present, when the world has been rewound
+};
+
+// The smallest 1, 2 or 5 times a power of ten at or above the value.
+double nice_ceiling(double value);
+
+class ColourGraph {
+public:
+    enum class Action { None, Copy, Save, Seek };
+
+    void switch_part() { dot_ = !dot_; }
+    void reset();  // forget the selection and zoom, for a new world
+    const std::set<int>& selection() const { return selection_; }
+    int seek_turn() const { return seek_turn_; }
+
+    // Handle a mouse event. Returns Copy or Save when a button asks for an export, and Seek when
+    // the world should move to `seek_turn()`.
+    Action handle(const SDL_Event& event);
+    void draw(Canvas& canvas, const Simulation& simulation, const std::optional<std::string>& note);
+
+private:
+    enum class Mode { Replace, Add, Remove, Toggle };
+    struct Layout {
+        Rect panel, chart, timeline, save, copy, clear, living;
+    };
+    Layout layout() const;
+    void select(const std::set<int>& picked, Mode mode);
+    std::pair<int, int> window() const;  // the first and last turn shown
+    int turn_at(int x) const;
+    int x_of(int turn) const;
+    void zoom(int notches, int x);
+    void pan(int notches);
+    std::optional<int> bitzkey_at(int x, int y) const;
+    std::set<int> bitzkeys_in(const Rect& box) const;
+    void build(const Simulation& simulation, const Rect& chart, int first, int last);
+    void render(const Simulation& simulation, const Rect& chart);
+    void draw_timeline(Canvas& canvas, const Rect& chart, const Rect& timeline, int first, int last);
+    void label_species(Canvas& canvas, const Simulation& simulation, const Rect& chart);
+    std::string describe(const Simulation& simulation, std::optional<int> hovered) const;
+    static Rect box_between(int x1, int y1, int x2, int y2);
+
+    bool dot_ = false;
+    std::set<int> selection_;
+    std::optional<std::pair<int, int>> view_;  // the turns shown when zoomed in
+    int seek_turn_ = 0;
+    int selection_version_ = 0;
+    int width_ = 0, height_ = 0;
+    int mouse_x_ = 0, mouse_y_ = 0;
+    int now_ = 0, frontier_ = 0;
+    std::optional<std::tuple<int, int, Uint16>> press_;  // where a press began, and its modifiers
+    std::optional<int> scrub_;                           // the turn under the playhead while dragged
+    std::vector<Bar> bars_;
+    std::map<int, std::vector<std::tuple<int, int, double, double>>> places_;  // where each Bitzkey is drawn
+    double peak_ = 1.0;
+    Surface image_;
+    std::vector<long long> key_;
+    std::set<int> alive_;  // who is alive, as last drawn
+};
+
+}  // namespace bitzkey::ui
