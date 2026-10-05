@@ -6,11 +6,6 @@
 
 namespace bitzkey::ui {
 
-Color icon_colour(Color background) {
-    const double light = 0.299 * background.r + 0.587 * background.g + 0.114 * background.b;
-    return light > 140 ? Color{20, 26, 27} : Color{238, 238, 220};
-}
-
 void draw_icon(Canvas& canvas, Species species, int cx, int cy, double half, Color colour) {
     const auto at = [&](double x, double y) {
         return std::pair{static_cast<int>(py_round(cx + x * half)), static_cast<int>(py_round(cy + y * half))};

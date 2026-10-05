@@ -8,9 +8,6 @@
 
 namespace bitzkey::ui {
 
-// A dark icon on a light background, a light one on a dark background.
-Color icon_colour(Color background);
-
 void draw_icon(Canvas& canvas, Species species, int cx, int cy, double half, Color colour);
 
 }  // namespace bitzkey::ui

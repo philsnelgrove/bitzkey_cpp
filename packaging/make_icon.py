@@ -1,4 +1,5 @@
-"""Draw the app icon, a grazer Bitzkey (a leaf on its dot inside a ring), into packaging/bitzkey.ico.
+"""Draw the app icon, a grazer Bitzkey (its leaf, in its dot colour, on a black centre inside its
+ring), into packaging/bitzkey.ico.
 
 Run it with the Python project's interpreter, since it borrows that project's icon shapes:
     ..\\bitzkey\\.venv\\Scripts\\python.exe packaging\\make_icon.py
@@ -16,7 +17,8 @@ import pygame as pg
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent / "bitzkey"))
-from display.Icons import draw_icon, icon_colour  # noqa: E402
+from display.Icons import draw_icon  # noqa: E402
+from display.Look import CENTRE, OUTLINE, outline_offsets  # noqa: E402
 
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 RING = (60, 150, 120)
@@ -29,8 +31,11 @@ def picture(size: int) -> bytes:
     centre = (big // 2, big // 2)
     pg.draw.circle(surface, RING, centre, big // 2)
     dot = round(big * 0.38)
-    pg.draw.circle(surface, DOT, centre, dot)
-    draw_icon(surface, "grazer", centre, dot * 0.72, icon_colour(DOT))
+    pg.draw.circle(surface, CENTRE, centre, dot)
+    edge = max(4, big // 40)  # the outline, about as thin as the app's own
+    for dx, dy in outline_offsets(edge):
+        draw_icon(surface, "grazer", (centre[0] + dx, centre[1] + dy), dot * 0.8, OUTLINE)
+    draw_icon(surface, "grazer", centre, dot * 0.8, DOT)
     small = pg.transform.smoothscale(surface, (size, size))
     data = io.BytesIO()
     pg.image.save(small, data, "png")
