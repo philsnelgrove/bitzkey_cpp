@@ -434,6 +434,8 @@ private:
     void move_toward(Bitzkey& agent, int x, int y);
     void move_away(Bitzkey& agent, const Bitzkey& threat);
     bool in_bounds(int x, int y) const { return 0 <= x && x < width_ && 0 <= y && y < height_; }
+    // A row kept on the map: the top and bottom edges are barriers, though east and west wrap round.
+    int within(int y) const { return std::max(0, std::min(height_ - 1, y)); }
     std::vector<Bitzkey*>& cell_at(int x, int y) { return cells_[static_cast<std::size_t>(y) * width_ + x]; }
     const std::vector<Bitzkey*>* cell_if(int x, int y) const {
         return in_bounds(x, y) ? &cells_[static_cast<std::size_t>(y) * width_ + x] : nullptr;

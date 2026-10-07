@@ -401,6 +401,30 @@ TEST_CASE("only hunters feast, and only on what they live on") {
     }
 }
 
+TEST_CASE("the top and bottom of the map are barriers, but east and west wrap") {
+    Simulation simulation(Simulation::Settings{20, 20, 0, 2});
+    Bitzkey& top = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 7}}), 0, 0);
+    Bitzkey& bottom = simulation.add_agent(encode_dna(Species::Predator, {{"speed", 7}}), 19, 19);
+    simulation.index_cells();
+    Simulation::Situation nothing;
+    for (int round = 0; round < 200; ++round) {
+        simulation.act(top, Explore, nothing);
+        simulation.act(bottom, Explore, nothing);
+        CHECK((0 <= top.y && top.y < 20 && 0 <= bottom.y && bottom.y < 20));
+    }
+    bottom.x = bottom.y = 19;
+    Bitzkey& slow = simulation.add_agent(encode_dna(Species::Predator, {{"speed", 0}}), 0, 0);  // a cell a step
+    Bitzkey& hunter = simulation.add_agent(encode_dna(Species::Predator), 1, 1);
+    simulation.index_cells();
+    Simulation::Situation fleeing;
+    fleeing.hunter = &hunter;
+    simulation.act(slow, Flee, fleeing);  // it flees up and west: stopped at the top, it wraps round the west
+    CHECK((slow.x == 19 && slow.y == 0));
+    const auto cells = simulation.free_cells_near(bottom);
+    for (const Cell& cell : cells) CHECK((0 <= cell.y && cell.y < 20));
+    CHECK(std::find(cells.begin(), cells.end(), Cell{0, 19}) != cells.end());  // east wraps round to the west
+}
+
 TEST_CASE("grass dies back a tuft at a time where it isn't medium") {
     Simulation simulation(Simulation::Settings{20, 20, 0, 1});
     while (simulation.turn() < 200) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium

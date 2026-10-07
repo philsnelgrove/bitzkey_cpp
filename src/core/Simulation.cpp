@@ -534,7 +534,8 @@ void Simulation::seed_plant(Bitzkey& plant) {
     for (const Bitzkey* other : nearby(plant, LIGHT_RADIUS)) shade += other->species == Species::Plant;
     if (roll >= chance * std::max(0.0, 1 - static_cast<double>(shade) / LIGHT_LIMIT)) return;
     const Offset offset = SIGHT_OFFSETS[static_cast<std::size_t>(random_.randrange(seed_offsets()))];
-    const Cell cell{py_mod(plant.x + offset.dx, width_), py_mod(plant.y + offset.dy, height_)};
+    if (plant.y + offset.dy < 0 || plant.y + offset.dy >= height_) return;  // off the top or bottom of the map: the seed is lost
+    const Cell cell{py_mod(plant.x + offset.dx, width_), plant.y + offset.dy};
     if (!room_for_seedling(cell)) return;
     const Dna dna = cross(plant.dna, plant.dna, random_, std::nullopt, mind_mutation_, body_mutation_);
     plant.hunger += SEED_COST;
@@ -601,7 +602,8 @@ void Simulation::sow(int tufts) {
         if (fertile.empty()) fertile.assign(static_cast<std::size_t>(width_) * height_, 0);
         for (int dx = -1; dx <= 1; ++dx) {
             for (int dy = -1; dy <= 1; ++dy) {
-                fertile[static_cast<std::size_t>(py_mod(corpse->y + dy, height_)) * width_ + py_mod(corpse->x + dx, width_)] = 1;
+                if (corpse->y + dy < 0 || corpse->y + dy >= height_) continue;  // no further than the top or bottom
+                fertile[static_cast<std::size_t>(corpse->y + dy) * width_ + py_mod(corpse->x + dx, width_)] = 1;
             }
         }
     }
@@ -956,7 +958,7 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
             for (int step = 0; step < agent.steps; ++step) {
                 const int dx = random_.choice(EXPLORE_STEPS);
                 const int dy = random_.choice(EXPLORE_STEPS);
-                move(agent, py_mod(agent.x + dx, width_), py_mod(agent.y + dy, height_));
+                move(agent, py_mod(agent.x + dx, width_), within(agent.y + dy));
             }
             agent.reward += CURIOSITY_JOY * agent.feeling(Curiosity);
             agent.last_action = "explored";
@@ -1197,7 +1199,8 @@ std::vector<Cell> Simulation::free_cells_near(const Bitzkey& agent) const {
     static constexpr std::array<Offset, 8> around = {{{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}}};
     std::vector<Cell> cells;
     for (const Offset& offset : around) {
-        const Cell cell{py_mod(agent.x + offset.dx, width_), py_mod(agent.y + offset.dy, height_)};
+        if (agent.y + offset.dy < 0 || agent.y + offset.dy >= height_) continue;  // beyond the top or bottom of the map
+        const Cell cell{py_mod(agent.x + offset.dx, width_), agent.y + offset.dy};
         const auto& list = cells_[static_cast<std::size_t>(cell.y) * width_ + cell.x];
         if (std::none_of(list.begin(), list.end(), [](const Bitzkey* other) { return other->alive(); })) cells.push_back(cell);
     }
@@ -1286,7 +1289,7 @@ void Simulation::move_away(Bitzkey& agent, const Bitzkey& threat) {
     for (int step = 0; step < agent.steps; ++step) {
         const int dx = agent.x >= threat.x ? 1 : -1;
         const int dy = agent.y >= threat.y ? 1 : -1;
-        move(agent, py_mod(agent.x + dx, width_), py_mod(agent.y + dy, height_));
+        move(agent, py_mod(agent.x + dx, width_), within(agent.y + dy));
     }
 }
 
