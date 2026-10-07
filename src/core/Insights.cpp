@@ -100,6 +100,7 @@ struct Scenario {
 
 const std::vector<Species> ANIMAL_LIST = {Species::Grazer, Species::Omnivore, Species::Predator};
 const std::vector<Species> GRAZER_LIST = {Species::Grazer, Species::Omnivore};
+const std::vector<Species> GRAZER_ONLY = {Species::Grazer};
 const std::vector<Species> HUNTER_LIST = {Species::Omnivore, Species::Predator};
 
 const std::vector<Scenario>& scenarios() {
@@ -165,6 +166,9 @@ const std::vector<Scenario>& scenarios() {
          {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseWarmth, 0.5}, {SenseWarmthSouth, 0.5},
           {SenseLatitude, 0.1}, {SenseAge, 0.2}},
          {GoNorth, GoSouth, Rest}, ANIMAL_LIST},
+        {"Starving, food scarce, a plant beside them",
+         {{SenseHunger, 0.85}, {SenseHealth, 1}, {SensePlantCloseness, 1}, {SenseAge, 0.2}},
+         {Uproot, Browse, Rest, GoEast, GoWest}, GRAZER_ONLY},
         {"Nothing around", {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseAge, 0.2}}, {Rest, GoEast, GoWest}, ANIMAL_LIST},
     };
     return list;
@@ -216,7 +220,6 @@ std::string brain_report(int turn, std::span<const Bitzkey* const> animals, cons
             Senses senses{};
             for (const auto& [sense, value] : scenario.situation) senses[sense] = value;
             for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = animal->feeling(trait);
-            for (const Action action : scenario.actions) senses[SenseOpen + action] = 1.0;
             gene_senses(animal->dna, senses);
             Sample named{};
             for (const auto& [option, chance] : choice_odds(animal->brain->values(senses), options)) named[option] = chance;

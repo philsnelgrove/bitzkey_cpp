@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -58,14 +59,13 @@ enum Sense : int {
     SenseWarmthSouth,      // and to the south
     SenseMind,             // then its current temperament, each trait 0..7 scaled to 0..1
 };
-enum Action : int { Eat, Forage, Browse, Scavenge, Feast, Rest, Court, Breed, Hunt, Attack, Defend, Flee, Herd, GoNorth,
-                    GoSouth, GoEast, GoWest };
-constexpr int ACTION_COUNT = 17;
+enum Action : int { Eat, Forage, Browse, Uproot, Scavenge, Feast, Rest, Court, Breed, Hunt, Attack, Defend, Flee, Herd,
+                    GoNorth, GoSouth, GoEast, GoWest };
+constexpr int ACTION_COUNT = 18;
 constexpr std::array<std::string_view, ACTION_COUNT> ACTIONS = {
-    "eat", "forage", "browse", "scavenge", "feast", "rest", "court", "breed", "hunt", "attack", "defend", "flee",
-    "herd", "go_north", "go_south", "go_east", "go_west"};
-constexpr int SenseOpen = SenseMind + MIND_TRAIT_COUNT;    // then 1 for each action open to it now
-constexpr int SenseInborn = SenseOpen + ACTION_COUNT;      // then its dot's traits, as born, 0..1
+    "eat", "forage", "browse", "uproot", "scavenge", "feast", "rest", "court", "breed", "hunt", "attack", "defend",
+    "flee", "herd", "go_north", "go_south", "go_east", "go_west"};
+constexpr int SenseInborn = SenseMind + MIND_TRAIT_COUNT;  // then its dot's traits, as born, 0..1
 constexpr int SenseBody = SenseInborn + MIND_TRAIT_COUNT;  // then its ring's traits, 0..1 (species 0 plant to 1 predator)
 constexpr int SenseHomeTemperature = SenseBody + BODY_TRAIT_COUNT;  // then its climate genes: home 0 hot to 1 very cold,
 constexpr int SenseHeatTolerance = SenseHomeTemperature + 1;        // and the tolerance flags, 0 or 1
@@ -78,9 +78,7 @@ constexpr std::array<std::string_view, INPUT_SIZE> SENSES = {
     "assailant_near", "counter_frailty", "rivalry", "herd_near", "herd_closeness", "alarm", "herd_success", "herd_failure",
     "climate_discomfort", "comfort_closeness", "age", "time_of_year_a", "time_of_year_b", "latitude", "warmth",
     "warmth_north", "warmth_south", "aggression", "libido", "sociability", "curiosity",
-    "fear", "appetite", "patience", "intellect", "empathy", "tolerance", "open_eat", "open_forage",
-    "open_browse", "open_scavenge", "open_feast", "open_rest", "open_court", "open_breed", "open_hunt",
-    "open_attack", "open_defend", "open_flee", "open_herd", "open_go_north", "open_go_south", "open_go_east", "open_go_west", "inborn_aggression",
+    "fear", "appetite", "patience", "intellect", "empathy", "tolerance", "inborn_aggression",
     "inborn_libido", "inborn_sociability", "inborn_curiosity", "inborn_fear", "inborn_appetite",
     "inborn_patience", "inborn_intellect", "inborn_empathy", "inborn_tolerance", "species", "size", "strength",
     "armour", "weapons", "speed", "sight", "fertility", "litter", "carrion", "home_temperature",
@@ -88,7 +86,7 @@ constexpr std::array<std::string_view, INPUT_SIZE> SENSES = {
 int action_index(std::string_view name);  // -1 when unknown
 int sense_index(std::string_view name);   // -1 when unknown
 
-constexpr int HIDDEN_SIZE = 12;  // neurons in each hidden layer
+constexpr int HIDDEN_SIZE = INPUT_SIZE;  // neurons in each hidden layer: as many as it has senses
 constexpr int MIN_DEPTH = 2;     // hidden layers: twice the inborn intellect, and never fewer than this
 inline double TEMPERATURE = 0.2;
 inline double MUTATION = 0.05;
@@ -97,6 +95,9 @@ inline double TRACE_DECAY = 0.9;  // lambda: how much of each earlier choice's c
 // brain doesn't march straight away from its range, its herd and its food before it has learned where to go.
 inline double HEADING_RELUCTANCE = 0.5;
 constexpr int RECORD_DIGITS = 6;  // decimal places kept when a brain is exported
+// A new brain's output weights are drawn within this of zero: smaller the wider its layers, so its
+// untaught values spread as they did when layers were twelve neurons wide.
+inline const double OUTPUT_SPREAD = 0.3 * std::sqrt(12.0 / HIDDEN_SIZE);
 
 using Senses = std::array<double, INPUT_SIZE>;
 using Values = std::array<double, ACTION_COUNT>;
@@ -161,9 +162,11 @@ public:
     // clipped error times its eligibility, so the choices before this one share in it.
     void learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount);
 
+    std::size_t bytes() const;  // the memory its weights and eligibility traces take
     nlohmann::ordered_json to_record() const;
     // Weights are matched to senses and actions by name; a brain saved with a single hidden
-    // layer loads one layer deep. Throws std::invalid_argument.
+    // layer loads one layer deep, and one saved with fewer neurons in each layer is widened with idle
+    // neurons, weighted zero, which change nothing. Throws std::invalid_argument.
     static Brain from_record(const nlohmann::json& record);
 
     // The same weights; traces don't count.

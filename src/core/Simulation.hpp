@@ -31,10 +31,12 @@ constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
 constexpr int DENSE_HISTORY = 500;
 constexpr int CHECKPOINTS = 200;
-// History keeps to a memory budget: when a snapshot of the world grows large, fewer recent turns
-// are kept and fewer checkpoints, so that all of them fit.
+// History keeps to a memory budget: when a snapshot of the world grows large, fewer snapshots are
+// kept, so that all of them fit. The recent ones are then spaced out, every second turn, fourth or
+// more, to still cover DENSE_HISTORY turns; a turn between them is rebuilt by replaying from the one before.
 constexpr std::size_t HISTORY_BUDGET = std::size_t{1} << 30;  // bytes
-constexpr std::size_t MIN_SNAPSHOTS = 20;
+constexpr std::size_t MIN_SNAPSHOTS = 4;
+constexpr int MAX_SPACING = 16;  // recent snapshots are never further apart, so stepping back a turn replays at most 15
 inline int CORPSE_FERTILITY = 2;
 inline int CORPSE_TURNS = 30;
 inline double BREED_RESERVE = 10;
@@ -113,6 +115,11 @@ inline double PLANT_MEAL_FOR_SIZE = 25;
 inline double PLANT_BITE = 15;
 inline double PLANT_REGROWTH = 0.02;
 inline int PLANT_RECOVERY = 8;
+// A desperate grazer, starving with food scarce about it, may uproot a plant beside it: it eats this
+// many times a bite's meal, and tears this much of the plant's health away, recovering or not.
+inline int UPROOT_HUNGER = 80;  // starving: hunger at least this
+inline double UPROOT_MEALS = 2.0;
+inline int UPROOT_BITE = 45;
 inline std::array<double, 2> SEED_CHANCE = {0.03, 0.10};
 inline double SEED_COST = 20;
 inline double SEED_HUNGER = 40;
@@ -372,6 +379,7 @@ public:
         int kin = 0;
         int others = 0;
         Bitzkey* defend_target = nullptr;
+        Bitzkey* uprootable = nullptr;  // a plant beside a starving grazer, with food scarce
         bool for_herd = false;
         bool herd = true;
         int herd_near = 0;
@@ -402,6 +410,16 @@ public:
     void exhausted(Bitzkey& agent);
     void breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells);
     void browse(Bitzkey& agent, Bitzkey& plant);
+    // A starving grazer, with food scarce about it, tears into a plant beside it, recovering from a
+    // bite or not: it eats UPROOT_MEALS times a bite's meal, and the plant loses UPROOT_BITE health,
+    // often all it has. An armed plant still strikes back.
+    void uproot(Bitzkey& agent, Bitzkey& plant);
+    // How many turns apart recent snapshots are: every turn while DENSE_HISTORY of them fit, otherwise
+    // the smallest power of two that spreads those that fit over DENSE_HISTORY turns, up to MAX_SPACING.
+    static int snapshot_spacing(int dense);
+    std::pair<int, int> history_room() const;  // recent snapshots kept, and older checkpoints
+    // The climate zones from top to bottom, each the rows it covers outside the winters.
+    std::vector<std::vector<int>> zones() const;
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
     void feast(Bitzkey& agent, Bitzkey& corpse);
     bool fresh(const Bitzkey& corpse) const;  // still a fresh kill, not yet carrion
@@ -458,11 +476,17 @@ private:
     };
 
     std::vector<int> group_sizes(int population);
-    std::pair<int, int> history_room() const;  // recent turns kept every turn, and older checkpoints
     // `native` groups have random starting genomes: each carries a tolerance flag only with
     // STARTING_TOLERANCE, and plants take the usual temperature of their centre's zone as their home.
+    // So that every zone starts with plants, the starting groups' plant groups take a zone each, top
+    // to bottom, until every zone has one; if there are too few, the last animal groups become plants,
+    // though one animal group is always kept. Returns the rows each such group's centre may fall in,
+    // by group; the rest fall anywhere. `species` is changed in place.
+    std::vector<std::vector<int>> plant_homes(std::vector<int>& species) const;
+    // A group's centre falls in one of `rows` if given (and not empty).
     void spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain = nullptr,
-                     const std::optional<PartialMind>& mind = std::nullopt, bool native = false);
+                     const std::optional<PartialMind>& mind = std::nullopt, bool native = false,
+                     const std::vector<int>& rows = {});
     void record();
     void restore(const Snapshot& snapshot);
     std::pair<const Snapshot*, int> start_for(int target) const;

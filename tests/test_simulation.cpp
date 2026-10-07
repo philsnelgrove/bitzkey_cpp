@@ -486,3 +486,63 @@ TEST_CASE("grass grows twice as fast on and around corpses") {
     const double elsewhere = (static_cast<double>(simulation.grass_tufts()) - fertile) / (12 * static_cast<int>(rows.size()) - cells);
     CHECK(fertile / cells / elsewhere == doctest::Approx(2).epsilon(0.2));
 }
+
+TEST_CASE("every zone starts with plants, and an animal group is always kept") {
+    for (std::uint64_t seed = 1; seed <= 5; ++seed) {
+        const Simulation simulation(Simulation::Settings{100, 100, 90, seed});
+        for (const auto& rows : simulation.zones()) {  // arctic, temperate, equator, temperate, arctic
+            bool planted = false;
+            for (const auto& agent : simulation.agents()) {
+                planted = planted || (agent->species == Species::Plant && rows.front() - SPAWN_SPREAD <= agent->y &&
+                                      agent->y <= rows.back() + SPAWN_SPREAD);
+            }
+            CHECK(planted);
+        }
+        CHECK(std::any_of(simulation.agents().begin(), simulation.agents().end(),
+                          [](const auto& agent) { return agent->species != Species::Plant; }));
+    }
+    const Simulation few(Simulation::Settings{100, 100, 8, 2});  // two groups: not enough for every zone
+    std::set<bool> plants;
+    for (const auto& agent : few.agents()) plants.insert(agent->species == Species::Plant);
+    CHECK(plants.size() == 2);  // a plant group and an animal group
+}
+
+TEST_CASE("a starving grazer with food scarce may uproot a plant beside it") {
+    Simulation simulation(Simulation::Settings{30, 30, 0, 3});
+    simulation.clear_grass();
+    simulation.set_grass_regrowth(0);  // no grass to come
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"size", 7}}), 10, 10);  // a big stomach
+    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"size", 0}}), 11, 10);    // 60 health
+    simulation.index_cells();
+    const auto offered = [](const Simulation::Sensed& found, int action) {
+        return std::find(found.options.begin(), found.options.end(), action) != found.options.end();
+    };
+    grazer.hunger = 50;
+    CHECK_FALSE(offered(simulation.sense(grazer), Uproot));  // not starving
+    grazer.hunger = 85;
+    plant.cooldown = 5;  // still recovering from a bite: it can't be browsed, but it can be uprooted
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    CHECK((offered(sensed, Uproot) && !offered(sensed, Browse)));
+    const double meal = PLANT_MEAL * grazer.browsing * UPROOT_MEALS / grazer.stomach;
+    simulation.act(grazer, Uproot, sensed.situation);
+    CHECK(grazer.hunger == doctest::Approx(85 - meal));
+    CHECK((plant.health == doctest::Approx(60 - UPROOT_BITE) && grazer.last_action == "uprooted"));
+    grazer.hunger = 85;
+    sensed = simulation.sense(grazer);
+    simulation.act(grazer, Uproot, sensed.situation);
+    CHECK((!plant.alive() && plant.last_action == "uprooted"));  // it destroyed the plant
+    for (const int x : {12, 13, 14}) simulation.add_agent(encode_dna(Species::Plant), x, 10);  // food enough about
+    simulation.add_agent(encode_dna(Species::Plant), 10, 11);
+    simulation.index_cells();
+    CHECK_FALSE(offered(simulation.sense(grazer), Uproot));
+    Bitzkey& omnivore = simulation.add_agent(encode_dna(Species::Omnivore), 10, 9);
+    omnivore.hunger = 85;
+    simulation.index_cells();
+    CHECK_FALSE(offered(simulation.sense(omnivore), Uproot));  // grazers only
+}
+
+TEST_CASE("a crowded history spaces its snapshots, never more than sixteen turns apart") {
+    CHECK(Simulation::snapshot_spacing(500) == 1);
+    CHECK(Simulation::snapshot_spacing(100) == 8);  // 100 snapshots, eight turns apart, cover 500 turns
+    CHECK(Simulation::snapshot_spacing(2) == 16);   // as far apart as they may be
+}

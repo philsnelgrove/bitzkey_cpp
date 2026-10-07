@@ -267,9 +267,12 @@ Simulation::Simulation(Settings settings)
     const int initial_grass = static_cast<int>(py_round(static_cast<double>(width_ * height_) * settings.grass_density / 100));
     grass_regrowth_ = initial_grass * GRASS_REGROWTH;
     sow(initial_grass);
-    for (const int size : group_sizes(settings.population)) {
-        const int species = static_cast<int>(random_.randrange(4));
-        spawn_group(make_dna(random_, species), size, nullptr, std::nullopt, true);
+    const std::vector<int> sizes = group_sizes(settings.population);
+    std::vector<int> species;
+    for (std::size_t group = 0; group < sizes.size(); ++group) species.push_back(static_cast<int>(random_.randrange(4)));
+    const std::vector<std::vector<int>> homes = plant_homes(species);
+    for (std::size_t group = 0; group < sizes.size(); ++group) {
+        spawn_group(make_dna(random_, species[group]), sizes[group], nullptr, std::nullopt, true, homes[group]);
     }
     for (const Imported& bitzkey : settings.imported) {
         spawn_group(bitzkey.dna, static_cast<int>(random_.randint(SPAWN_GROUP[0], SPAWN_GROUP[1])), bitzkey.brain,
@@ -311,10 +314,49 @@ std::vector<int> Simulation::group_sizes(int population) {
     return sizes;
 }
 
+std::vector<std::vector<int>> Simulation::zones() const {
+    std::vector<std::vector<int>> found;
+    for (int y = 0; y < height_; ++y) {
+        if (!found.empty() && zone_temperature(found.back().front(), height_) == zone_temperature(y, height_)) {
+            found.back().push_back(y);
+        } else {
+            found.push_back({y});
+        }
+    }
+    return found;
+}
+
+std::vector<std::vector<int>> Simulation::plant_homes(std::vector<int>& species) const {
+    const std::vector<std::vector<int>> all = zones();
+    std::vector<int> plants, animals;
+    for (std::size_t group = 0; group < species.size(); ++group) {
+        (species[group] == static_cast<int>(Species::Plant) ? plants : animals).push_back(static_cast<int>(group));
+    }
+    while (plants.size() < all.size() && animals.size() > 1) {
+        const int group = animals.back();
+        animals.pop_back();
+        species[static_cast<std::size_t>(group)] = static_cast<int>(Species::Plant);
+        plants.push_back(group);
+    }
+    std::sort(plants.begin(), plants.end());
+    const int lowest = SPAWN_SPREAD, highest = height_ - SPAWN_SPREAD - 1;  // where a group's centre may be
+    std::vector<std::vector<int>> homes(species.size());
+    for (std::size_t zone = 0; zone < std::min(plants.size(), all.size()); ++zone) {
+        const std::vector<int>& rows = all[zone];
+        std::vector<int>& centres = homes[static_cast<std::size_t>(plants[zone])];
+        for (const int y : rows) {
+            if (lowest <= y && y <= highest) centres.push_back(y);
+        }
+        if (centres.empty()) centres.push_back(std::min(highest, std::max(lowest, rows[rows.size() / 2])));
+    }
+    return homes;
+}
+
 void Simulation::spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain,
-                             const std::optional<PartialMind>& mind, bool native) {
+                             const std::optional<PartialMind>& mind, bool native, const std::vector<int>& rows) {
     const int x = static_cast<int>(random_.randrange(SPAWN_SPREAD, width_ - SPAWN_SPREAD));
-    const int y = static_cast<int>(random_.randrange(SPAWN_SPREAD, height_ - SPAWN_SPREAD));
+    const int y = rows.empty() ? static_cast<int>(random_.randrange(SPAWN_SPREAD, height_ - SPAWN_SPREAD))
+                               : rows[static_cast<std::size_t>(random_.randrange(static_cast<std::int64_t>(rows.size())))];
     if (native) {  // tolerance is rare at the start
         for (const Dna flag : {HEAT_TOLERANCE, COLD_TOLERANCE}) dna = random_.random() < STARTING_TOLERANCE ? dna | flag : dna & ~flag;
     }
@@ -354,27 +396,37 @@ Bitzkey& Simulation::add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> bra
 // History
 
 std::pair<int, int> Simulation::history_room() const {
-    // At most DENSE_HISTORY recent turns and CHECKPOINTS older ones; fewer when snapshots of the
+    // At most DENSE_HISTORY recent snapshots and CHECKPOINTS older ones; fewer when snapshots of the
     // world are large, so the history fits HISTORY_BUDGET.
     std::size_t brains = 0;
-    for (const auto& agent : agents_) brains += agent->brain != nullptr;
-    const std::size_t size = agents_.size() * sizeof(Bitzkey) + brains * (sizeof(Brain) + 32) + grass_.size() * sizeof(int) +
-                             seeds_.size() * sizeof(Seed);
+    for (const auto& agent : agents_) {
+        if (agent->brain) brains += sizeof(Brain) + agent->brain->bytes();
+    }
+    const std::size_t size = agents_.size() * sizeof(Bitzkey) + brains + grass_.size() * sizeof(int) + seeds_.size() * sizeof(Seed);
     const std::size_t most = std::max(MIN_SNAPSHOTS, HISTORY_BUDGET / std::max<std::size_t>(1, size));
     const int dense = static_cast<int>(std::min<std::size_t>(DENSE_HISTORY, most / 2));
     return {dense, static_cast<int>(std::min<std::size_t>(CHECKPOINTS, most - static_cast<std::size_t>(dense)))};
 }
 
+int Simulation::snapshot_spacing(int dense) {
+    int spacing = 1;
+    while (spacing * std::max(1, dense) < DENSE_HISTORY && spacing < MAX_SPACING) spacing *= 2;
+    return spacing;
+}
+
 void Simulation::record() {
-    // Snapshot the newest turn, then thin the old ones: turns before the recent window stay only
-    // on the checkpoint spacing, which doubles while there are too many of them.
+    // Snapshot the newest turn, if it falls on the snapshot spacing, then thin the old ones: turns
+    // before the recent window stay only on the checkpoint spacing, which doubles while there are too
+    // many of them.
+    const auto [dense, checkpoints] = history_room();
+    const int spacing = snapshot_spacing(dense);
+    frontier_ = turn_;
+    if (turn_ % spacing) return;  // between snapshots: seeking rebuilds this turn by replaying from the one before
     Snapshot snapshot{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
     snapshot.agents.reserve(agents_.size());
     for (const auto& agent : agents_) snapshot.agents.push_back(*agent);
     history_.push_back(std::move(snapshot));
-    frontier_ = turn_;
-    const auto [dense, checkpoints] = history_room();
-    const int recent = frontier_ - dense;
+    const int recent = frontier_ - dense * spacing;
     const auto turn_below = [](const Snapshot& snapshot, int turn) { return snapshot.turn < turn; };
     while (true) {
         std::erase_if(history_, [this, recent](const Snapshot& snapshot) {
@@ -874,6 +926,16 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     available[Herd] = view.middle && distance(view.middle->x, view.middle->y, agent.x, agent.y) >
                                          HERD_SPREAD * (1 - agent.feeling(Fear)) &&
                       agent.climate_steps(temperature(view.middle->y)) <= discomfort;
+    if (agent.species == Species::Grazer && agent.hunger >= UPROOT_HUNGER) {
+        for (Bitzkey* other : neighbors) {
+            if (other->species == Species::Plant) {
+                s.uprootable = other;
+                break;
+            }
+        }
+        // Starving, with food scarce: it may tear into a plant beside it.
+        available[Uproot] = s.uprootable && food_supply(agent) < FOOD_NEEDED;
+    }
     available[GoNorth] = agent.y > 0;
     available[GoSouth] = agent.y < height_ - 1;
     for (int action = 0; action < ACTION_COUNT; ++action) {
@@ -922,7 +984,6 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     senses[SenseWarmthNorth] = warmth(agent, std::max(0, agent.y - sight));
     senses[SenseWarmthSouth] = warmth(agent, std::min(height_ - 1, agent.y + sight));
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
-    for (int action = 0; action < ACTION_COUNT; ++action) senses[SenseOpen + action] = available[action];
     gene_senses(agent.dna, senses);
 
     s.rivalry = agent.rivalry;
@@ -1000,6 +1061,9 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
         case Browse:
             browse(agent, *s.flora);
             break;
+        case Uproot:
+            uproot(agent, *s.uprootable);
+            break;
         case Scavenge:
             scavenge(agent, *s.carrion);
             break;
@@ -1070,6 +1134,19 @@ void Simulation::browse(Bitzkey& agent, Bitzkey& plant) {
         die(plant, "eaten");
     } else if (plant.physique(Weapons) > 0) {
         defend(plant, agent);  // a plant can't flee, but an armed one strikes back
+    }
+}
+
+void Simulation::uproot(Bitzkey& agent, Bitzkey& plant) {
+    const double meal = (PLANT_MEAL + PLANT_MEAL_FOR_SIZE * plant.physique(Size)) * agent.browsing * plant_yield(plant);
+    agent.nourish(meal * UPROOT_MEALS);
+    plant.health -= UPROOT_BITE;
+    plant.cooldown = PLANT_RECOVERY;
+    agent.last_action = "uprooted";
+    if (!plant.alive()) {
+        die(plant, "uprooted");
+    } else if (plant.physique(Weapons) > 0) {
+        defend(plant, agent);
     }
 }
 

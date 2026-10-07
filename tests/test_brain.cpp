@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -92,8 +94,8 @@ TEST_CASE("a brain is twice as deep as the inborn intellect, and at least two la
     CHECK(Brain::random(rng).depth() == MIN_DEPTH);
 }
 
-TEST_CASE("there is an input for each action and each ring and dot trait") {
-    for (const auto action : ACTIONS) CHECK(sense_index("open_" + std::string(action)) >= 0);
+TEST_CASE("there is an input for each ring and dot trait, and none for which actions are open") {
+    for (const auto action : ACTIONS) CHECK(sense_index("open_" + std::string(action)) == -1);  // which actions are open is not an input
     for (const auto trait : MIND_TRAITS) CHECK(sense_index("inborn_" + std::string(trait)) >= 0);
     for (const auto trait : BODY_TRAITS) CHECK(sense_index(trait) >= 0);
     Senses senses{};
@@ -176,4 +178,48 @@ TEST_CASE("an exported brain loads back, matching senses and actions by name") {
     const Brain old = Brain::from_record(single);
     CHECK(old.depth() == 1);
     CHECK(old.layers[0].weights[5] == doctest::Approx(brain.layers[0].weights[5]).epsilon(1e-5));
+}
+
+TEST_CASE("hidden layers are as wide as the senses, and a narrower saved brain loads widened, valuing alike") {
+    CHECK(HIDDEN_SIZE == INPUT_SIZE);
+    std::mt19937 engine(5);
+    std::uniform_real_distribution<double> uniform(-0.5, 0.5);
+    constexpr int narrow = 12;
+    std::vector<std::vector<std::vector<double>>> weights(2);
+    std::vector<std::vector<double>> biases(2);
+    for (int index = 0; index < 2; ++index) {
+        weights[index].assign(narrow, std::vector<double>(index == 0 ? INPUT_SIZE : narrow));
+        for (auto& row : weights[index]) for (double& weight : row) weight = uniform(engine);
+        biases[index].resize(narrow);
+        for (double& bias : biases[index]) bias = uniform(engine);
+    }
+    std::vector<std::vector<double>> output(ACTION_COUNT, std::vector<double>(narrow));
+    for (auto& row : output) for (double& weight : row) weight = uniform(engine);
+    std::vector<double> output_biases(ACTION_COUNT);
+    for (double& bias : output_biases) bias = uniform(engine);
+    nlohmann::json record = {{"senses", SENSES}, {"actions", ACTIONS}, {"output_weights", output}, {"output_biases", output_biases}};
+    record["layers"] = nlohmann::json::array();
+    for (int index = 0; index < 2; ++index) record["layers"].push_back({{"weights", weights[index]}, {"biases", biases[index]}});
+    const Brain loaded = Brain::from_record(record);
+    CHECK((loaded.layers[0].reads == INPUT_SIZE && loaded.layers[1].reads == HIDDEN_SIZE));
+    Senses senses{};
+    for (double& sense : senses) sense = uniform(engine) + 0.5;
+    std::vector<double> activation(senses.begin(), senses.end());
+    for (int index = 0; index < 2; ++index) {
+        std::vector<double> next(narrow);
+        for (int neuron = 0; neuron < narrow; ++neuron) {
+            double sum = 0.0;
+            for (std::size_t input = 0; input < activation.size(); ++input) sum += weights[index][neuron][input] * activation[input];
+            next[neuron] = std::tanh(sum + biases[index][neuron]);
+        }
+        activation = next;
+    }
+    const Values values = loaded.values(senses);
+    for (int action = 0; action < ACTION_COUNT; ++action) {
+        double expected = output_biases[action];
+        for (int neuron = 0; neuron < narrow; ++neuron) expected += output[action][neuron] * activation[neuron];
+        CHECK(values[action] == doctest::Approx(expected).epsilon(1e-12));
+    }
+    record["layers"][1]["biases"] = std::vector<double>(5, 0.0);
+    CHECK_THROWS_AS(Brain::from_record(record), std::invalid_argument);
 }
