@@ -86,7 +86,7 @@ constexpr std::array<std::string_view, INPUT_SIZE> SENSES = {
 int action_index(std::string_view name);  // -1 when unknown
 int sense_index(std::string_view name);   // -1 when unknown
 
-constexpr int HIDDEN_SIZE = INPUT_SIZE;  // neurons in each hidden layer: as many as it has senses
+constexpr int HIDDEN_SIZE = 34;  // neurons in each hidden layer
 constexpr int MIN_DEPTH = 2;     // hidden layers: twice the inborn intellect, and never fewer than this
 inline double TEMPERATURE = 0.2;
 inline double MUTATION = 0.05;

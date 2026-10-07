@@ -55,7 +55,7 @@ double pairwise_sum(const double* values, std::size_t count) {
 
 // The products of two runs of numbers, added up as numpy's sum would.
 double dot(const double* first, const double* second, std::size_t count) {
-    std::array<double, INPUT_SIZE> products;  // no layer reads more than the senses
+    std::array<double, std::max(INPUT_SIZE, HIDDEN_SIZE)> products;  // no layer reads more
     for (std::size_t index = 0; index < count; ++index) products[index] = first[index] * second[index];
     return pairwise_sum(products.data(), count);
 }
