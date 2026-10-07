@@ -99,11 +99,33 @@ std::optional<Cell> cell_of(const Bitzkey* agent) {
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------
+// Climate
+
+int season(int turn) { return turn % YEAR_LENGTH * 4 / YEAR_LENGTH; }
+
+int year(int turn) { return turn / YEAR_LENGTH + 1; }
+
+int zone_temperature(int y, int height) {
+    const double place = (y + 0.5) / height;
+    if (place < ARCTIC_SHARE || place > 1 - ARCTIC_SHARE) return Cold;
+    return std::abs(place - 0.5) < EQUATOR_SHARE / 2 ? Hot : Medium;
+}
+
+int temperature_at(int y, int height, int turn) {
+    const double place = (y + 0.5) / height;
+    const bool equator = std::abs(place - 0.5) < EQUATOR_SHARE / 2;
+    const int quarter = season(turn);
+    const bool winter = (quarter == 0 && (place < 0.5 || equator)) || (quarter == 2 && (place > 0.5 || equator));
+    return zone_temperature(y, height) + (winter ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Bitzkey
 
 Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     : identifier(identifier_), dna(dna_), x(x_), y(y_), inborn(decode_mind(dna_)), body(decode_body(dna_)) {
     species = static_cast<Species>(body[SpeciesTrait]);
+    climate = decode_climate(dna_);
     mind = to_mind(inborn);
     const double size = physique(Size);
     max_health = 60.0 + 90 * size;
@@ -127,6 +149,12 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     }
     breeding_cost = 25 - 15 * physique(Fertility);
     digestion = 0.2 + 0.8 * physique(Carrion);
+}
+
+int Bitzkey::climate_steps(int here) const {
+    const int difference = here - climate.temperature;  // above 0, colder than home
+    if (species != Species::Plant && ((difference > 0 && climate.cold) || (difference < 0 && climate.heat))) return 0;
+    return std::abs(difference);
 }
 
 Profile Bitzkey::profile() const {
@@ -183,12 +211,13 @@ Simulation::Simulation(Settings settings)
     cells_.resize(area);
     carrion_.resize(area);
     grass_.assign(area, 0);
+    update_climate();
     const int initial_grass = static_cast<int>(py_round(static_cast<double>(width_ * height_) * settings.grass_density / 100));
     grass_regrowth_ = initial_grass * GRASS_REGROWTH;
     sow(initial_grass);
     for (const int size : group_sizes(settings.population)) {
         const int species = static_cast<int>(random_.randrange(4));
-        spawn_group(make_dna(random_, species), size);
+        spawn_group(make_dna(random_, species), size, nullptr, std::nullopt, true);
     }
     for (const Imported& bitzkey : settings.imported) {
         spawn_group(bitzkey.dna, static_cast<int>(random_.randint(SPAWN_GROUP[0], SPAWN_GROUP[1])), bitzkey.brain,
@@ -231,9 +260,12 @@ std::vector<int> Simulation::group_sizes(int population) {
 }
 
 void Simulation::spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain,
-                             const std::optional<PartialMind>& mind) {
+                             const std::optional<PartialMind>& mind, bool native) {
     const int x = static_cast<int>(random_.randrange(SPAWN_SPREAD, width_ - SPAWN_SPREAD));
     const int y = static_cast<int>(random_.randrange(SPAWN_SPREAD, height_ - SPAWN_SPREAD));
+    if (native && decode_body(dna)[SpeciesTrait] == static_cast<int>(Species::Plant)) {
+        dna = (dna & ~(Dna{0x3} << TEMPERATURE_SHIFT)) | static_cast<Dna>(zone_temperature(y, height_)) << TEMPERATURE_SHIFT;
+    }
     for (int member = 0; member < size; ++member) {
         const int dx = static_cast<int>(random_.randint(-SPAWN_SPREAD, SPAWN_SPREAD));
         const int dy = static_cast<int>(random_.randint(-SPAWN_SPREAD, SPAWN_SPREAD));
@@ -268,7 +300,8 @@ std::pair<int, int> Simulation::history_room() const {
     // world are large, so the history fits HISTORY_BUDGET.
     std::size_t brains = 0;
     for (const auto& agent : agents_) brains += agent->brain != nullptr;
-    const std::size_t size = agents_.size() * sizeof(Bitzkey) + brains * (sizeof(Brain) + 32) + grass_.size() * sizeof(int);
+    const std::size_t size = agents_.size() * sizeof(Bitzkey) + brains * (sizeof(Brain) + 32) + grass_.size() * sizeof(int) +
+                             seeds_.size() * sizeof(Seed);
     const std::size_t most = std::max(MIN_SNAPSHOTS, HISTORY_BUDGET / std::max<std::size_t>(1, size));
     const int dense = static_cast<int>(std::min<std::size_t>(DENSE_HISTORY, most / 2));
     return {dense, static_cast<int>(std::min<std::size_t>(CHECKPOINTS, most - static_cast<std::size_t>(dense)))};
@@ -277,7 +310,7 @@ std::pair<int, int> Simulation::history_room() const {
 void Simulation::record() {
     // Snapshot the newest turn, then thin the old ones: turns before the recent window stay only
     // on the checkpoint spacing, which doubles while there are too many of them.
-    Snapshot snapshot{turn_, deaths_, next_identifier_, {}, grass_, random_.getstate(), insights_.snapshot()};
+    Snapshot snapshot{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
     snapshot.agents.reserve(agents_.size());
     for (const auto& agent : agents_) snapshot.agents.push_back(*agent);
     history_.push_back(std::move(snapshot));
@@ -302,8 +335,10 @@ void Simulation::restore(const Snapshot& snapshot) {
     agents_.clear();
     for (const Bitzkey& agent : snapshot.agents) agents_.push_back(std::make_unique<Bitzkey>(agent));
     grass_ = snapshot.grass;
+    seeds_ = snapshot.seeds;
     random_.setstate(snapshot.random);
     insights_.restore(snapshot.insights);
+    update_climate();
     index_cells();
 }
 
@@ -367,8 +402,18 @@ EndReason Simulation::end_reason() const {
 // ---------------------------------------------------------------------------------------------
 // A turn
 
+void Simulation::update_climate() {
+    climate_.resize(static_cast<std::size_t>(height_));
+    medium_rows_.clear();
+    for (int y = 0; y < height_; ++y) {
+        climate_[static_cast<std::size_t>(y)] = temperature_at(y, height_, turn_);
+        if (climate_[static_cast<std::size_t>(y)] == Medium) medium_rows_.push_back(y);
+    }
+}
+
 void Simulation::take_turn(bool replay) {
     ++turn_;
+    update_climate();
     index_cells();
     std::vector<Bitzkey*> order = living();
     plants_ = static_cast<int>(std::count_if(order.begin(), order.end(),
@@ -378,19 +423,31 @@ void Simulation::take_turn(bool replay) {
     for (Bitzkey* agent : order) {
         if (!agent->alive()) continue;
         agent->age += 1;
-        agent->hunger += agent->burn;
+        const bool plant = agent->species == Species::Plant;
+        const int here = in_bounds(agent->x, agent->y) ? climate_[static_cast<std::size_t>(agent->y)] : Medium;
+        const int steps = agent->climate_steps(here);
+        agent->hunger += agent->burn * (steps && !plant ? CLIMATE_HUNGER : 1.0);
         if (agent->cooldown) agent->cooldown -= 1;
         if (agent->health < agent->max_health && agent->hunger < 65) agent->heal(0.005);
+        if (steps >= 2) agent->health -= CLIMATE_DAMAGE * agent->max_health;
         if (agent->hunger >= 100) {
             die(*agent, "starved");
+            continue;
+        }
+        if (agent->health <= 0) {
+            die(*agent, here > agent->climate.temperature ? "froze" : "overheated");
             continue;
         }
         if (dies_of_age(*agent)) {
             die(*agent, "old age");
             continue;
         }
-        if (agent->species == Species::Plant) {
+        if (plant) {
             agent->hunger = std::max(0.0, agent->hunger - 1.5);
+            if (steps) {  // out of its temperature, a plant neither grows nor seeds
+                agent->last_action = "withering";
+                continue;
+            }
             agent->health = std::min(agent->max_health, agent->health + agent->max_health * PLANT_REGROWTH);
             agent->last_action = "photosynthesized";
             seed_plant(*agent);
@@ -401,6 +458,7 @@ void Simulation::take_turn(bool replay) {
         think(*agent);
     }
 
+    germinate();
     const double whole = std::floor(grass_regrowth_);
     const double fraction = grass_regrowth_ - whole;
     sow(static_cast<int>(whole) + ((fraction != 0.0 && random_.random() < fraction) ? 1 : 0));
@@ -450,24 +508,54 @@ void Simulation::seed_plant(Bitzkey& plant) {
     if (roll >= chance * std::max(0.0, 1 - static_cast<double>(shade) / LIGHT_LIMIT)) return;
     const Offset offset = SIGHT_OFFSETS[static_cast<std::size_t>(random_.randrange(seed_offsets()))];
     const Cell cell{py_mod(plant.x + offset.dx, width_), py_mod(plant.y + offset.dy, height_)};
-    for (const Bitzkey* other : cell_at(cell.x, cell.y)) {
-        if (other->alive()) return;
-    }
-    int crowding = 0;
-    for (const Bitzkey* other : nearby_cell(cell, 2, nullptr)) crowding += other->species == Species::Plant;
-    if (crowding > PLANT_CROWDING) return;
-    Bitzkey& seedling = add_agent(cross(plant.dna, plant.dna, random_, std::nullopt, mind_mutation_, body_mutation_),
-                                  cell.x, cell.y);
-    seedling.hunger = SEEDLING_HUNGER;
-    seedling.generation = plant.generation + 1;
+    if (!room_for_seedling(cell)) return;
+    const Dna dna = cross(plant.dna, plant.dna, random_, std::nullopt, mind_mutation_, body_mutation_);
     plant.hunger += SEED_COST;
     plant.children += 1;
     plant.last_action = "seeded";
+    if (climate_[static_cast<std::size_t>(cell.y)] != decode_climate(dna).temperature) {  // too hot or cold: the seed waits
+        seeds_.push_back({cell.x, cell.y, dna, plant.generation + 1, turn_});
+        return;
+    }
+    sprout(dna, cell, plant.generation + 1);
+}
+
+bool Simulation::room_for_seedling(Cell cell) const {
+    for (const Bitzkey* other : cells_[static_cast<std::size_t>(cell.y) * width_ + cell.x]) {
+        if (other->alive()) return false;
+    }
+    int crowding = 0;
+    for (const Bitzkey* other : nearby_cell(cell, 2, nullptr)) crowding += other->species == Species::Plant;
+    return crowding <= PLANT_CROWDING;
+}
+
+void Simulation::sprout(Dna dna, Cell cell, int generation) {
+    Bitzkey& seedling = add_agent(dna, cell.x, cell.y);
+    seedling.hunger = SEEDLING_HUNGER;
+    seedling.generation = generation;
     plants_ += 1;
 }
 
+void Simulation::germinate() {
+    // Waiting seeds sprout once their cell is at their temperature and there is room, unless they
+    // have waited SEED_VIABILITY of a year, when they are dead.
+    const double viable = SEED_VIABILITY * YEAR_LENGTH;
+    std::vector<Seed> waiting;
+    for (const Seed& seed : seeds_) {
+        if (turn_ - seed.sown >= viable) continue;
+        if (climate_[static_cast<std::size_t>(seed.y)] == decode_climate(seed.dna).temperature && room_for_seedling({seed.x, seed.y})) {
+            sprout(seed.dna, {seed.x, seed.y}, seed.generation);
+        } else {
+            waiting.push_back(seed);
+        }
+    }
+    seeds_ = std::move(waiting);
+}
+
 void Simulation::sow(int tufts) {
-    // On and around a corpse, grass grows CORPSE_FERTILITY times as fast.
+    // Grass grows only where it is medium; on and around a corpse, it grows CORPSE_FERTILITY times
+    // as fast.
+    if (medium_rows_.empty()) return;
     std::vector<std::uint8_t> fertile;
     for (const auto& corpse : agents_) {
         if (!corpse->died_turn) continue;
@@ -480,7 +568,7 @@ void Simulation::sow(int tufts) {
     }
     for (int tuft = 0; tuft < tufts; ++tuft) {
         const int x = static_cast<int>(random_.randrange(width_));
-        const int y = static_cast<int>(random_.randrange(height_));
+        const int y = medium_rows_[static_cast<std::size_t>(random_.randrange(static_cast<std::int64_t>(medium_rows_.size())))];
         const std::size_t at = static_cast<std::size_t>(y) * width_ + x;
         grass_[at] += (!fertile.empty() && fertile[at]) ? CORPSE_FERTILITY : 1;
     }
@@ -635,6 +723,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     }
     s.defend_target = s.assailant ? s.assailant : herd_assailant;
     const HerdView view = herd(agent);
+    const int discomfort = agent.climate_steps(in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium);
+    const std::optional<Cell> comfort = discomfort ? comfort_row(agent, sight) : std::nullopt;
     bool alarmed = false;
     if (agent.alarm) {
         for (Bitzkey* other : nearby(agent, 3)) {
@@ -695,6 +785,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
         view.middle ? std::max(0.0, 1 - static_cast<double>(distance(view.middle->x, view.middle->y, agent.x, agent.y)) / HERD_RADIUS)
                     : 0.0;
     senses[SenseAlarm] = agent.alarm.has_value();
+    senses[SenseClimateDiscomfort] = std::min(2, discomfort) / 2.0;
+    senses[SenseComfortCloseness] = discomfort ? closeness(agent, comfort, sight) : 1.0;
     senses[SenseAge] = std::min(1.0, agent.age / 400.0);
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
 
@@ -827,7 +919,7 @@ void Simulation::browse(Bitzkey& agent, Bitzkey& plant) {
         agent.last_action = "sought plants";
         return;
     }
-    agent.nourish((PLANT_MEAL + PLANT_MEAL_FOR_SIZE * plant.physique(Size)) * agent.browsing);
+    agent.nourish((PLANT_MEAL + PLANT_MEAL_FOR_SIZE * plant.physique(Size)) * agent.browsing * plant_yield(plant));
     plant.health -= PLANT_BITE;
     plant.cooldown = PLANT_RECOVERY;
     agent.last_action = "browsed";
@@ -1201,26 +1293,40 @@ double Simulation::diet_share(const Bitzkey& eater, const Bitzkey& other) {
     return 0.0;
 }
 
+double Simulation::plant_yield(const Bitzkey& plant) const {
+    return plant.climate_steps(in_bounds(plant.x, plant.y) ? temperature(plant.y) : Medium) ? PLANT_CLIMATE_YIELD : 1.0;
+}
+
+std::optional<Cell> Simulation::comfort_row(const Bitzkey& agent, int sight) const {
+    for (int rows_away = 1; rows_away <= sight; ++rows_away) {
+        for (const int y : {agent.y - rows_away, agent.y + rows_away}) {
+            if (0 <= y && y < height_ && !agent.climate_steps(temperature(y))) return Cell{agent.x, y};
+        }
+    }
+    return std::nullopt;
+}
+
 double Simulation::food_supply(const Bitzkey& agent) const {
     // The meals within FORAGE_RADIUS per mouth sharing them, itself included: grass and plants for
     // those that graze, as well as they digest them, and prey for hunters. Grass is judged by what
-    // will grow back over GRASS_OUTLOOK turns, and a share of what stands now, so a crowd can't breed
-    // on a stock it is about to eat.
+    // will grow back over GRASS_OUTLOOK turns where it grows now, and a share of what stands now, so a
+    // crowd can't breed on a stock it is about to eat.
     double food = 0.0;
     if (agent.grazing != 0.0) {
         int cells = 0, tufts = 0;
         for (const Offset& offset : nearby_offsets(FORAGE_RADIUS)) {
             if (!in_bounds(agent.x + offset.dx, agent.y + offset.dy)) continue;
-            cells += 1;
+            cells += temperature(agent.y + offset.dy) == Medium;
             tufts += grass_at(agent.x + offset.dx, agent.y + offset.dy);
         }
-        const double regrowth = cells * grass_regrowth_ / (width_ * height_) * GRASS_OUTLOOK;
+        const int growing = width_ * static_cast<int>(medium_rows_.size());
+        const double regrowth = growing ? cells * grass_regrowth_ / growing * GRASS_OUTLOOK : 0.0;
         food += agent.grazing * (STANDING_GRASS * tufts + regrowth);
     }
     double mouths = 1.0;
     for (const Bitzkey* other : nearby(agent, FORAGE_RADIUS)) {
         if (other->species == Species::Plant) {
-            food += PLANT_MEALS * agent.browsing;
+            food += PLANT_MEALS * agent.browsing * plant_yield(*other);
         } else if (feeds_on(agent, *other)) {
             food += PREY_MEALS;
         } else {

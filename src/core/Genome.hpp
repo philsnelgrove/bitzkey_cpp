@@ -24,11 +24,23 @@ namespace bitzkey {
 
 using Dna = std::uint64_t;
 
+struct Climate {
+    int temperature;  // home, an index into TEMPERATURES
+    bool heat, cold;  // whether it tolerates heat and cold
+};
+
 constexpr int GENOME_VERSION = 2;
 constexpr int TRAIT_BITS = 3;
 constexpr int TRAIT_MAX = (1 << TRAIT_BITS) - 1;
 constexpr std::uint32_t WORD = 0xFFFFFFFFU;
-constexpr std::uint32_t SPARE_BITS = 0xC0000000U;  // the dot's two bits that hold no trait
+constexpr std::uint32_t SPARE_BITS = 0xC0000000U;  // the dot's two bits that hold no mind trait: the tolerance flags
+// The climate genes, in the top two bits of each word: the ring holds the home temperature, the
+// dot the heat tolerance flag (bit 30) and the cold tolerance flag (bit 31).
+constexpr std::array<std::string_view, 4> TEMPERATURES = {"hot", "medium", "cold", "very cold"};
+constexpr int TEMPERATURE_SHIFT = 62;
+constexpr Dna HEAT_TOLERANCE = Dna{1} << 30;
+constexpr Dna COLD_TOLERANCE = Dna{1} << 31;
+constexpr int V1_TEMPERATURE = 1;  // medium
 // Default chances, per birth, of a mutation; a world can set its own.
 constexpr double MIND_MUTATION_CHANCE = 0.5;  // for each of MIND_MUTATION_ROLLS: one mind trait steps
 constexpr int MIND_MUTATION_ROLLS = 3;
@@ -67,9 +79,14 @@ inline std::uint32_t body_word(Dna dna) { return static_cast<std::uint32_t>((dna
 
 Traits decode_mind(Dna dna);
 Body decode_body(Dna dna);  // the species slot holds the species index, the trait value mod 4
+inline Climate decode_climate(Dna dna) {
+    return {static_cast<int>((dna >> TEMPERATURE_SHIFT) & 0x3), (dna & HEAT_TOLERANCE) != 0, (dna & COLD_TOLERANCE) != 0};
+}
 
-// Build a genome from named traits, each 0 to 7; unnamed traits are zero. Throws
-// std::invalid_argument for an unknown trait or a value out of range.
+// Build a genome from named traits, each 0 to 7, and climate genes ("temperature" 0 to 3,
+// "heat_tolerance" and "cold_tolerance" 0 or 1); unnamed traits are zero, the home temperature
+// medium, and neither tolerance. Throws std::invalid_argument for an unknown trait or a value out
+// of range.
 Dna encode_dna(Species species, std::initializer_list<std::pair<std::string_view, int>> traits = {});
 
 // Re-encode a version 1 genome in this layout.

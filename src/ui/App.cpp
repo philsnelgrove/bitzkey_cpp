@@ -14,7 +14,7 @@
 #include "core/Exchange.hpp"
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
-#include "ui/Icons.hpp"
+#include "ui/Inspector.hpp"
 #include "ui/Look.hpp"
 #include "ui/Platform.hpp"
 
@@ -80,7 +80,7 @@ App::Result App::run() {
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
                 if (key == SDLK_ESCAPE) {
-                    if (show_census_) show_census_ = false;
+                    if (show_census_) close_graph();
                     else ask_to_leave();
                 } else if (key == SDLK_F11) {
                     window_.toggle_fullscreen();
@@ -108,7 +108,8 @@ App::Result App::run() {
                 } else if (key == SDLK_b) {
                     save_report();
                 } else if (key == SDLK_g) {
-                    show_census_ = !show_census_;
+                    if (show_census_) close_graph();
+                    else show_census_ = true;
                 } else if (key == SDLK_TAB && show_census_) {
                     graph_.switch_part();
                 } else if (key == SDLK_c) {
@@ -364,6 +365,14 @@ void App::export_graph(bool to_file) {
     }
 }
 
+void App::close_graph() {
+    // The sidebar then shows no one Bitzkey, unless the pick is just the one it was showing.
+    show_census_ = false;
+    graph_.close_menu();
+    const auto& picked = graph_.selection();
+    if (!picked.empty() && !(selected_id_ && picked.size() == 1 && picked.contains(*selected_id_))) selected_id_.reset();
+}
+
 void App::select_at(int x, int y) {
     Canvas canvas = window_.frame();
     const Board board = board_geometry(canvas);
@@ -381,7 +390,8 @@ void App::select_at(int x, int y) {
     if (nearest && board.rect.contains(x, y) &&
         nearest_distance < std::max<double>(UI(9), std::min(board.cell_width, board.cell_height) * 1.6)) {
         selected_id_ = nearest->identifier;
-        show_insights_ = false;  // selecting shows the inspector
+        graph_.select_only(nearest->identifier);  // the map and the graph share one selection
+        show_insights_ = false;                   // selecting shows the inspector
     }
 }
 
@@ -472,13 +482,17 @@ void App::draw_header(Canvas& canvas) {
 void App::draw_world(Canvas& canvas) {
     const Board board = board_geometry(canvas);
     const Rect& rect = board.rect;
-    canvas.fill_rect(rect, {29, 39, 38});
+    for (int y = 0; y < simulation_->height(); ++y) {  // each row in its temperature's colour
+        const int top = static_cast<int>(py_round(rect.y + y * board.cell_height));
+        const int bottom = static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height));
+        canvas.fill_rect({rect.x, top, rect.w, bottom - top}, zone_colour(simulation_->temperature(y)));
+    }
     const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
     for (int y = 0; y < simulation_->height(); ++y) {
         for (int x = 0; x < simulation_->width(); ++x) {
             if (simulation_->grass_at(x, y) <= 0) continue;
             canvas.circle(static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width)),
-                          static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height)), grass_radius, {117, 166, 111});
+                          static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height)), grass_radius, GRASS);
         }
     }
     const int largest = std::max(DOT_RADIUS_LARGEST, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.45)));
@@ -487,36 +501,29 @@ void App::draw_world(Canvas& canvas) {
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
         const int radius = dot_radius(agent->body[Size], largest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
-        if (selected_id_ && agent->identifier == *selected_id_) {
-            canvas.circle(px, py, radius + RING_WIDTH + UI(3), {245, 238, 206}, std::max(1, UI(1)));
+        if ((selected_id_ && agent->identifier == *selected_id_) || graph_.selection().contains(agent->identifier)) {
+            canvas.circle(px, py, radius + RING_WIDTH + UI(3), SELECTED, std::max(1, UI(1)));
         }
         if (std::any_of(export_list_.begin(), export_list_.end(),
                         [&](const ExportEntry& entry) { return entry.identifier == agent->identifier; })) {
-            canvas.circle(px, py, radius + RING_WIDTH + UI(6), {238, 183, 110}, std::max(1, UI(1)));
+            canvas.circle(px, py, radius + RING_WIDTH + UI(6), EXPORTING, std::max(1, UI(1)));
         }
     }
     for (int x = 0; x <= simulation_->width(); x += 10) {
         const int px = static_cast<int>(py_round(rect.x + x * board.cell_width));
-        canvas.line(px, rect.y, px, rect.bottom(), {46, 58, 54});
+        canvas.line(px, rect.y, px, rect.bottom(), GRID);
     }
     for (int y = 0; y <= simulation_->height(); y += 10) {
         const int py = static_cast<int>(py_round(rect.y + y * board.cell_height));
-        canvas.line(rect.x, py, rect.right(), py, {46, 58, 54});
+        canvas.line(rect.x, py, rect.right(), py, GRID);
     }
     canvas.rect(rect, {80, 99, 85}, 1);
-}
-
-void App::bar(Canvas& canvas, int x, int y, int width, double value, Color color) {
-    canvas.fill_rect({x, y, width, UI(7)}, {44, 57, 52});
-    canvas.fill_rect({x, y, static_cast<int>(py_round(width * std::max(0.0, std::min(1.0, value)))), UI(7)}, color);
 }
 
 void App::draw_sidebar(Canvas& canvas) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* bold = UI.font(Face::Sans, 22, true);
     TTF_Font* small = UI.font(Face::Sans, 12);
-    TTF_Font* mono = UI.font(Face::Mono, 14);
-    TTF_Font* mono_small = UI.font(Face::Mono, 12);
     const int sidebar_x = canvas.width() - sidebar_width(canvas);
     canvas.line(sidebar_x, UI(62), sidebar_x, canvas.height() - UI(58), {54, 68, 62});
     const int x = sidebar_x + UI(20);
@@ -526,6 +533,11 @@ void App::draw_sidebar(Canvas& canvas) {
     for (const Bitzkey* agent : alive) counts[static_cast<std::size_t>(agent->species)] += 1;
     canvas.text(bold, format("TURN  %05d", simulation_->turn()), {232, 236, 219}, x, UI(78));
     canvas.text(small, format("%zu ALIVE    %d LOST", alive.size(), simulation_->deaths()), {157, 177, 159}, x, UI(108));
+    const int turn = simulation_->turn();
+    canvas.text_at(font, format("YEAR %d", year(turn)), {232, 236, 219}, [&](Rect& box) { box.topright_at(x + width, UI(84)); });
+    canvas.text_at(small, upper(SEASONS[static_cast<std::size_t>(season(turn))]),
+                   season(turn) % 2 == 0 ? Color{140, 185, 230} : Color{157, 177, 159},
+                   [&](Rect& box) { box.topright_at(x + width, UI(108)); });
     canvas.line(x, UI(138), x + width, UI(138), {54, 68, 62});
     canvas.text(font, "POPULATION", {220, 229, 211}, x, UI(153));
     for (std::size_t index = 0; index < SPECIES.size(); ++index) {
@@ -544,62 +556,18 @@ void App::draw_sidebar(Canvas& canvas) {
     if (!agent) {
         canvas.text(small, "Click a dot to inspect its genome.", {146, 165, 149}, x, UI(332));
         canvas.text(small, "Living: click its current position.", {116, 139, 124}, x, UI(352));
+        if (!graph_.selection().empty()) {
+            canvas.text(small, format("%zu picked on the colour graph, ringed on the map.", graph_.selection().size()),
+                        {238, 183, 110}, x, UI(380));
+        }
         return;
     }
 
-    draw_bitzkey(canvas, agent->dna, x + UI(10), UI(343), dot_radius(agent->body[Size], UI(DOT_RADIUS_LARGEST)), RING_WIDTH,
-                 agent->alive());
-    draw_icon(canvas, agent->species, x + width - UI(12), UI(343), UI(9), {220, 229, 211});
-    canvas.text(font, format("#%03d  %s", agent->identifier, upper(species_name(agent->species)).c_str()), {238, 238, 220},
-                x + UI(28), UI(332));
-    canvas.text(mono, format("DOT / MIND   %08X", mind_word(agent->dna)), {211, 219, 201}, x, UI(360));
-    canvas.text(mono, format("RING / BODY  %08X", body_word(agent->dna)), {211, 219, 201}, x, UI(379));
-
-    const int body_x = x + std::min(UI(168), width / 2 + UI(18));
-    canvas.text(small, "MIND      born   now", {149, 170, 150}, x, UI(406));
-    canvas.text(small, "BODY", {149, 170, 150}, body_x, UI(406));
-    for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) {
-        const int born = agent->inborn[trait];
-        const double now = agent->mind[trait];
-        const Color colour = std::abs(now - born) < 0.25 ? Color{175, 192, 172}
-                             : now > born               ? Color{131, 205, 143}
-                                                        : Color{238, 183, 110};
-        canvas.text(mono_small, format("%-11s%3d%6.1f", std::string(MIND_TRAITS[trait]).c_str(), born, now), colour, x,
-                    UI(424 + trait * 16));
-    }
-    for (int trait = 1; trait < BODY_TRAIT_COUNT; ++trait) {
-        canvas.text(mono_small, format("%-9s%3d", std::string(BODY_TRAITS[trait]).c_str(), agent->body[trait]), {175, 192, 172},
-                    body_x, UI(424 + (trait - 1) * 16));
-    }
-    canvas.text(mono_small, format("%-7s%5.2f", "burn", agent->burn), {175, 192, 172}, body_x, UI(424 + 9 * 16));
-
-    canvas.text(mono, format("HUNGER  %5.1f%%", std::min(100.0, agent->hunger)), {224, 177, 118}, x, UI(590));
-    bar(canvas, x, UI(609), width, agent->hunger / 100, {224, 150, 94});
-    canvas.text(mono, format("HEALTH  %5.1f / %.0f", std::max(0.0, agent->health), agent->max_health), {161, 207, 162}, x, UI(619));
-    bar(canvas, x, UI(638), width, agent->health / agent->max_health, {124, 190, 131});
-    canvas.text(small, format("AGE %d / ~%.0f    GENERATION %d    CHILDREN %d", agent->age, agent->lifespan, agent->generation,
-                              agent->children),
-                {145, 164, 146}, x, UI(651));
-    std::string state = "LAST ACTION: " + upper(agent->last_action);
-    if (!agent->alive()) state += format("     MEAT LEFT %.0f", agent->meat);
-    canvas.text(small, state, {145, 164, 146}, x, UI(667));
-    if (agent->odds_offered) {
-        std::vector<std::pair<int, double>> odds;
-        for (int action = 0; action < ACTION_COUNT; ++action) {
-            if (agent->odds_offered & (1U << action)) odds.emplace_back(action, agent->odds[static_cast<std::size_t>(action)]);
-        }
-        std::stable_sort(odds.begin(), odds.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-        std::string line = "CHANCES  ";
-        for (std::size_t index = 0; index < std::min<std::size_t>(3, odds.size()); ++index) {
-            if (index) line += "   ";
-            line += std::string(ACTIONS[static_cast<std::size_t>(odds[index].first)]) + " " + py_percent(odds[index].second, 0);
-        }
-        canvas.text(small, line, {175, 192, 172}, x, UI(683));
-    }
-    canvas.text(small, "C  copy as JSON      A  add to / remove from export", {116, 139, 124}, x, UI(702));
+    draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y));
+    canvas.text(small, "C  copy as JSON      A  add to / remove from export", {116, 139, 124}, x, UI(719));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
                                     [agent](const ExportEntry& entry) { return entry.identifier == agent->identifier; });
-    add_button_ = Rect{x, UI(722), width, UI(30)};
+    add_button_ = Rect{x, UI(737), width, UI(28)};
     canvas.rect(*add_button_, {44, 57, 52}, 0, UI(5));
     if (chosen) canvas.rect(*add_button_, {238, 183, 110}, 1, UI(5));
     canvas.text_at(UI.font(Face::Sans, 13, true), chosen ? "REMOVE FROM EXPORT" : "ADD TO EXPORT",

@@ -16,13 +16,16 @@ namespace bitzkey::ui {
 
 struct Screens;
 
-enum class FieldKind { Mind, Body, Hex };
+// The climate fields: 0 the hardiness (the tolerance flags, the dot's top two bits, as one value:
+// 1 heat, 2 cold, 3 both), 1 the home temperature (the ring's top two bits).
+enum class FieldKind { Mind, Body, Climate, Hex };
 struct Field {
     FieldKind kind;
     int index;  // the trait, or 0 for the ring and 1 for the dot
     bool operator==(const Field&) const = default;
 };
-constexpr int FIELD_COUNT = MIND_TRAIT_COUNT + BODY_TRAIT_COUNT + 2;
+constexpr int COLUMN_ROWS = MIND_TRAIT_COUNT + 1;  // a column for each word: its traits, then its climate field
+constexpr int FIELD_COUNT = 2 * COLUMN_ROWS + 2;
 Field field_at(int position);
 int field_position(Field field);
 
@@ -62,7 +65,7 @@ private:
     friend struct Screens;  // the screenshot tool
     struct Layout {
         Rect card, preview, ring_code, dot_code, apply, cancel, random;
-        std::array<Rect, MIND_TRAIT_COUNT + BODY_TRAIT_COUNT> rows;
+        std::array<Rect, 2 * COLUMN_ROWS> rows;
     };
     Layout layout() const;
     static std::array<Rect, 3> controls(const Rect& row);  // minus, value box, plus

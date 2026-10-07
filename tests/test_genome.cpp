@@ -17,6 +17,33 @@ TEST_CASE("traits encode into their words and decode back") {
     CHECK_THROWS_AS(encode_dna(Species::Grazer, {{"wings", 1}}), std::invalid_argument);
 }
 
+TEST_CASE("the climate genes hold the top bits of each word") {
+    CHECK(TEMPERATURES[3] == "very cold");
+    const Dna dna = encode_dna(Species::Grazer, {{"temperature", 3}, {"cold_tolerance", 1}, {"size", 7}});
+    const Climate climate = decode_climate(dna);
+    CHECK((climate.temperature == 3 && !climate.heat && climate.cold));
+    CHECK((body_word(dna) >> 30) == 3);
+    CHECK((mind_word(dna) >> 30) == 2);
+    CHECK(decode_body(dna)[Size] == 7);
+    CHECK(decode_climate(encode_dna(Species::Plant, {{"heat_tolerance", 1}})).temperature == 1);  // medium by default
+    CHECK(decode_climate(encode_dna(Species::Plant, {{"heat_tolerance", 1}})).heat);
+    CHECK_THROWS_AS(encode_dna(Species::Grazer, {{"temperature", 4}}), std::invalid_argument);
+}
+
+TEST_CASE("a child inherits its tolerances together from one parent") {
+    const Dna hardy = encode_dna(Species::Grazer, {{"heat_tolerance", 1}, {"cold_tolerance", 1}});
+    const Dna tender = encode_dna(Species::Grazer);
+    PyRandom rng(5);
+    bool both = false, neither = false;
+    for (int child = 0; child < 60; ++child) {
+        const Climate climate = decode_climate(cross(hardy, tender, rng));
+        CHECK(climate.heat == climate.cold);
+        both |= climate.heat;
+        neither |= !climate.heat;
+    }
+    CHECK((both && neither));
+}
+
 TEST_CASE("colour words turn into RGB and colour differences") {
     CHECK(color_from_word(0x00000000) == Rgb{255, 255, 255});
     CHECK(color_from_word(0xFF0000FF) == Rgb{0, 0, 0});

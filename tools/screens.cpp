@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <set>
 #include <string>
 
 #include <SDL.h>
@@ -86,10 +87,44 @@ struct Screens {
         app.show_census_ = true;
         app.draw(canvas);
         save(canvas, folder / "app-graph.bmp");
+        ColourGraph& graph = app.graph_;
+        graph.sort_ = 8;  // intellect
+        graph.menu_open_ = true;
+        const Rect item = graph.menu_items()[8].second;
+        graph.mouse_x_ = item.centerx();
+        graph.mouse_y_ = item.centery();
+        app.draw(canvas);
+        save(canvas, folder / "app-graph-menu.bmp");
+        graph.menu_open_ = false;
+        const Bar& bar = graph.bars_[graph.bars_.size() - 12];
+        const auto& [hovered, top, bottom] = bar.slices[bar.slices.size() / 2];
+        graph.mouse_x_ = bar.left + 1;
+        graph.mouse_y_ = static_cast<int>((top + bottom) / 2);
+        app.draw(canvas);
+        save(canvas, folder / "app-graph-tooltip.bmp");
+        std::set<int> predators;
+        for (const Bitzkey* agent : app.simulation_->living()) {
+            if (agent->species == Species::Predator) predators.insert(agent->identifier);
+        }
+        graph.select(predators, ColourGraph::Mode::Replace);
+        app.close_graph();
+        app.draw(canvas);
+        save(canvas, folder / "app-graph-picked.bmp");
         app.show_census_ = false;
         app.ask_to_leave();
         app.draw(canvas);
         save(canvas, folder / "app-leave.bmp");
+        app.dialog_.reset();
+        graph.select({}, ColourGraph::Mode::Replace);
+        while (app.simulation_->turn() < 380) app.simulation_->advance();  // year 3, a northern winter
+        for (const Bitzkey* agent : app.simulation_->living()) {
+            if (agent->species != Species::Plant) app.selected_id_ = agent->identifier;
+        }
+        app.draw(canvas);
+        save(canvas, folder / "app-winter.bmp");
+        app.show_census_ = true;
+        app.draw(canvas);
+        save(canvas, folder / "app-graph-years.bmp");
     }
 };
 

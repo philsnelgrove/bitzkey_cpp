@@ -113,6 +113,27 @@ inline int LIGHT_RADIUS = 3;  // plants compete for light with the plants within
 inline int LIGHT_LIMIT = 3;   // each cuts a plant's chance of seeding by this share, to none at this many
 inline int PLANT_CROWDING = 3;
 inline double TEMPERAMENT_RELAPSE = 0.005;
+// Climate. The map is banded into zones across its height: ARCTIC_SHARE at the top and at the
+// bottom is arctic, cold; a strip of EQUATOR_SHARE across the middle is the equator, hot; the rest
+// is temperate, medium. Every YEAR_LENGTH turns is a year. Through its first quarter the north,
+// from the top down to and through the equator, is a step colder; through its third quarter the
+// south, from the bottom up to and through the equator, is. Every Bitzkey has a home temperature,
+// and may tolerate heat (zones hotter than home) or cold (zones colder); plants tolerate nothing, and
+// a plant spawned at the start is at home in its zone's usual temperature.
+inline int YEAR_LENGTH = 180;
+inline double ARCTIC_SHARE = 0.2;
+inline double EQUATOR_SHARE = 0.2;
+inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home needs this many times the food
+inline double CLIMATE_DAMAGE = 0.1;   // two steps or more from home, a Bitzkey loses this share of its full health a turn
+inline double PLANT_CLIMATE_YIELD = 0.5;  // a plant out of its temperature gives this share of its food
+inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
+enum Temperature : int { Hot, Medium, Cold, VeryCold };
+constexpr std::array<std::string_view, 4> SEASONS = {"northern winter", "mild", "southern winter", "mild"};
+
+int season(int turn);  // the quarter of the year a turn falls in, 0 to 3
+int year(int turn);    // the year a turn falls in, from 1
+int zone_temperature(int y, int height);       // a row's temperature outside the winters
+int temperature_at(int y, int height, int turn);  // a row's temperature on a turn
 constexpr int MAX_SIGHT = 2 + TRAIT_MAX;
 // For each territorial species, predators then omnivores: how many rivals it tolerates from the
 // least to the most empathetic, and how strongly overcrowding moves it (its rivalry at most).
@@ -181,6 +202,7 @@ struct Bitzkey {
     Traits inborn;
     Body body;
     double max_health, metabolism, stomach, burn, might, toughness, lifespan, breeding_cost, digestion;
+    Climate climate;
     double grazing;   // share of the food in grass it gets
     double browsing;  // share of the food in plants
     int steps, sight;
@@ -194,6 +216,9 @@ struct Bitzkey {
     void nourish(double food) { hunger = std::max(0.0, hunger - food / stomach); }
     void heal(double amount) { health = std::min(max_health, health + max_health * amount * metabolism); }
     Brain& own_brain();  // the brain, made this animal's own before it changes
+    // How many steps a temperature is from home, as it feels it: an animal tolerant of heat doesn't
+    // feel hotter, nor one tolerant of cold colder. Plants feel every step.
+    int climate_steps(int here) const;
     Rgb dot_color() const { return color_from_word(mind_word(dna)); }
     Rgb ring_color() const { return color_from_word(body_word(dna)); }
 };
@@ -242,6 +267,17 @@ public:
     Dna lineage(int identifier) const { return lineage_.at(static_cast<std::size_t>(identifier)); }
     PyRandom& random() { return random_; }
     double grass_regrowth() const { return grass_regrowth_; }
+    int temperature(int y) const { return climate_[static_cast<std::size_t>(y)]; }  // a row's temperature now
+    // A seed waiting where it fell for the temperature it can grow in.
+    struct Seed {
+        int x, y;
+        Dna dna;
+        int generation, sown;
+        bool operator==(const Seed&) const = default;
+    };
+    std::vector<Seed>& seeds() { return seeds_; }
+    const std::vector<Seed>& seeds() const { return seeds_; }
+    const std::vector<int>& medium_rows() const { return medium_rows_; }
     void set_grass_regrowth(double tufts) { grass_regrowth_ = tufts; }
 
     // Step one turn: replaying the recorded run, or simulating a new turn, unless it has ended.
@@ -258,6 +294,9 @@ public:
     Bitzkey& add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> brain = nullptr,
                        const std::optional<PartialMind>& mind = std::nullopt);
     void index_cells();
+    void update_climate();  // each row's temperature this turn, and the medium rows grass grows in
+    void seed_plant(Bitzkey& plant);
+    void germinate();
 
     struct Situation {
         Bitzkey* mate = nullptr;
@@ -327,6 +366,9 @@ public:
     static bool feeds_on(const Bitzkey& eater, const Bitzkey& other);
     static double diet_share(const Bitzkey& eater, const Bitzkey& other);
     double food_supply(const Bitzkey& agent) const;
+    double plant_yield(const Bitzkey& plant) const;  // the share of its food a plant gives: less out of its temperature
+    // The nearest cell straight up or down, within sight, where it would feel at home: north before south.
+    std::optional<Cell> comfort_row(const Bitzkey& agent, int sight) const;
     std::pair<bool, bool> prey_switching(const Bitzkey& hunter) const;
     static double flee_range(const Bitzkey& agent, int herd_near);
     bool herd_mate(const Bitzkey& agent, const Bitzkey& other) const;
@@ -338,20 +380,23 @@ private:
         int next_identifier = 0;
         std::vector<Bitzkey> agents;
         std::vector<int> grass;
+        std::vector<Seed> seeds;
         PyRandom::State random;
         Insights::State insights;
     };
 
     std::vector<int> group_sizes(int population);
     std::pair<int, int> history_room() const;  // recent turns kept every turn, and older checkpoints
+    // `native` plants take the usual temperature of their centre's zone as their home.
     void spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain = nullptr,
-                     const std::optional<PartialMind>& mind = std::nullopt);
+                     const std::optional<PartialMind>& mind = std::nullopt, bool native = false);
     void record();
     void restore(const Snapshot& snapshot);
     std::pair<const Snapshot*, int> start_for(int target) const;
     void take_census();
     bool dies_of_age(Bitzkey& agent);
-    void seed_plant(Bitzkey& plant);
+    bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
+    void sprout(Dna dna, Cell cell, int generation);
     void settle(Bitzkey& agent);
     void learn(Bitzkey& agent, double target);
     std::optional<Cell> nearest_grass(const Bitzkey& agent, int sight) const;
@@ -391,6 +436,9 @@ private:
     int plants_ = 0;
     std::vector<int> grass_;
     double grass_regrowth_;
+    std::vector<Seed> seeds_;
+    std::vector<int> climate_;      // each row's temperature this turn
+    std::vector<int> medium_rows_;  // the rows where it is medium, where grass grows
     std::vector<Snapshot> history_;
     int frontier_ = 0;
     int checkpoint_stride_ = 1;

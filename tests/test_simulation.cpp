@@ -2,6 +2,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -274,10 +275,13 @@ TEST_CASE("plants seed less the more plants shade them") {
     Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"fertility", 7}}), 15, 15);
     for (int x = 16; x <= 18; ++x) simulation.add_agent(encode_dna(Species::Plant), x, 15);  // three within three cells
     const std::size_t before = simulation.agents().size();
+    const double damage = CLIMATE_DAMAGE;
+    CLIMATE_DAMAGE = 0;  // out of their temperature through the winters, the plants wither but live
     for (int turn = 0; turn < 500; ++turn) {
         plant.hunger = 0;
         simulation.take_turn();
     }
+    CLIMATE_DAMAGE = damage;
     // Shaded by three plants, the first never seeds; its neighbours, less shaded, may.
     CHECK(plant.children == 0);
     CHECK(simulation.agents().size() >= before);
@@ -342,7 +346,9 @@ TEST_CASE("a world with no animals left has ended") {
 
 TEST_CASE("grass grows twice as fast on and around corpses") {
     Simulation simulation = world();
-    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 0, 0);
+    const auto& rows = simulation.medium_rows();  // grass grows only where it is medium
+    for (const int y : {6, 7, 8}) CHECK(std::find(rows.begin(), rows.end(), y) != rows.end());
+    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 0, 7);
     corpse.health = 0;
     simulation.die(corpse, "wounded");
     simulation.clear_grass();
@@ -351,10 +357,10 @@ TEST_CASE("grass grows twice as fast on and around corpses") {
     int cells = 0;
     for (int dx = -1; dx <= 1; ++dx) {
         for (int dy = -1; dy <= 1; ++dy) {
-            fertile += simulation.grass_at(py_mod(dx, 12), py_mod(dy, 12));
+            fertile += simulation.grass_at(py_mod(dx, 12), 7 + dy);
             ++cells;
         }
     }
-    const double elsewhere = (static_cast<double>(simulation.grass_tufts()) - fertile) / (144 - cells);
+    const double elsewhere = (static_cast<double>(simulation.grass_tufts()) - fertile) / (12 * static_cast<int>(rows.size()) - cells);
     CHECK(fertile / cells / elsewhere == doctest::Approx(2).epsilon(0.2));
 }

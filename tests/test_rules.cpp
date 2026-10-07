@@ -26,7 +26,7 @@ int corpses_kept(int turns) {
 }  // namespace
 
 TEST_CASE("every default is within its rule and of its kind") {
-    CHECK(rules::all().size() == 114);
+    CHECK(rules::all().size() == 121);
     for (const rules::Rule& rule : rules::all()) {
         CAPTURE(rule.key);
         const double value = rules::defaults().at(rule.key);
@@ -72,6 +72,12 @@ TEST_CASE("problems name pairs out of order or alike") {
     values["METABOLISM.0"] = values["METABOLISM.1"] = 1.0;
     CHECK(rules::problems(values) ==
           std::vector<std::string>{"Metabolism, smallest must differ from metabolism, largest"});
+    values = rules::defaults();
+    values["ARCTIC_SHARE"] = 0.4;
+    values["EQUATOR_SHARE"] = 0.3;
+    CHECK(rules::problems(values) == std::vector<std::string>{"The two arctic zones and the equator must fit in the map together"});
+    values["EQUATOR_SHARE"] = 0.2;
+    CHECK(rules::problems(values).empty());
 }
 
 TEST_CASE("values show as the Python version shows them") {

@@ -9,6 +9,7 @@
 
 #include "core/PyFormat.hpp"
 #include "ui/Icons.hpp"
+#include "ui/Inspector.hpp"
 #include "ui/Look.hpp"
 
 namespace bitzkey::ui {
@@ -21,6 +22,9 @@ constexpr double FUTURE_DIM = 0.55;    // how far turns after the present fade, 
 constexpr int MIN_VIEW = 10;           // the fewest turns the graph zooms in to
 constexpr double ZOOM_STEP = 0.8;      // each wheel notch shows this share of the turns before it
 constexpr Color BACKGROUND{30, 40, 40};
+constexpr int MENU_ROW = 22;           // design pixels per item of the sort menu
+constexpr int YEAR_LABEL_SPACING = 56; // design pixels the year labels on the timeline keep apart, at least
+constexpr int FIRST_CLIMATE_SORT = SORT_COUNT - static_cast<int>(CLIMATE_SORTS.size());
 
 Color colour_of(Dna dna, bool dot) { return to_color(color_from_word(dot ? mind_word(dna) : body_word(dna))); }
 
@@ -53,6 +57,30 @@ double nice_ceiling(double value) {
         }
         scale *= 10;
     }
+}
+
+std::string sort_name(int sort) {
+    if (sort == 0) return "colour";
+    if (sort >= FIRST_CLIMATE_SORT) return std::string(CLIMATE_SORTS[static_cast<std::size_t>(sort - FIRST_CLIMATE_SORT)]);
+    if (sort <= MIND_TRAIT_COUNT) return std::string(MIND_TRAITS[static_cast<std::size_t>(sort - 1)]);
+    return std::string(BODY_TRAITS[static_cast<std::size_t>(sort - MIND_TRAIT_COUNT)]);
+}
+
+std::string sort_label(int sort) {
+    if (sort == 0) return "Colour value";
+    std::string name = sort_name(sort);
+    name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+    return name;
+}
+
+int sort_value(Dna dna, int sort) {
+    if (sort == 0) return 0;
+    if (sort >= FIRST_CLIMATE_SORT) {
+        const Climate climate = decode_climate(dna);
+        return sort == FIRST_CLIMATE_SORT ? climate.temperature : sort == FIRST_CLIMATE_SORT + 1 ? climate.heat : climate.cold;
+    }
+    if (sort <= MIND_TRAIT_COUNT) return decode_mind(dna)[static_cast<std::size_t>(sort - 1)];
+    return decode_body(dna)[static_cast<std::size_t>(sort - MIND_TRAIT_COUNT)];
 }
 
 void ColourGraph::reset() {
@@ -134,11 +162,25 @@ ColourGraph::Layout ColourGraph::layout() const {
     places.timeline = {places.chart.x, places.chart.bottom() + UI(4), places.chart.w, UI(24)};
     int right = panel.right() - UI(24);
     for (const auto& [button, width] : {std::pair{&places.save, 76}, std::pair{&places.copy, 76},
-                                        std::pair{&places.clear, 76}, std::pair{&places.living, 116}}) {
+                                        std::pair{&places.clear, 76}, std::pair{&places.living, 116},
+                                        std::pair{&places.sort, 170}}) {
         *button = {right - UI(width), panel.y + UI(18), UI(width), UI(30)};
         right -= UI(width + 8);
     }
     return places;
+}
+
+std::vector<std::pair<int, Rect>> ColourGraph::menu_items() const {
+    // Under the sort button, a small gap before the mind traits, the body traits and the climate genes.
+    const Rect button = layout().sort;
+    std::vector<std::pair<int, Rect>> items;
+    int top = button.bottom() + UI(2);
+    for (int sort = 0; sort < SORT_COUNT; ++sort) {
+        if (sort == 1 || sort == 1 + MIND_TRAIT_COUNT || sort == FIRST_CLIMATE_SORT) top += UI(6);
+        items.emplace_back(sort, Rect{button.x, top, button.w, UI(MENU_ROW)});
+        top += UI(MENU_ROW);
+    }
+    return items;
 }
 
 Rect ColourGraph::box_between(int x1, int y1, int x2, int y2) {
@@ -171,6 +213,15 @@ std::set<int> ColourGraph::bitzkeys_in(const Rect& box) const {
 ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
     const Layout places = layout();
     const Rect &chart = places.chart, &timeline = places.timeline;
+    if (menu_open_ && event.type == SDL_MOUSEBUTTONDOWN) {  // a click picks a choice or closes the menu
+        menu_open_ = false;
+        if (event.button.button == SDL_BUTTON_LEFT) {
+            for (const auto& [sort, item] : menu_items()) {
+                if (item.contains(event.button.x, event.button.y)) sort_ = sort;
+            }
+        }
+        return Action::None;
+    }
     if (event.type == SDL_MOUSEMOTION) {
         mouse_x_ = event.motion.x;
         mouse_y_ = event.motion.y;
@@ -194,7 +245,9 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
         const int x = event.button.x, y = event.button.y;
         if (places.copy.contains(x, y)) return Action::Copy;
         if (places.save.contains(x, y)) return Action::Save;
-        if (places.clear.contains(x, y)) {
+        if (places.sort.contains(x, y)) {
+            menu_open_ = true;
+        } else if (places.clear.contains(x, y)) {
             select({}, Mode::Replace);
         } else if (places.living.contains(x, y)) {
             std::set<int> living;  // drop the dead from the selection
@@ -255,16 +308,16 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
     peak_ = nice_ceiling(static_cast<double>(most));
     const double unit = chart.h / peak_;
 
-    // Stacked by species, plants at the bottom; within each, similar colours together: greys by
-    // lightness, then hues round the wheel.
-    using Key = std::tuple<int, int, double, double, std::uint32_t, int>;
+    // Stacked by species, plants at the bottom; within each, by the sort's trait if there is one,
+    // then similar colours together: greys by lightness, then hues round the wheel.
+    using Key = std::tuple<int, int, int, double, double, std::uint32_t, int>;
     std::unordered_map<int, Key> order;
     const auto key_of = [&](int identifier) -> const Key& {
         auto found = order.find(identifier);
         if (found == order.end()) {
             const Dna dna = simulation.lineage(identifier);
             const auto [group, hue, value] = colour_order(color_from_word(dot_ ? mind_word(dna) : body_word(dna)));
-            found = order.emplace(identifier, Key{decode_body(dna)[SpeciesTrait], group, hue, value,
+            found = order.emplace(identifier, Key{decode_body(dna)[SpeciesTrait], sort_value(dna, sort_), group, hue, value,
                                                   dot_ ? mind_word(dna) : body_word(dna), identifier}).first;
         }
         return found->second;
@@ -346,13 +399,14 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.text_at(font, name, {220, 229, 211}, [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
     }
+    draw_sort_button(canvas, places.sort);
     if (note) canvas.text_at(small, *note, {238, 183, 110}, [&](Rect& box) { box.topright_at(panel.right() - UI(24), panel.y + UI(58)); });
 
     const auto [first, last] = window();
     const std::vector<long long> key = {simulation.turn(), simulation.frontier(), static_cast<long long>(simulation.census().snapshots().size()),
                                         static_cast<long long>(simulation.agents().size()), simulation.deaths(), dot_, chart.w, chart.h,
                                         chart.x, chart.y, selection_version_, first, last,
-                                        static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation))};
+                                        static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation)), sort_};
     if (key != key_) {
         key_ = key;
         build(simulation, chart, first, last);
@@ -373,7 +427,8 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
 
     draw_timeline(canvas, chart, timeline, first, last);
 
-    const std::optional<int> hovered = chart.contains(mouse_x_, mouse_y_) ? bitzkey_at(mouse_x_, mouse_y_) : std::nullopt;
+    const std::optional<int> hovered =
+        chart.contains(mouse_x_, mouse_y_) && !menu_open_ ? bitzkey_at(mouse_x_, mouse_y_) : std::nullopt;
     if (hovered) {
         for (const auto& [left, right, top, bottom] : places_[*hovered]) {
             canvas.rect({left, static_cast<int>(py_round(top)) - 1, right - left, std::max(1, static_cast<int>(py_round(bottom - top))) + 2},
@@ -390,6 +445,43 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
                 "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
                 "Zoom: wheel, SHIFT+wheel pans",
                 {144, 170, 151}, panel.x + UI(24), panel.bottom() - UI(28));
+    if (menu_open_) {
+        draw_menu(canvas);
+    } else if (hovered && !press_) {
+        const auto& agents = simulation.agents();
+        const auto found = std::find_if(agents.begin(), agents.end(), [&](const auto& agent) { return agent->identifier == *hovered; });
+        if (found != agents.end()) {
+            draw_tooltip(canvas, **found, true, mouse_x_, mouse_y_, simulation.temperature((*found)->y));
+        } else {
+            draw_tooltip(canvas, Bitzkey(*hovered, simulation.lineage(*hovered), 0, 0), false, mouse_x_, mouse_y_);
+        }
+    }
+}
+
+void ColourGraph::draw_sort_button(Canvas& canvas, const Rect& button) {
+    canvas.rect(button, {44, 57, 52}, 0, UI(4));
+    if (menu_open_ || sort_ != 0) canvas.rect(button, {131, 205, 143}, 1, UI(4));
+    std::string label = "SORT  " + sort_label(sort_);
+    for (char& c : label) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    canvas.text_at(UI.font(Face::Sans, 12), label, {220, 229, 211},
+                   [&](Rect& box) { box.midleft_at(button.x + UI(10), button.centery()); });
+    const int x = button.right() - UI(14), y = button.centery();
+    canvas.polygon({{x - UI(5), y - UI(2)}, {x + UI(5), y - UI(2)}, {x, y + UI(4)}}, {220, 229, 211});
+}
+
+void ColourGraph::draw_menu(Canvas& canvas) {
+    const auto items = menu_items();
+    const Rect& first = items.front().second;
+    const Rect& last = items.back().second;
+    const Rect back = Rect{first.x, first.y, first.w, last.bottom() - first.y}.inflate(UI(4), UI(4));
+    canvas.rect(back, {19, 26, 27}, 0, UI(4));
+    canvas.rect(back, {80, 99, 85}, 1, UI(4));
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    for (const auto& [sort, item] : items) {
+        if (item.contains(mouse_x_, mouse_y_)) canvas.fill_rect(item, {44, 57, 52});
+        canvas.text_at(small, sort_label(sort), sort == sort_ ? Color{131, 205, 143} : Color{220, 229, 211},
+                       [&](Rect& box) { box.midleft_at(item.x + UI(10), item.centery()); });
+    }
 }
 
 void ColourGraph::label_species(Canvas& canvas, const Simulation& simulation, const Rect& chart) {
@@ -426,6 +518,7 @@ void ColourGraph::label_species(Canvas& canvas, const Simulation& simulation, co
 void ColourGraph::draw_timeline(Canvas& canvas, const Rect& chart, const Rect& timeline, int first, int last) {
     TTF_Font* small = UI.font(Face::Sans, 12);
     canvas.rect(timeline, {22, 30, 30}, 0, UI(4));
+    draw_seasons(canvas, chart, timeline, first, last);
     canvas.rect(timeline, {54, 68, 62}, 1, UI(4));
     const std::string middle = !view_ ? format("TURN %d", (first + last) / 2)
                                       : format("TURNS %d - %d  (ZOOM x%.1f)", first, last,
@@ -453,6 +546,28 @@ void ColourGraph::draw_timeline(Canvas& canvas, const Rect& chart, const Rect& t
     }
 }
 
+void ColourGraph::draw_seasons(Canvas& canvas, const Rect& chart, const Rect& timeline, int first, int last) {
+    // Each year begins with a line up through the chart, labelled while the labels have room.
+    const int length = YEAR_LENGTH;
+    const double span = static_cast<double>(chart.w) / (last - first + 1);  // pixels a turn
+    const auto left_of = [&](int turn) { return static_cast<int>(py_round(chart.x + (turn - first) * span)); };
+    const auto ceiling = [](long long top, long long bottom) { return static_cast<int>((top + bottom - 1) / bottom); };
+    for (int quarter = first * 4 / length; static_cast<long long>(quarter) * length / 4 <= last; ++quarter) {
+        if (quarter % 4 != 0 && quarter % 4 != 2) continue;
+        const int start = std::max(first, ceiling(static_cast<long long>(quarter) * length, 4));
+        const int end = std::min(last + 1, ceiling(static_cast<long long>(quarter + 1) * length, 4));
+        if (end > start) canvas.fill_rect({left_of(start), timeline.y + 1, left_of(end) - left_of(start), timeline.h - 2}, {30, 42, 56});
+    }
+    const int year_pixels = std::max(1, static_cast<int>(py_round(length * span)));
+    const int every = std::max(1, ceiling(UI(YEAR_LABEL_SPACING), year_pixels));
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    for (int turn = ceiling(std::max(1, first), length) * length; turn <= last; turn += length) {
+        const int x = left_of(turn);
+        canvas.line(x, chart.y, x, timeline.bottom() - 1, {88, 104, 112});
+        if ((turn / length) % every == 0) canvas.text(small, format("YEAR %d", turn / length + 1), {140, 185, 230}, x + UI(3), chart.y + UI(2));
+    }
+}
+
 std::string ColourGraph::describe(const Simulation& simulation, std::optional<int> hovered) const {
     std::set<int> living;
     for (const Bitzkey* agent : simulation.living()) living.insert(agent->identifier);
@@ -460,6 +575,7 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
     for (const int identifier : selection_) alive += living.contains(identifier);
     std::string chosen = selection_.empty() ? "Nothing selected"
                                             : format("%zu selected (%d alive)", selection_.size(), alive);
+    if (sort_ != 0) chosen = "Each species sorted by " + sort_name(sort_) + ", lowest at the bottom.     " + chosen;
     if (simulation.turn() < simulation.frontier()) {
         chosen = format("Rewound to turn %d of %d.     ", simulation.turn(), simulation.frontier()) + chosen;
     } else if (const EndReason reason = simulation.end_reason(); reason != EndReason::None) {

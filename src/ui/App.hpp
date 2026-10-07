@@ -42,6 +42,7 @@ private:
     void tick(double seconds);
     std::string end_note() const;
     void finish();
+    void close_graph();  // the pick on the graph stays selected on the map
     void seek(int turn);
     void click(int x, int y);
     void open(const std::string& kind, Dialog dialog);
@@ -78,7 +79,6 @@ private:
     void scroll_to(int scroll);
     bool scroll_event(const SDL_Event& event);  // whether the event scrolled the panel
     void draw_footer(Canvas& canvas);
-    void bar(Canvas& canvas, int x, int y, int width, double value, Color color);
     std::string fit(const std::string& text, int width) const;
 
     Window& window_;

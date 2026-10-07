@@ -16,9 +16,14 @@ namespace {
 constexpr int PREVIEW_ZOOM = 16;  // the preview is the in-world look, this many times larger
 constexpr Dna GENOME_MASK = ~0ULL;
 
+constexpr std::array<std::string_view, 4> HARDINESS = {"none", "heat", "cold", "both"};
+
 int shift_of(Field field) {
+    if (field.kind == FieldKind::Climate) return field.index == 0 ? 30 : 62;
     return TRAIT_BITS * field.index + (field.kind == FieldKind::Mind ? 0 : 32);
 }
+
+int largest(Field field) { return field.kind == FieldKind::Climate ? 3 : TRAIT_MAX; }
 
 std::string format(const char* pattern, auto... values) {
     char buffer[256];
@@ -29,24 +34,27 @@ std::string format(const char* pattern, auto... values) {
 
 Field field_at(int position) {
     if (position < MIND_TRAIT_COUNT) return {FieldKind::Mind, position};
-    if (position < MIND_TRAIT_COUNT + BODY_TRAIT_COUNT) return {FieldKind::Body, position - MIND_TRAIT_COUNT};
-    return {FieldKind::Hex, position - MIND_TRAIT_COUNT - BODY_TRAIT_COUNT};
+    if (position == MIND_TRAIT_COUNT) return {FieldKind::Climate, 0};
+    if (position < COLUMN_ROWS + BODY_TRAIT_COUNT) return {FieldKind::Body, position - COLUMN_ROWS};
+    if (position == COLUMN_ROWS + BODY_TRAIT_COUNT) return {FieldKind::Climate, 1};
+    return {FieldKind::Hex, position - 2 * COLUMN_ROWS};
 }
 
 int field_position(Field field) {
     switch (field.kind) {
         case FieldKind::Mind: return field.index;
-        case FieldKind::Body: return MIND_TRAIT_COUNT + field.index;
-        default: return MIND_TRAIT_COUNT + BODY_TRAIT_COUNT + field.index;
+        case FieldKind::Body: return COLUMN_ROWS + field.index;
+        case FieldKind::Climate: return field.index == 0 ? MIND_TRAIT_COUNT : COLUMN_ROWS + BODY_TRAIT_COUNT;
+        default: return 2 * COLUMN_ROWS + field.index;
     }
 }
 
-int DesignerForm::value(Field field) const { return static_cast<int>((dna >> shift_of(field)) & TRAIT_MAX); }
+int DesignerForm::value(Field field) const { return static_cast<int>((dna >> shift_of(field)) & static_cast<Dna>(largest(field))); }
 
 void DesignerForm::set_value(Field field, int new_value) {
-    const int shift = shift_of(field);
-    dna = (dna & ~(static_cast<Dna>(TRAIT_MAX) << shift) & GENOME_MASK) |
-          (static_cast<Dna>(std::max(0, std::min(TRAIT_MAX, new_value))) << shift);
+    const int shift = shift_of(field), most = largest(field);
+    dna = (dna & ~(static_cast<Dna>(most) << shift) & GENOME_MASK) |
+          (static_cast<Dna>(std::max(0, std::min(most, new_value))) << shift);
 }
 
 std::string DesignerForm::code(int part) const {
@@ -174,14 +182,14 @@ void Designer::key(const SDL_Event& event) {
 
 Designer::Layout Designer::layout() const {
     Layout places;
-    places.card = Rect{0, 0, UI(1040), UI(740)}.center_at(window_.width() / 2, window_.height() / 2);
+    places.card = Rect{0, 0, UI(1040), UI(800)}.center_at(window_.width() / 2, window_.height() / 2);
     const Rect& card = places.card;
     places.preview = {card.x + UI(24), card.y + UI(92), UI(320), UI(300)};
     places.ring_code = {places.preview.right() - UI(160), places.preview.bottom() + UI(16), UI(160), UI(34)};
     places.dot_code = {places.preview.right() - UI(160), places.preview.bottom() + UI(60), UI(160), UI(34)};
     const int column_width = (card.right() - UI(24) - (places.preview.right() + UI(32)) - UI(24)) / 2;
-    for (int index = 0; index < MIND_TRAIT_COUNT + BODY_TRAIT_COUNT; ++index) {
-        const int column = index / MIND_TRAIT_COUNT, row = index % MIND_TRAIT_COUNT;
+    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
+        const int column = index / COLUMN_ROWS, row = index % COLUMN_ROWS;
         const int left = places.preview.right() + UI(32) + column * (column_width + UI(24));
         places.rows[static_cast<std::size_t>(index)] = {left, card.y + UI(124 + row * 50), column_width, UI(42)};
     }
@@ -205,7 +213,7 @@ std::optional<Designer::Outcome> Designer::click(int x, int y) {
     if (places.random.contains(x, y)) form_.randomise(rng_);
     if (places.ring_code.contains(x, y)) form_.select(field_position({FieldKind::Hex, 0}));
     if (places.dot_code.contains(x, y)) form_.select(field_position({FieldKind::Hex, 1}));
-    for (int index = 0; index < MIND_TRAIT_COUNT + BODY_TRAIT_COUNT; ++index) {
+    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
         const Rect& row = places.rows[static_cast<std::size_t>(index)];
         if (!row.contains(x, y)) continue;
         if (index != form_.focus) form_.select(index);
@@ -273,14 +281,22 @@ void Designer::draw(Canvas& canvas) {
             "Carrion gives it " + py_percent(sample.digestion, 0) + format(" of its meat.  Lives about %.0f turns.", sample.lifespan),
         };
     }
+    const int home = form_.value({FieldKind::Climate, 1}), hardiness = form_.value({FieldKind::Climate, 0});
+    const std::string temperature(TEMPERATURES[static_cast<std::size_t>(home)]);
+    if (sample.species == Species::Plant) {
+        facts.push_back("At home where it is " + temperature + "; elsewhere it withers.");
+    } else {
+        constexpr std::array<const char*, 4> hardy = {"", "  Tolerates heat.", "  Tolerates cold.", "  Tolerates heat and cold."};
+        facts.push_back("At home where it is " + temperature + "." + hardy[static_cast<std::size_t>(hardiness)]);
+    }
     for (std::size_t index = 0; index < facts.size(); ++index) {
         canvas.text(small, facts[index], {187, 199, 181}, preview.x, places.dot_code.bottom() + UI(20 + 22 * static_cast<int>(index)));
     }
 
     // The trait rows: mind on the left, body on the right.
     canvas.text(font, "MIND  /  INNER DOT", {220, 229, 211}, places.rows[0].x, places.rows[0].y - UI(28));
-    canvas.text(font, "BODY  /  OUTER RING", {220, 229, 211}, places.rows[MIND_TRAIT_COUNT].x, places.rows[MIND_TRAIT_COUNT].y - UI(28));
-    for (int index = 0; index < MIND_TRAIT_COUNT + BODY_TRAIT_COUNT; ++index) {
+    canvas.text(font, "BODY  /  OUTER RING", {220, 229, 211}, places.rows[COLUMN_ROWS].x, places.rows[COLUMN_ROWS].y - UI(28));
+    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
         draw_row(canvas, field_at(index), places.rows[static_cast<std::size_t>(index)], index == form_.focus);
     }
 
@@ -303,11 +319,13 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     canvas.rect(row, focused ? Color{36, 49, 47} : Color{31, 42, 41}, 0, UI(5));
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
     const auto [minus, box, plus] = controls(row);
-    const std::string_view name = field.kind == FieldKind::Mind ? MIND_TRAITS[field.index] : BODY_TRAITS[field.index];
+    const std::string_view name = field.kind == FieldKind::Climate ? (field.index == 0 ? "hardiness" : "temperature")
+                                  : field.kind == FieldKind::Mind    ? MIND_TRAITS[field.index]
+                                                                     : BODY_TRAITS[field.index];
     canvas.text(font, name, {232, 236, 219}, row.x + UI(12), row.y + UI(6));
     const Rect meter{row.x + UI(12), row.bottom() - UI(11), minus.x - row.x - UI(28), UI(4)};
     canvas.fill_rect(meter, {44, 57, 52});
-    canvas.fill_rect({meter.x, meter.y, static_cast<int>(py_round(static_cast<double>(meter.w) * value / TRAIT_MAX)), meter.h},
+    canvas.fill_rect({meter.x, meter.y, static_cast<int>(py_round(static_cast<double>(meter.w) * value / largest(field))), meter.h},
                      {131, 205, 143});
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
@@ -316,9 +334,10 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
-    const std::string shown = field == Field{FieldKind::Body, SpeciesTrait}
-                                  ? std::string(SPECIES[value % 4]) + " " + std::to_string(value)
-                                  : std::to_string(value);
+    std::string shown = std::to_string(value);
+    if (field == Field{FieldKind::Body, SpeciesTrait}) shown = std::string(SPECIES[value % 4]) + " " + shown;
+    if (field == Field{FieldKind::Climate, 1}) shown = std::string(TEMPERATURES[static_cast<std::size_t>(value)]);
+    if (field == Field{FieldKind::Climate, 0}) shown = std::string(HARDINESS[static_cast<std::size_t>(value)]);
     canvas.text_at(font, shown, {238, 238, 220}, [&](Rect& text_box) { text_box.midright_at(box.right() - UI(10), box.centery()); });
 }
 

@@ -2,6 +2,7 @@
 // How a Bitzkey is drawn: an inner dot in its mind word's colour, sized by its body, inside a
 // ring in its body word's colour.
 
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,18 @@ constexpr Color OUTLINE{190, 190, 190};  // the thin light grey outline around a
 constexpr int DOT_RADIUS_SMALLEST = 1;
 constexpr int DOT_RADIUS_LARGEST = 5;  // bigger cells raise the top
 constexpr int ICON_MIN_RADIUS = 3;     // a dot this big or bigger carries its species' icon
+// The world: light grey, each row tinted by its temperature now, from hot to very cold: reddish
+// brown, green, white and light blue.
+constexpr Color WORLD_GREY{196, 198, 196};
+constexpr std::array<Color, 4> ZONE_TINTS = {{{150, 85, 55}, {110, 170, 90}, {255, 255, 255}, {170, 210, 250}}};
+constexpr double ZONE_TINT = 0.45;  // how far toward its tint a zone's grey goes
+constexpr Color GRASS{62, 122, 52};
+constexpr Color GRID{140, 146, 142};
+constexpr Color SELECTED{25, 32, 32};     // the ring round the selected Bitzkey and those picked on the colour graph
+constexpr Color EXPORTING{205, 120, 30};  // the ring round Bitzkeys on the export list
+
+// The world's grey tinted for a temperature.
+Color zone_colour(int temperature);
 
 inline Color to_color(const Rgb& rgb) {
     return {static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)};

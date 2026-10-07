@@ -124,6 +124,13 @@ std::vector<Rule> make_rules() {
         {"LIGHT_RADIUS", "Plants", "Light radius", "plants compete for light with plants within this many cells", 0, 12, 1, true, &LIGHT_RADIUS},
         {"LIGHT_LIMIT", "Plants", "Light limit", "this many such plants stop a plant seeding", 1, 50, 1, true, &LIGHT_LIMIT},
         {"PLANT_CROWDING", "Plants", "Plant crowding", "a seed doesn't take where more plants grow within two cells", 0, 50, 1, true, &PLANT_CROWDING},
+        {"YEAR_LENGTH", "Climate", "Year length", "turns in a year; each quarter is a season", 4, 2000, 4, true, &YEAR_LENGTH},
+        {"ARCTIC_SHARE", "Climate", "Arctic", "share of the map's height that is arctic, at the top and again at the bottom", 0.0, 0.5, 0.05, false, &ARCTIC_SHARE},
+        {"EQUATOR_SHARE", "Climate", "Equator", "share of the map's height across its middle that is the equator", 0.0, 1.0, 0.05, false, &EQUATOR_SHARE},
+        {"CLIMATE_HUNGER", "Climate", "Climate hunger", "times the food an animal needs a step or more from its home temperature", 1.0, 5.0, 0.1, false, &CLIMATE_HUNGER},
+        {"CLIMATE_DAMAGE", "Climate", "Climate damage", "share of full health lost a turn two or more steps from home", 0.0, 1.0, 0.01, false, &CLIMATE_DAMAGE},
+        {"PLANT_CLIMATE_YIELD", "Climate", "Plant climate yield", "share of its food a plant gives out of its temperature", 0.0, 1.0, 0.05, false, &PLANT_CLIMATE_YIELD},
+        {"SEED_VIABILITY", "Climate", "Seed viability", "years a seed waits for its temperature before it dies", 0.0, 5.0, 0.05, false, &SEED_VIABILITY},
     };
     for (std::size_t event = 0; event < EXPERIENCES.size(); ++event) {
         std::string name(EXPERIENCE_NAMES[event]);
@@ -184,6 +191,9 @@ std::vector<std::string> problems(const Values& values) {
         if (values.find(first)->second == values.find(second)->second) {
             found.push_back(find(first)->label + " must differ from " + lower(find(second)->label));
         }
+    }
+    if (2 * values.find("ARCTIC_SHARE")->second + values.find("EQUATOR_SHARE")->second > 1 + 1e-9) {
+        found.push_back("The two arctic zones and the equator must fit in the map together");
     }
     return found;
 }

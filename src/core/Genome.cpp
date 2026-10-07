@@ -40,7 +40,17 @@ Body decode_body(Dna dna) {
 
 Dna encode_dna(Species species, std::initializer_list<std::pair<std::string_view, int>> traits) {
     Dna dna = static_cast<Dna>(species) << 32;
+    int temperature = V1_TEMPERATURE;
     for (const auto& [name, value] : traits) {
+        if (name == "temperature") {
+            if (value < 0 || value > 3) throw std::invalid_argument("Temperatures run from 0 to 3: " + std::to_string(value) + ".");
+            temperature = value;
+            continue;
+        }
+        if (name == "heat_tolerance" || name == "cold_tolerance") {
+            if (value) dna |= name == "heat_tolerance" ? HEAT_TOLERANCE : COLD_TOLERANCE;
+            continue;
+        }
         if (value < 0 || value > TRAIT_MAX) {
             throw std::invalid_argument("Traits run from 0 to 7: " + std::string(name) + " " + std::to_string(value) + ".");
         }
@@ -59,14 +69,15 @@ Dna encode_dna(Species species, std::initializer_list<std::pair<std::string_view
         }
         if (!known) throw std::invalid_argument("Unknown traits: " + std::string(name) + ".");
     }
-    return dna;
+    return dna | static_cast<Dna>(temperature) << TEMPERATURE_SHIFT;
 }
 
 Dna convert_v1(Dna dna) {
     // Version 1: the first eight traits of each word, four bits each. The traits it lacked start
-    // at defaults: empathy 0, tolerance 3, litter 0, carrion 0.
+    // at defaults: empathy 0, tolerance 3, litter 0, carrion 0, a medium home temperature and
+    // neither tolerance.
     const auto scaled = [](int value) { return static_cast<int>(py_round(static_cast<double>(value) * TRAIT_MAX / V1_MAX)); };
-    Dna result = static_cast<Dna>(trait_at(body_word(dna), 0, 4) % 4) << 32;
+    Dna result = static_cast<Dna>(trait_at(body_word(dna), 0, 4) % 4) << 32 | static_cast<Dna>(V1_TEMPERATURE) << TEMPERATURE_SHIFT;
     for (int index = 0; index < 8; ++index) {
         result |= static_cast<Dna>(scaled(trait_at(mind_word(dna), index, 4))) << (TRAIT_BITS * index);
     }

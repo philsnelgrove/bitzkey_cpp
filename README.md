@@ -12,11 +12,12 @@ check below compares them.
 ## Status
 
 - **Stage 1, the simulation core: done.** Genome, brains, temperament, ecology, herding,
-  territory, rewindable history, census, insights, brain report, and JSON export/import
+  territory, seasons and climate zones, rewindable history, census, insights, brain report, and JSON export/import
   compatible with the Python version's files.
 - **Stage 2, the window: done.** Configuration panel (with quit confirmation, import box,
   drag-and-drop, file picker, paste), designer, world view, inspector, insights panel, colour
-  graph (selection, timeline scrubbing, zoom), export list and dialogs, using SDL2 and SDL_ttf
+  graph (selection, timeline scrubbing, zoom, sorting by trait, hover tooltips, a selection
+  shared with the map), export list and dialogs, using SDL2 and SDL_ttf
   with the same Windows fonts as the Python version.
 
 ## Run the app
@@ -27,7 +28,7 @@ check below compares them.
 
 Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
-`--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 114
+`--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 121
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, and MAX, which simulates as many turns as fit
 in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest
@@ -106,6 +107,8 @@ Both versions share every rule, including food-aware breeding, prey switching, l
 between plants, and the rewind history's memory budget of about 1 GB (see the Python README). Seeds 1, 2 (with a population cap, custom mutation rates, sparse grass and a 60 x 50 world) and
 7 have been checked identical over 150 to 300 turns. Seed 7 has also been checked identical over 300 turns with ten
 advanced rules changed, among them a territory, a diet, an experience, the seed reach and the brain's temperature.
+With seasons and climate, seeds 7 and 2 (as above) and seed 7 with all six climate rules changed have been checked
+identical over 400 turns, more than two years.
 
 ## Speed
 
@@ -119,7 +122,8 @@ The benchmark world used for the Python optimisations (seed 1, 100 x 100, turns 
   advanced rules).
 - `src/cli/`: the command-line runner.
 - `src/ui/`: the window app: `Canvas` (software drawing with pygame's shapes), `Window`, `Ui`
-  (scaling and fonts), `Look`, `Dialog`, `Setup`, `Advanced`, `Designer`, `ColourGraph`, `App`.
+  (scaling and fonts), `Look`, `Dialog`, `Setup`, `Advanced`, `Inspector` (a Bitzkey's details, for the
+  sidebar and the graph's tooltip), `Designer`, `ColourGraph`, `App`.
 - `src/ui/Icons.cpp`: the species icons (tree, leaf, apple, drumstick), drawn from shapes.
 - `tools/screens.cpp`: draws every screen off-screen to BMP files, for checking the interface.
 - `tests/`: unit tests (doctest).

@@ -39,6 +39,8 @@ enum Sense : int {
     SenseHerdNear,         // herd-mates within two cells, 0..3 scaled to 0..1
     SenseHerdCloseness,    // 1 at the middle of its herd in range, falling to 0 at the range's edge
     SenseAlarm,            // 1 when a herd-mate close by was struck since it last acted
+    SenseClimateDiscomfort,  // how far the temperature here is from home, as it feels it: 0, 0.5 a step, 1 two or more
+    SenseComfortCloseness,   // 1 where it feels at home or next to such a row, falling to 0 beyond sight
     SenseAge,              // 0 at birth, 1 at 400 turns or older
     SenseMind,             // then its current temperament, each trait 0..7 scaled to 0..1
 };
@@ -47,7 +49,7 @@ constexpr std::array<std::string_view, INPUT_SIZE> SENSES = {
     "hunger", "health", "grass_here", "grass_seen", "grass_closeness", "mate_near", "mate_closeness",
     "ready_to_breed", "prey_near", "prey_frailty", "prey_closeness", "threat_near", "threat_danger",
     "threat_closeness", "kin_near", "others_near", "carrion_closeness", "plant_closeness", "assailant_near",
-    "counter_frailty", "rivalry", "herd_near", "herd_closeness", "alarm", "age",
+    "counter_frailty", "rivalry", "herd_near", "herd_closeness", "alarm", "climate_discomfort", "comfort_closeness", "age",
     "aggression", "libido", "sociability", "curiosity", "fear", "appetite", "patience", "intellect",
     "empathy", "tolerance"};
 
