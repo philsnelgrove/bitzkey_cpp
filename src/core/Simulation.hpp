@@ -137,9 +137,13 @@ inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home, or 
 inline double CLIMATE_DAMAGE = 0.1;   // for each step from home, a Bitzkey loses this share of its full health a turn; plants from two
 inline double PLANT_CLIMATE_YIELD = 0.0;  // a plant out of its temperature gives this share of its food
 inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass loses a tuft every this many turns
-// The weather turns gradually: through this share of each season, every row's temperature moves
-// steadily from the last season's to this one's, and the climate's effects move with it.
-inline double SEASON_TURNING = 1.0 / 3;
+// The weather turns in a wave. A winter washes in from its hemisphere's edge to the equator, and as it
+// ends ebbs back the way it came, over this share of each season. The wave moves in bands of WAVE_BAND
+// rows; at its front, WAVE_FRONT bands stand part way between the old weather and the new, in even
+// steps, so the change comes as a staircase. The climate's effects move with it.
+inline double SEASON_TURNING = 0.5;
+inline int WAVE_BAND = 2;
+inline int WAVE_FRONT = 4;
 // A dead animal is a fresh kill, not yet carrion, through the turn it died and FRESH_KILL_TURNS more;
 // then it starts to rot. A predator or omnivore may eat a fresh kill of what it lives on whole,
 // FRESH_KILL_MEALS times the meal of making the kill, and nothing is left.
@@ -154,12 +158,20 @@ constexpr std::array<std::string_view, 4> SEASONS = {"mild", "northern winter", 
 int season(int turn);  // the quarter of the year a turn falls in, 0 to 3
 int year(int turn);    // the year a turn falls in, from 1
 int zone_temperature(int y, int height);       // a row's temperature outside the winters
+// Whether a row is in winter in a quarter of the year: the north and the equator in the second, the
+// south and the equator in the fourth.
+bool in_winter(int y, int height, int quarter);
 int season_temperature(int y, int height, int quarter);  // a row's settled temperature in a quarter of the year
-// How far the weather has turned from the last season's to this one's: 0 as a season begins, 1 once
-// SEASON_TURNING of it has passed. The world's first season starts settled.
+// As the weather turns into a quarter of the year, which band of the wave a row is in, counted in the
+// order the wave reaches them, and how many bands the wave crosses. A winter washes in from its
+// hemisphere's edge toward the equator (the second and fourth quarters), and ebbs back from the
+// equator toward the edge (the third and first).
+std::pair<int, int> wave_band(int y, int height, int quarter);
+// How far the season's wave has come: 0 as a season begins, 1 once SEASON_TURNING of it has passed.
+// The world's first season starts settled.
 double season_progress(int turn);
 // A row's temperature on a turn, from 0 (hot) to 3 (very cold): its season's, though early in a
-// season it is still turning from the last season's, part way between the two.
+// season, until the season's wave has passed it, the last season's or part way between the two.
 double temperature_at(int y, int height, int turn);
 // A cell's fixed share, 0 to 1, below which a row's shortfall from medium makes its grass die back.
 double dieback_threshold(int x, int y);

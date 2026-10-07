@@ -429,7 +429,7 @@ TEST_CASE("the top and bottom of the map are barriers, but east and west wrap") 
 
 TEST_CASE("grass dies back a tuft at a time where it isn't medium") {
     Simulation simulation(Simulation::Settings{20, 20, 0, 1});
-    while (simulation.turn() < 220) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium
+    while (simulation.turn() < 240) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium
     simulation.clear_grass();
     for (int x = 0; x < 20; ++x) simulation.grass_cell(x, 1) = simulation.grass_cell(x, 5) = 3;  // arctic, then temperate
     const double regrowth = simulation.grass_regrowth();

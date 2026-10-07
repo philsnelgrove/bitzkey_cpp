@@ -28,7 +28,7 @@ check below compares them.
 
 Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
-`--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 132
+`--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 134
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, and MAX, which simulates as many turns as fit
 in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest

@@ -120,11 +120,27 @@ int zone_temperature(int y, int height) {
     return std::abs(place - 0.5) < EQUATOR_SHARE / 2 ? Hot : Medium;
 }
 
-int season_temperature(int y, int height, int quarter) {
+bool in_winter(int y, int height, int quarter) {
     const double place = (y + 0.5) / height;
     const bool equator = std::abs(place - 0.5) < EQUATOR_SHARE / 2;
-    const bool winter = (quarter == 1 && (place < 0.5 || equator)) || (quarter == 3 && (place > 0.5 || equator));
-    return zone_temperature(y, height) + (winter ? 1 : 0);
+    return (quarter == 1 && (place < 0.5 || equator)) || (quarter == 3 && (place > 0.5 || equator));
+}
+
+int season_temperature(int y, int height, int quarter) {
+    return zone_temperature(y, height) + (in_winter(y, height, quarter) ? 1 : 0);
+}
+
+std::pair<int, int> wave_band(int y, int height, int quarter) {
+    const bool north = quarter == 1 || quarter == 2;
+    int first = -1, last = -1;
+    for (int row = 0; row < height; ++row) {
+        if (!in_winter(row, height, north ? 1 : 3)) continue;
+        if (first < 0) first = row;
+        last = row;
+    }
+    const bool inward = quarter == 1 || quarter == 3;
+    const int offset = north == inward ? y - first : last - y;
+    return {offset / WAVE_BAND, (last - first) / WAVE_BAND + 1};
 }
 
 double season_progress(int turn) {
@@ -140,7 +156,11 @@ double temperature_at(int y, int height, int turn) {
     const double progress = season_progress(turn);
     if (progress >= 1) return now;
     const int before = season_temperature(y, height, (quarter + 3) % 4);
-    return before + (now - before) * progress;
+    if (now == before) return now;
+    const auto [band, bands] = wave_band(y, height, quarter);
+    const double reach = progress * (bands + WAVE_FRONT);  // how far the front has come, in bands
+    const double turned = std::min(1.0, std::max(0.0, (reach - band) / WAVE_FRONT));
+    return before + (now - before) * turned;
 }
 
 double dieback_threshold(int x, int y) {
