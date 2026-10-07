@@ -5,7 +5,10 @@
 
 #define AppName "Bitzkey"
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  ; build_installer.ps1 passes the version; otherwise it comes from the VERSION file
+  #define VersionFile FileOpen(AddBackslash(SourcePath) + "..\VERSION")
+  #define AppVersion Trim(FileRead(VersionFile))
+  #expr FileClose(VersionFile)
 #endif
 #define Release "..\build\Release"
 #define Deps "..\build\_deps"

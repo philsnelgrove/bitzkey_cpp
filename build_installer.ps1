@@ -1,6 +1,8 @@
 ﻿# Build Release, run the tests, then package dist\Bitzkey-Setup-<version>.exe with Inno Setup 6.
-param([string]$Version = "1.0.0")
+# The version comes from the VERSION file, unless -Version gives another.
+param([string]$Version = "")
 Set-Location $PSScriptRoot
+if (-not $Version) { $Version = (Get-Content VERSION -TotalCount 1).Trim() }
 
 & .\build.ps1
 if ($LASTEXITCODE -ne 0) { throw "The build or its tests failed." }

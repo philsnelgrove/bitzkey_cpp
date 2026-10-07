@@ -28,7 +28,7 @@ check below compares them.
 
 Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
-`--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 124
+`--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 125
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, and MAX, which simulates as many turns as fit
 in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest
@@ -52,7 +52,7 @@ Code, with the C/C++ and CMake Tools extensions, open this folder: it configures
 ## Installer
 
 ```powershell
-.uild_installer.ps1                  # or .uild_installer.ps1 -Version 1.1.0
+.\build_installer.ps1                  # or .\build_installer.ps1 -Version 1.1.0 to override VERSION
 ```
 
 This builds and tests Release, then packages `dist\Bitzkey-Setup-<version>.exe` with
@@ -61,7 +61,12 @@ installer needs no administrator rights: it installs for the current user into
 `%LOCALAPPDATA%\Programs\Bitzkey` (or for everyone, if run as administrator), adds a Start menu
 shortcut and an optional desktop one, and registers an uninstaller in Settings > Apps. It carries
 the app, `bitzkey_cli.exe`, the SDL DLLs, this README and the SDL licences. Uninstalling leaves
-`Documents\Bitzkey` alone. Silent installs work too: `Bitzkey-Setup-1.0.0.exe /VERYSILENT`.
+`Documents\Bitzkey` alone. Silent installs work too: `Bitzkey-Setup-1.0.11.exe /VERYSILENT`.
+
+The version is in the `VERSION` file. The installer's name, the app's version details (in
+Explorer's Properties) and the installer itself all take it from there. It goes up with each
+release: the last number for fixes and balance changes, the middle one for new features, and the
+first for changes that break saved files.
 
 The script is `packaging\bitzkey.iss`. The icon, `packaging\bitzkey.ico`, is drawn by
 `packaging\make_icon.py` (run it with the Python project's interpreter) and built into

@@ -152,12 +152,10 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     digestion = 0.2 + 0.8 * physique(Carrion);
 }
 
-int Bitzkey::climate_steps(int here) const {
-    const int difference = here - climate.temperature;  // above 0, colder than home
-    if (species != Species::Plant && ((difference > 0 && climate.cold) || (difference < 0 && climate.heat))) {
-        return std::abs(difference) - 1;
-    }
-    return std::abs(difference);
+double Bitzkey::exposure_share(int here) const {
+    const int home = climate.temperature;
+    if (species != Species::Plant && ((here > home && climate.cold) || (here < home && climate.heat))) return HARDINESS;
+    return 1.0;
 }
 
 Profile Bitzkey::profile() const {
@@ -443,11 +441,12 @@ void Simulation::take_turn(bool replay) {
         const int here = in_bounds(agent->x, agent->y) ? climate_[static_cast<std::size_t>(agent->y)] : Medium;
         const int steps = agent->climate_steps(here);
         const bool hungrier = steps && (!plant || here < agent->climate.temperature);  // out of its temperature; a plant, too hot
-        agent->hunger += agent->burn * (hungrier ? CLIMATE_HUNGER : 1.0);
+        const double share = agent->exposure_share(here);  // less for the hardy
+        agent->hunger += agent->burn * (hungrier ? 1 + (CLIMATE_HUNGER - 1) * share : 1.0);
         if (agent->cooldown) agent->cooldown -= 1;
         if (agent->health < agent->max_health && agent->hunger < 65) agent->heal(0.005);
         // a tenth of its health a step; a plant takes one step in its stride
-        if (steps >= (plant ? 2 : 1)) agent->health -= CLIMATE_DAMAGE * steps * agent->max_health;
+        if (steps >= (plant ? 2 : 1)) agent->health -= CLIMATE_DAMAGE * steps * share * agent->max_health;
         if (agent->hunger >= 100) {  // out of its temperature, it died of exposure
             die(*agent, hungrier ? exposure(*agent, here) : "starved");
             continue;

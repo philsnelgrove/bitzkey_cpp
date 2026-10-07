@@ -1,0 +1,24 @@
+// The app's icon and version details, shown by Explorer, the taskbar and the installer. CMake fills
+// in the version from the VERSION file at the top of the project.
+1 ICON "@PROJECT_SOURCE_DIR@/packaging/bitzkey.ico"
+
+1 VERSIONINFO
+FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Bitzkey"
+            VALUE "FileVersion", "@PROJECT_VERSION@"
+            VALUE "ProductName", "Bitzkey"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
+            VALUE "OriginalFilename", "bitzkey.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

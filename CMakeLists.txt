@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
-project(Bitzkey VERSION 0.1 LANGUAGES CXX)
+# The version lives in the VERSION file: the app's details, the command-line tool and the installer's
+# name all take it from there.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" BITZKEY_VERSION LIMIT_COUNT 1)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
+project(Bitzkey VERSION ${BITZKEY_VERSION} LANGUAGES CXX)
+configure_file(packaging/bitzkey.rc.in "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc" @ONLY)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,7 +66,7 @@ find_package(SDL2_ttf CONFIG REQUIRED)
 
 add_executable(bitzkey WIN32
     src/ui/main.cpp
-    packaging/bitzkey.rc
+    "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc"
     src/ui/Ui.cpp
     src/ui/Canvas.cpp
     src/ui/Window.cpp

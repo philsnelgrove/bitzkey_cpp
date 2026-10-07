@@ -67,22 +67,38 @@ TEST_CASE("each hemisphere and the equator are a step colder in its winter") {
     CHECK(rows_on(460) == rows_on(100));  // the next year repeats
 }
 
-TEST_CASE("tolerance spares an animal a step in one direction, and plants none") {
+TEST_CASE("hardiness halves an animal's exposure in one direction, and plants have none") {
     const Bitzkey tender(0, encode_dna(Species::Grazer), 1, 1);
     const Bitzkey hardy(1, encode_dna(Species::Grazer, {{"cold_tolerance", 1}}), 1, 1);
     const Bitzkey warm(2, encode_dna(Species::Grazer, {{"heat_tolerance", 1}}), 1, 1);
     const Bitzkey plant(3, encode_dna(Species::Plant, {{"heat_tolerance", 1}, {"cold_tolerance", 1}}), 1, 1);
-    const auto steps = [](const Bitzkey& agent) {
-        std::vector<int> found;
-        for (const int here : {Hot, Medium, Cold, VeryCold}) found.push_back(agent.climate_steps(here));
+    for (const Bitzkey* agent : {&tender, &hardy, &warm, &plant}) {  // every step is felt
+        std::vector<int> steps;
+        for (const int here : {Hot, Medium, Cold, VeryCold}) steps.push_back(agent->climate_steps(here));
+        CHECK(steps == std::vector<int>{1, 0, 1, 2});
+    }
+    const auto shares = [](const Bitzkey& agent) {
+        std::vector<double> found;
+        for (const int here : {Hot, Medium, Cold, VeryCold}) found.push_back(agent.exposure_share(here));
         return found;
     };
-    CHECK(steps(tender) == std::vector<int>{1, 0, 1, 2});
-    CHECK(steps(hardy) == std::vector<int>{1, 0, 0, 1});
-    CHECK(steps(warm) == std::vector<int>{0, 0, 1, 2});
-    const Bitzkey hot(4, encode_dna(Species::Grazer, {{"temperature", Hot}, {"cold_tolerance", 1}}), 1, 1);
-    CHECK(steps(hot) == std::vector<int>{0, 0, 1, 2});  // a step less
-    CHECK(steps(plant) == std::vector<int>{1, 0, 1, 2});
+    CHECK(shares(tender) == std::vector<double>{1.0, 1.0, 1.0, 1.0});
+    CHECK(shares(hardy) == std::vector<double>{1.0, 1.0, 0.5, 0.5});
+    CHECK(shares(warm) == std::vector<double>{0.5, 1.0, 1.0, 1.0});
+    CHECK(shares(plant) == std::vector<double>{1.0, 1.0, 1.0, 1.0});
+}
+
+TEST_CASE("a hardy animal suffers half the extra hunger and damage") {
+    Simulation simulation = world_at(199);  // mid-year, mild
+    Bitzkey& tender = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}}), 20, 10);  // the arctic: two steps too cold
+    Bitzkey& hardy = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}, {"cold_tolerance", 1}}), 40, 10);
+    simulation.add_agent(encode_dna(Species::Predator), 90, 90);
+    simulation.take_turn();
+    // With nothing to eat, resting gives back at most half a turn's burn and a little health.
+    CHECK((tender.hunger >= 1.5 * tender.burn - 1e-9 && tender.hunger <= 2 * tender.burn + 1e-9));
+    CHECK((hardy.hunger >= 1.0 * hardy.burn - 1e-9 && hardy.hunger <= 1.5 * hardy.burn + 1e-9));
+    CHECK((tender.health < 0.83 * tender.max_health && hardy.health >= 0.9 * hardy.max_health - 1e-9 &&
+           hardy.health < 0.93 * hardy.max_health));
 }
 
 TEST_CASE("a step from home doubles an animal's food, and two steps also hurt") {

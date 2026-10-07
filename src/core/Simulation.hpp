@@ -120,7 +120,7 @@ inline double TEMPERAMENT_RELAPSE = 0.005;
 // is temperate, medium. Every YEAR_LENGTH turns is a year, starting mild. Through its second quarter
 // the north, from the top down to and through the equator, is a step colder; through its fourth the
 // south, from the bottom up to and through the equator, is. Every Bitzkey has a home temperature,
-// and may tolerate heat or cold, feeling a step less of it; plants tolerate nothing, and a plant
+// and may tolerate heat or cold, suffering HARDINESS of its penalties; plants tolerate nothing, and a plant
 // spawned at the start is at home in its zone's usual temperature.
 constexpr int DEFAULT_YEAR_LENGTH = 360;
 inline int YEAR_LENGTH = DEFAULT_YEAR_LENGTH;  // each world sets it from its year length setting
@@ -137,6 +137,7 @@ inline int FRESH_KILL_TURNS = 1;
 inline double FRESH_KILL_MEALS = 3.0;
 inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
 inline double STARTING_TOLERANCE = 0.1;  // the chance a random starting genome carries each tolerance flag
+inline double HARDINESS = 0.5;  // the share of exposure's extra hunger and damage an animal tolerant of it suffers
 enum Temperature : int { Hot, Medium, Cold, VeryCold };
 constexpr std::array<std::string_view, 4> SEASONS = {"mild", "northern winter", "mild", "southern winter"};
 
@@ -227,9 +228,12 @@ struct Bitzkey {
     void nourish(double food) { hunger = std::max(0.0, hunger - food / stomach); }
     void heal(double amount) { health = std::min(max_health, health + max_health * amount * metabolism); }
     Brain& own_brain();  // the brain, made this animal's own before it changes
-    // How many steps a temperature is from home, as it feels it: an animal tolerant of heat feels a
-    // step less of it, and one tolerant of cold the same. Plants feel every step.
-    int climate_steps(int here) const;
+    // How many steps a temperature is from home.
+    int climate_steps(int here) const { return std::abs(here - climate.temperature); }
+    // The share of exposure's penalties it suffers here: HARDINESS for an animal tolerant of heat
+    // where it is hotter than home, or of cold where it is colder; otherwise all of them. Plants
+    // tolerate nothing.
+    double exposure_share(int here) const;
     Rgb dot_color() const { return color_from_word(mind_word(dna)); }
     Rgb ring_color() const { return color_from_word(body_word(dna)); }
 };
