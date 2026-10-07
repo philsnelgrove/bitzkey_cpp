@@ -218,6 +218,100 @@ TEST_CASE("an animal senses how far it is from home and how close home weather i
     CHECK(action_index("migrate") == -1);  // moving toward home is left for brains to learn
 }
 
+TEST_CASE("an animal senses where it is and how warm it is here, to the north and to the south") {
+    Simulation simulation = world_at(0);  // mild: arctic rows 0-19, temperate 20-39, equator 40-59
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}, {"sight", 7}}), 50, 35);  // sees 9 rows
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    CHECK(sensed.senses[SenseLatitude] == 2 * 35.5 / 100 - 1);
+    CHECK((sensed.senses[SenseWarmth] == 0.0 && sensed.senses[SenseWarmthNorth] == 0.0 &&
+           sensed.senses[SenseWarmthSouth] == 0.5));  // row 26 temperate, row 44 the equator
+    Bitzkey& cold = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}, {"sight", 7}}), 50, 3);
+    sensed = simulation.sense(cold);
+    CHECK((sensed.senses[SenseWarmth] == -1.0 && sensed.senses[SenseWarmthNorth] == -1.0 &&
+           sensed.senses[SenseWarmthSouth] == -1.0));  // two steps too cold, north to the map's edge too
+}
+
+TEST_CASE("an animal can head north or south, but not off the map") {
+    Simulation simulation = world_at(0);
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 0}}), 50, 50);  // two rows a step
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    const auto offered = [](const Simulation::Sensed& found, int action) {
+        return std::find(found.options.begin(), found.options.end(), action) != found.options.end();
+    };
+    CHECK((offered(sensed, GoNorth) && offered(sensed, GoSouth)));
+    simulation.act(grazer, GoNorth, sensed.situation);
+    CHECK((grazer.x == 50 && grazer.y == 48 && grazer.last_action == "went north"));
+    simulation.act(grazer, GoSouth, sensed.situation);
+    CHECK((grazer.x == 50 && grazer.y == 50 && grazer.last_action == "went south"));
+    Bitzkey& top = simulation.add_agent(encode_dna(Species::Grazer), 50, 0);
+    Bitzkey& bottom = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 7}}), 50, 98);
+    CHECK_FALSE(offered(simulation.sense(top), GoNorth));
+    sensed = simulation.sense(bottom);
+    CHECK(offered(sensed, GoSouth));
+    simulation.act(bottom, GoSouth, sensed.situation);
+    CHECK(bottom.y == 99);  // stopped by the edge
+    CHECK_FALSE(offered(simulation.sense(bottom), GoSouth));
+}
+
+TEST_CASE("an animal can always head east or west round the map, and enjoys setting off") {
+    Simulation simulation = world_at(0);
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 0}, {"curiosity", 7}}), 1, 50);  // two cells a step
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    for (const int action : {GoEast, GoWest, Rest}) {
+        CHECK(std::find(sensed.options.begin(), sensed.options.end(), action) != sensed.options.end());
+    }
+    CHECK(action_index("explore") == -1);
+    simulation.act(grazer, GoWest, sensed.situation);
+    CHECK((grazer.x == 99 && grazer.y == 50 && grazer.last_action == "went west" && grazer.reward == CURIOSITY_JOY));
+    simulation.act(grazer, GoEast, sensed.situation);
+    CHECK((grazer.x == 1 && grazer.y == 50 && grazer.last_action == "went east"));
+}
+
+TEST_CASE("being out of its temperature is uncomfortable, less so for the hardy") {
+    Simulation simulation = world_at(0);
+    Bitzkey& at_home = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}}), 50, 30);
+    Bitzkey& one_step = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}}), 52, 10);
+    Bitzkey& two_steps = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}}), 54, 10);
+    Bitzkey& hardy = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}, {"cold_tolerance", 1}}), 56, 10);
+    std::vector<double> exposure;
+    for (Bitzkey* agent : {&at_home, &one_step, &two_steps, &hardy}) exposure.push_back(simulation.sense(*agent).situation.exposure);
+    CHECK(exposure == std::vector<double>{0.0, 0.5, 1.0, 0.5});
+    const double saved = CLIMATE_UNEASE;
+    CLIMATE_UNEASE = 0.4;
+    Simulation::Situation situation = simulation.sense(two_steps).situation;
+    const double cold = simulation.comfort(two_steps, situation);
+    situation.exposure = 0.0;
+    CHECK(simulation.comfort(two_steps, situation) - cold == doctest::Approx(0.4));
+    CLIMATE_UNEASE = saved;
+}
+
+TEST_CASE("foraging and herding never lead further from home") {
+    Simulation simulation = world_at(0);  // row 40 is the hot equator, rows 20-39 temperate
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}, {"sight", 7}}), 50, 38);
+    simulation.grass_cell(50, 41) = 1;
+    simulation.grass_cell(50, 33) = 1;
+    Simulation::Situation situation = simulation.sense(grazer).situation;
+    REQUIRE(situation.grass.has_value());
+    CHECK((situation.grass->x == 50 && situation.grass->y == 33));  // past the nearer, hot one
+    Bitzkey& hot = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}, {"sight", 7}}), 50, 42);
+    situation = simulation.sense(hot).situation;
+    REQUIRE(situation.grass.has_value());
+    CHECK((situation.grass->x == 50 && situation.grass->y == 41));  // it is at home there
+
+    Bitzkey& herder = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}, {"empathy", 7}, {"patience", 7}}), 70, 36);
+    std::vector<Bitzkey*> mates;
+    for (const int dx : {-1, 0, 1}) mates.push_back(&simulation.add_agent(herder.dna, 70 + dx, 40));  // on the equator
+    simulation.index_cells();
+    Simulation::Sensed sensed = simulation.sense(herder);
+    REQUIRE(sensed.situation.herd_middle.has_value());
+    CHECK((sensed.situation.herd_middle->x == 70 && sensed.situation.herd_middle->y == 40));
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), Herd) == sensed.options.end());
+    for (Bitzkey* mate : mates) mate->y = 32;  // into the temperate zone
+    simulation.index_cells();
+    sensed = simulation.sense(herder);
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), Herd) != sensed.options.end());
+}
+
 TEST_CASE("a plant too hot needs twice the food, and too cold doesn't") {
     Simulation simulation = world_at(200);
     Bitzkey& too_hot = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Cold}}), 20, 30);  // temperate: a step too warm

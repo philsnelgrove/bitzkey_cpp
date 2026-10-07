@@ -408,9 +408,11 @@ TEST_CASE("the top and bottom of the map are barriers, but east and west wrap") 
     simulation.index_cells();
     Simulation::Situation nothing;
     for (int round = 0; round < 200; ++round) {
-        simulation.act(top, Explore, nothing);
-        simulation.act(bottom, Explore, nothing);
-        CHECK((0 <= top.y && top.y < 20 && 0 <= bottom.y && bottom.y < 20));
+        const int heading = std::array{GoNorth, GoWest, GoSouth, GoEast}[static_cast<std::size_t>(round % 4)];
+        simulation.act(top, heading, nothing);
+        simulation.act(bottom, heading, nothing);
+        CHECK((0 <= top.y && top.y < 20 && 0 <= bottom.y && bottom.y < 20 && 0 <= top.x && top.x < 20 && 0 <= bottom.x &&
+               bottom.x < 20));
     }
     bottom.x = bottom.y = 19;
     Bitzkey& slow = simulation.add_agent(encode_dna(Species::Predator, {{"speed", 0}}), 0, 0);  // a cell a step

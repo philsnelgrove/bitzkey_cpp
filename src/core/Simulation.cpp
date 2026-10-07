@@ -82,7 +82,16 @@ const std::vector<Offset>& nearby_offsets(int radius) {
     return offsets;
 }
 
-constexpr std::array<int, 3> EXPLORE_STEPS = {-1, 0, 1};
+// Setting off in a direction, from north to west: the step in x and y, and what it then says it did.
+// The top and bottom of the map are barriers; east and west wrap round.
+struct Heading {
+    int dx, dy;
+    std::string_view went;
+};
+constexpr std::array<Heading, 4> HEADINGS = {{{0, -1, "went north"}, {0, 1, "went south"}, {1, 0, "went east"}, {-1, 0, "went west"}}};
+bool travelled(std::string_view action) {
+    return std::any_of(HEADINGS.begin(), HEADINGS.end(), [action](const Heading& heading) { return heading.went == action; });
+}
 
 int distance(int x1, int y1, int x2, int y2) { return std::abs(x1 - x2) + std::abs(y1 - y2); }
 
@@ -634,7 +643,9 @@ void Simulation::settle(Bitzkey& agent) {
 }
 
 void Simulation::learn(Bitzkey& agent, double target) {
-    agent.own_brain().learn(agent.last_senses, agent.last_choice, target, LEARNING_RATE * agent.feeling(Intellect));
+    // From its own last choice, by TD(lambda), so the choices before it share in what came of it.
+    agent.own_brain().learn_traced(agent.last_senses, agent.last_choice, target, LEARNING_RATE * agent.feeling(Intellect),
+                                   discount(agent));
 }
 
 bool Simulation::dies_of_age(Bitzkey& agent) {
@@ -648,7 +659,7 @@ void Simulation::think(Bitzkey& agent) {
     Sensed sensed = sense(agent);
     Situation& situation = sensed.situation;
     std::vector<int>& options = sensed.options;
-    if (agent.last_action == "explored") {
+    if (travelled(agent.last_action)) {
         if (situation.threat) {
             experience(agent, Ambushed);
         } else if ((situation.grass || situation.grass_here) && !(agent.last_senses[SenseGrassSeen] != 0.0)) {
@@ -661,10 +672,9 @@ void Simulation::think(Bitzkey& agent) {
         // What came of its last choice: whatever raised its health (fullness counting with it) or its
         // mood was a success, whatever lowered them a failure, by how much; both may happen.
         const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comfortable - agent.last_comfort;
-        const double discount = 0.7 + 0.27 * agent.feeling(Patience);
         double best = values[options[0]];
         for (const int option : options) best = std::max(best, values[option]);
-        learn(agent, reward + discount * best);
+        learn(agent, reward + discount(agent) * best);
     }
     if (agent.panicked && situation.assailant) {
         // Fight or flight, decided by fear: it breaks off and flees its assailant.
@@ -687,7 +697,7 @@ void Simulation::think(Bitzkey& agent) {
     agent.odds_offered = 0;
     for (const auto& [option, chance] : odds) {
         agent.odds[option] = chance;
-        agent.odds_offered |= static_cast<std::uint16_t>(1U << option);
+        agent.odds_offered |= 1U << option;
     }
     agent.has_last_senses = true;
     agent.last_senses = sensed.senses;
@@ -770,7 +780,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     }
     s.defend_target = s.assailant ? s.assailant : herd_assailant;
     const HerdView view = herd(agent);
-    const int discomfort = agent.climate_steps(in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium);
+    const int here = in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium;
+    const int discomfort = agent.climate_steps(here);
     const std::optional<Cell> comfort = discomfort ? comfort_row(agent, sight) : std::nullopt;
     bool alarmed = false;
     if (agent.alarm) {
@@ -784,7 +795,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     }
 
     std::array<bool, ACTION_COUNT> available{};
-    available[Rest] = available[Explore] = true;
+    available[Rest] = available[GoEast] = available[GoWest] = true;
     available[Eat] = s.grass_here;
     available[Forage] = s.grass.has_value();
     available[Browse] = s.flora != nullptr;
@@ -799,8 +810,13 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     available[Flee] = s.hunter && (alarmed || distance(s.hunter->x, s.hunter->y, agent.x, agent.y) <=
                                                   flee_range(agent, view.close));
     available[Defend] = s.defend_target != nullptr;
+    // The more fearful it is, the closer it keeps to the herd's middle, but not where the middle is
+    // further from its home temperature than here.
     available[Herd] = view.middle && distance(view.middle->x, view.middle->y, agent.x, agent.y) >
-                                         HERD_SPREAD * (1 - agent.feeling(Fear));
+                                         HERD_SPREAD * (1 - agent.feeling(Fear)) &&
+                      agent.climate_steps(temperature(view.middle->y)) <= discomfort;
+    available[GoNorth] = agent.y > 0;
+    available[GoSouth] = agent.y < height_ - 1;
     for (int action = 0; action < ACTION_COUNT; ++action) {
         if (available[action]) sensed.options.push_back(action);
     }
@@ -842,6 +858,10 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     const double day = static_cast<double>(turn_ % YEAR_LENGTH) / YEAR_LENGTH;  // 0 at the year's start, nearly 1 at its end
     senses[SenseTimeOfYearA] = std::abs(2 * day - 1);
     senses[SenseTimeOfYearB] = std::abs(2 * std::fmod(day + 0.25, 1.0) - 1);
+    senses[SenseLatitude] = 2 * (agent.y + 0.5) / height_ - 1;
+    senses[SenseWarmth] = warmth(agent, agent.y);
+    senses[SenseWarmthNorth] = warmth(agent, std::max(0, agent.y - sight));
+    senses[SenseWarmthSouth] = warmth(agent, std::min(height_ - 1, agent.y + sight));
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
     for (int action = 0; action < ACTION_COUNT; ++action) senses[SenseOpen + action] = available[action];
     gene_senses(agent.dna, senses);
@@ -851,6 +871,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     s.herd = view.any;
     s.herd_near = view.close;
     s.herd_middle = view.middle;
+    s.exposure = std::min(2, discomfort) / 2.0 * agent.exposure_share(here);
     return sensed;
 }
 
@@ -872,7 +893,9 @@ double Simulation::comfort(const Bitzkey& agent, const Situation& s) const {
     double herding = HERD_JOY * instinct * herd_near;
     if (!s.herd) herding -= HERD_LONELINESS * instinct;
     herding *= 0.5 + agent.feeling(Fear);  // the fearful feel their herd, and its absence, most
-    return company - dread - unease - crowded + herding;
+    // Out of its home temperature, it is uneasy, the more so the further, and less if hardy to it.
+    const double exposed = CLIMATE_UNEASE * s.exposure;
+    return company - dread - unease - crowded + herding - exposed;
 }
 
 void Simulation::die(Bitzkey& agent, std::string_view cause) {
@@ -957,18 +980,19 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
             move_toward(agent, s.herd_middle->x, s.herd_middle->y);
             agent.last_action = "herded";
             break;
+        case GoNorth:
+        case GoSouth:
+        case GoEast:
+        case GoWest: {
+            const Heading& heading = HEADINGS[static_cast<std::size_t>(action - GoNorth)];
+            move(agent, py_mod(agent.x + heading.dx * agent.steps, width_), within(agent.y + heading.dy * agent.steps));
+            agent.reward += CURIOSITY_JOY * agent.feeling(Curiosity);
+            agent.last_action = heading.went;
+            break;
+        }
         case Flee:
             move_away(agent, *s.hunter);
             agent.last_action = s.panic ? "panicked" : "fled";
-            break;
-        default:
-            for (int step = 0; step < agent.steps; ++step) {
-                const int dx = random_.choice(EXPLORE_STEPS);
-                const int dy = random_.choice(EXPLORE_STEPS);
-                move(agent, py_mod(agent.x + dx, width_), within(agent.y + dy));
-            }
-            agent.reward += CURIOSITY_JOY * agent.feeling(Curiosity);
-            agent.last_action = "explored";
             break;
     }
 }
@@ -1217,10 +1241,18 @@ std::vector<Cell> Simulation::free_cells_near(const Bitzkey& agent) const {
 }
 
 std::optional<Cell> Simulation::nearest_grass(const Bitzkey& agent, int sight) const {
+    const int worst = agent.climate_steps(in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium);
     for (const Offset& offset : SIGHT_WITHIN[static_cast<std::size_t>(sight)]) {
-        if (grass_at(agent.x + offset.dx, agent.y + offset.dy) > 0) return Cell{agent.x + offset.dx, agent.y + offset.dy};
+        if (grass_at(agent.x + offset.dx, agent.y + offset.dy) > 0 &&
+            agent.climate_steps(temperature(agent.y + offset.dy)) <= worst) {
+            return Cell{agent.x + offset.dx, agent.y + offset.dy};
+        }
     }
     return std::nullopt;
+}
+
+double Simulation::warmth(const Bitzkey& agent, int y) const {
+    return std::max(-2, std::min(2, agent.climate.temperature - temperature(y))) / 2.0;
 }
 
 Bitzkey* Simulation::nearest_carrion(const Bitzkey& agent, int sight) const {

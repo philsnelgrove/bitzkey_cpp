@@ -72,6 +72,7 @@ Brain Brain::random(PyRandom& rng, int depth) {
         for (double& weight : row) weight = rng.uniform(-0.3, 0.3);
     }
     for (double& bias : brain.output_biases) bias = rng.uniform(-0.2, 0.2);
+    for (const int heading : {GoNorth, GoSouth, GoEast, GoWest}) brain.output_biases[heading] -= HEADING_RELUCTANCE;
     return brain;
 }
 
@@ -120,6 +121,7 @@ Brain Brain::inherit(const Brain& first, const Brain& second, PyRandom& rng, int
 
 Brain Brain::resized(int depth) const {
     Brain brain = *this;
+    brain.traces.reset();
     if (brain.depth() > depth) brain.layers.resize(static_cast<std::size_t>(depth));
     while (brain.depth() < depth) brain.layers.push_back(Layer::identity());
     return brain;
@@ -191,6 +193,68 @@ void Brain::learn(const Senses& inputs, int action, double target, double learni
         }
     }
     output_biases[action] -= learning_rate * error;
+}
+
+void Brain::learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount) {
+    if (learning_rate <= 0) return;
+    const double decay = discount * TRACE_DECAY;
+    if (!traces) {
+        traces.emplace();
+        for (const Layer& layer : layers) {
+            Layer trace;
+            trace.reads = layer.reads;
+            trace.weights.assign(layer.weights.size(), 0.0);
+            traces->layers.push_back(std::move(trace));
+        }
+    }
+    const std::vector<std::vector<double>> found = activations(inputs);
+    const std::vector<double>& top = found.back();
+    double sum = 0.0;
+    for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) sum += output_weights[action][neuron] * top[static_cast<std::size_t>(neuron)];
+    const double error = std::max(-1.0, std::min(1.0, sum + output_biases[action] - target));
+    for (auto& row : traces->output_weights) {
+        for (double& trace : row) trace *= decay;
+    }
+    for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) traces->output_weights[action][neuron] += top[static_cast<std::size_t>(neuron)];
+    for (double& trace : traces->output_biases) trace *= decay;
+    traces->output_biases[action] += 1.0;
+    std::vector<double> gradient(output_weights[action].begin(), output_weights[action].end());
+    for (int index = depth() - 1; index >= 0; --index) {
+        const Layer& layer = layers[static_cast<std::size_t>(index)];
+        Layer& trace = traces->layers[static_cast<std::size_t>(index)];
+        const std::vector<double>& output = found[static_cast<std::size_t>(index) + 1];
+        const std::vector<double>& below = found[static_cast<std::size_t>(index)];
+        std::array<double, HIDDEN_SIZE> delta{};
+        for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) {
+            const double value = output[static_cast<std::size_t>(neuron)];
+            delta[neuron] = gradient[static_cast<std::size_t>(neuron)] * (1 - value * value);
+        }
+        if (index) {
+            for (int input = 0; input < layer.reads; ++input) {
+                double back = 0.0;
+                for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) back += layer.row(neuron)[input] * delta[neuron];
+                gradient[static_cast<std::size_t>(input)] = back;
+            }
+        }
+        for (double& weight : trace.weights) weight *= decay;
+        for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) {
+            double* weights = trace.row(neuron);
+            for (int input = 0; input < layer.reads; ++input) weights[input] += delta[neuron] * below[static_cast<std::size_t>(input)];
+        }
+        for (double& bias : trace.biases) bias *= decay;
+        for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) trace.biases[neuron] += delta[neuron];
+    }
+    const double step = learning_rate * error;
+    for (std::size_t index = 0; index < layers.size(); ++index) {
+        Layer& layer = layers[index];
+        const Layer& trace = traces->layers[index];
+        for (std::size_t weight = 0; weight < layer.weights.size(); ++weight) layer.weights[weight] -= step * trace.weights[weight];
+        for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) layer.biases[neuron] -= step * trace.biases[neuron];
+    }
+    for (int row = 0; row < ACTION_COUNT; ++row) {
+        for (int neuron = 0; neuron < HIDDEN_SIZE; ++neuron) output_weights[row][neuron] -= step * traces->output_weights[row][neuron];
+    }
+    for (int row = 0; row < ACTION_COUNT; ++row) output_biases[row] -= step * traces->output_biases[row];
 }
 
 nlohmann::ordered_json Brain::to_record() const {

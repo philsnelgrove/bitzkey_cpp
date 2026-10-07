@@ -57,6 +57,7 @@ inline double COMPANY_JOY = 0.1;
 inline double CURIOSITY_JOY = 0.15;
 inline double FEAR_DREAD = 0.3;
 inline double UNEASE = 0.1;
+inline double CLIMATE_UNEASE = 0.5;  // discomfort two or more steps from home, half that one step; less for the hardy
 inline double EMPATHY_PAIN = 0.15;
 // Society: an animal sees what happens to its herd-mates (its pack, for a predator) within its sight. A
 // herd-mate's kill is a success, its death (but of old age) a failure; the witness learns from it as
@@ -215,7 +216,7 @@ struct Bitzkey {
     double last_comfort = 0.0;  // how comfortable it felt at its last decision
     double reward = 0.0;
     std::array<double, ACTION_COUNT> odds{};  // chance of each action at the last choice
-    std::uint16_t odds_offered = 0;           // which actions were open then, one bit each
+    std::uint32_t odds_offered = 0;           // which actions were open then, one bit each
 
     // Fixed by the genome.
     Species species;
@@ -349,6 +350,7 @@ public:
         bool herd = true;
         int herd_near = 0;
         std::optional<Cell> herd_middle;
+        double exposure = 0.0;  // how far from home it is, 0.5 a step to 1, times the share of exposure it suffers
         bool panic = false;
     };
     struct Sensed {
@@ -362,6 +364,11 @@ public:
     void act(Bitzkey& agent, int action, Situation& situation);
     double comfort(const Bitzkey& agent, const Situation& situation) const;
     double wellbeing(const Bitzkey& agent) const;
+    // How much the future counts against the present: more for the patient.
+    static double discount(const Bitzkey& agent) { return 0.7 + 0.27 * agent.feeling(Patience); }
+    // How much warmer than home a row feels, as a sense: 0.5 a step, from -1 (two or more steps too
+    // cold) to 1 (two or more too hot).
+    double warmth(const Bitzkey& agent, int y) const;
     void die(Bitzkey& agent, std::string_view cause);
     void attack(Bitzkey& agent, Bitzkey& victim);
     void defend(Bitzkey& agent, Bitzkey& assailant, bool for_herd = false);
@@ -439,6 +446,7 @@ private:
     void sprout(Dna dna, Cell cell, int generation);
     void settle(Bitzkey& agent);
     void learn(Bitzkey& agent, double target);
+    // The nearest grass in sight, but none in a row further from its home temperature than here.
     std::optional<Cell> nearest_grass(const Bitzkey& agent, int sight) const;
     Bitzkey* nearest_carrion(const Bitzkey& agent, int sight) const;
     struct Seen {

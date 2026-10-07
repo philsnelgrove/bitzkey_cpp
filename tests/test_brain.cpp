@@ -20,6 +20,68 @@ TEST_CASE("learning moves the chosen action's value toward its target") {
     CHECK(std::abs(brain.values(senses)[Rest] - 3.0) < std::abs(before - 3.0));
 }
 
+TEST_CASE("a new brain is reluctant to set off in any direction") {
+    PyRandom first(7), second(7);
+    const double saved = HEADING_RELUCTANCE;
+    const Brain reluctant = Brain::random(first);
+    HEADING_RELUCTANCE = 0.0;
+    const Brain eager = Brain::random(second);
+    HEADING_RELUCTANCE = saved;
+    for (int action = 0; action < ACTION_COUNT; ++action) {
+        const bool heading = action == GoNorth || action == GoSouth || action == GoEast || action == GoWest;
+        CHECK(reluctant.output_biases[action] == doctest::Approx(eager.output_biases[action] - (heading ? saved : 0.0)));
+    }
+}
+
+TEST_CASE("a first traced lesson is an ordinary lesson") {
+    PyRandom first(7), second(7);
+    Brain traced = Brain::random(first, 3), plain = Brain::random(second, 3);
+    Senses senses{};
+    senses.fill(0.3);
+    traced.learn_traced(senses, 2, 1.5, 0.05, 0.9);
+    plain.learn(senses, 2, 1.5, 0.05);
+    senses.fill(0.6);
+    for (int action = 0; action < ACTION_COUNT; ++action) {
+        CHECK(traced.values(senses)[action] == doctest::Approx(plain.values(senses)[action]).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("a traced lesson reaches back to the choice before") {
+    Senses earlier{}, later{};
+    earlier.fill(0.2);
+    later.fill(0.7);
+    const double saved = TRACE_DECAY;
+    std::vector<double> changes;
+    for (const double decay : {0.0, 0.9}) {
+        TRACE_DECAY = decay;
+        PyRandom rng(7);
+        Brain brain = Brain::random(rng);
+        const double before = brain.values(earlier)[1];
+        brain.learn_traced(earlier, 1, before, 0.05, 1.0);  // no surprise yet
+        brain.learn_traced(later, 4, brain.values(later)[4] - 1, 0.05, 1.0);
+        changes.push_back(brain.values(earlier)[1] - before);
+    }
+    TRACE_DECAY = saved;
+    // Without a trace, the earlier choice moves only through the layers both share; with one, it
+    // shares more than twice the blame.
+    CHECK(changes[0] < 0);
+    CHECK(changes[1] < 2 * changes[0]);
+}
+
+TEST_CASE("a copy keeps its own traces, and an export none") {
+    PyRandom rng(7);
+    Brain brain = Brain::random(rng);
+    Senses senses{};
+    senses.fill(0.5);
+    brain.learn_traced(senses, 0, 5.0, 0.1, 0.9);
+    Brain duplicate = brain;
+    brain.learn_traced(senses, 0, 5.0, 0.1, 0.9);
+    duplicate.learn_traced(senses, 0, 5.0, 0.1, 0.9);
+    CHECK(brain == duplicate);  // the same traces, kept apart
+    CHECK_FALSE(Brain::from_record(nlohmann::json::parse(brain.to_record().dump())).traces.has_value());
+    CHECK_FALSE(brain.resized(4).traces.has_value());  // traces belong to one life
+}
+
 TEST_CASE("a brain is twice as deep as the inborn intellect, and at least two layers") {
     std::vector<int> depths;
     for (int intellect = 0; intellect < 8; ++intellect) depths.push_back(depth_for(intellect));
