@@ -28,7 +28,7 @@ check below compares them.
 
 Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
-`--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 121
+`--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 123
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, and MAX, which simulates as many turns as fit
 in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest
@@ -74,7 +74,7 @@ The script is `packaging\bitzkey.iss`. The icon, `packaging\bitzkey.ico`, is dra
 ```
 
 Options: `--width`, `--height`, `--population`, `--seed`, `--grass-density`, `--population-cap`,
-`--mind-mutation`, `--body-mutation`, `--import FILE`, `--turns`, `--report-every`,
+`--mind-mutation`, `--body-mutation`, `--year-length`, `--import FILE`, `--turns`, `--report-every`,
 `--trace FILE`, `--export FILE`, `--brain-report FILE`, `--rule KEY=VALUE` (change an advanced
 rule; repeat it for more) and `--rules` (list them, with their defaults and limits). Run with
 `--help` for details.

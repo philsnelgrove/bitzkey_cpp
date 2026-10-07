@@ -42,8 +42,10 @@ inline double MATE_RING_DIFFERENCE = 0.05;
 inline double MATE_DOT_DIFFERENCE = 0.20;
 inline std::array<int, 2> LITTER_RANGE = {1, 6};
 inline double LITTER_SIZE_WEIGHT = 0.5;
-inline double PLANT_LIFESPAN = 4000;
-inline std::array<int, 2> ANIMAL_LIFESPAN = {250, 900};
+// Years a Bitzkey, plant or animal, is expected to live: the smallest bodies, with the fastest
+// metabolisms; middling ones; and the largest, with the slowest. Between them, lifespan rises steadily
+// with the metabolism slowing.
+inline std::array<double, 3> LIFESPAN_YEARS = {1.0, 5.0, 10.0};
 inline std::array<double, 2> METABOLISM = {1.6, 0.6};
 inline std::array<double, 2> STOMACH = {0.5, 2.0};
 inline double SIZE_IN_MIGHT = 0.5;
@@ -120,12 +122,19 @@ inline double TEMPERAMENT_RELAPSE = 0.005;
 // south, from the bottom up to and through the equator, is. Every Bitzkey has a home temperature,
 // and may tolerate heat (zones hotter than home) or cold (zones colder); plants tolerate nothing, and
 // a plant spawned at the start is at home in its zone's usual temperature.
-inline int YEAR_LENGTH = 180;
+constexpr int DEFAULT_YEAR_LENGTH = 360;
+inline int YEAR_LENGTH = DEFAULT_YEAR_LENGTH;  // each world sets it from its year length setting
 inline double ARCTIC_SHARE = 0.2;
 inline double EQUATOR_SHARE = 0.2;
 inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home needs this many times the food
 inline double CLIMATE_DAMAGE = 0.1;   // two steps or more from home, a Bitzkey loses this share of its full health a turn
 inline double PLANT_CLIMATE_YIELD = 0.5;  // a plant out of its temperature gives this share of its food
+inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass loses a tuft every this many turns
+// A dead animal is a fresh kill, not yet carrion, through the turn it died and FRESH_KILL_TURNS more;
+// then it starts to rot. A predator or omnivore may eat a fresh kill of what it lives on whole,
+// FRESH_KILL_MEALS times the meal of making the kill, and nothing is left.
+inline int FRESH_KILL_TURNS = 1;
+inline double FRESH_KILL_MEALS = 3.0;
 inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
 enum Temperature : int { Hot, Medium, Cold, VeryCold };
 constexpr std::array<std::string_view, 4> SEASONS = {"northern winter", "mild", "southern winter", "mild"};
@@ -193,6 +202,7 @@ struct Bitzkey {
     Senses last_senses{};
     int last_choice = 0;
     double last_wellbeing = 0.0;
+    double last_comfort = 0.0;  // how comfortable it felt at its last decision
     double reward = 0.0;
     std::array<double, ACTION_COUNT> odds{};  // chance of each action at the last choice
     std::uint16_t odds_offered = 0;           // which actions were open then, one bit each
@@ -239,6 +249,9 @@ public:
         std::optional<int> population_cap;
         double mind_mutation = 100 * MIND_MUTATION_CHANCE;
         double body_mutation = 100 * BODY_MUTATION_CHANCE;
+        // Turns in a year, for the seasons and lifespans; like the advanced rules, it holds for the
+        // whole program while the world runs.
+        int year_length = DEFAULT_YEAR_LENGTH;
     };
 
     explicit Simulation(Settings settings);
@@ -310,6 +323,7 @@ public:
         std::optional<Cell> grass;
         bool grass_here = false;
         Bitzkey* carrion = nullptr;
+        Bitzkey* kill = nullptr;
         Bitzkey* flora = nullptr;
         Bitzkey* assailant = nullptr;
         double rivalry = 0.0;
@@ -341,6 +355,10 @@ public:
     void breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells);
     void browse(Bitzkey& agent, Bitzkey& plant);
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
+    void feast(Bitzkey& agent, Bitzkey& corpse);
+    bool fresh(const Bitzkey& corpse) const;  // still a fresh kill, not yet carrion
+    Bitzkey* nearest_kill(const Bitzkey& agent, int sight) const;  // of something it lives on
+    void wither_grass();
     void sow(int tufts);
     void experience(Bitzkey& agent, int event);
     std::vector<Bitzkey*> nearby(const Bitzkey& agent, int radius) const;
@@ -430,6 +448,8 @@ private:
     std::vector<std::vector<Bitzkey*>> cells_;
     std::vector<std::vector<Bitzkey*>> carrion_;
     std::size_t carrion_count_ = 0;
+    std::vector<std::vector<Bitzkey*>> kills_;  // fresh kills, by cell
+    std::size_t kill_count_ = 0;
     int population_ = 0;
     std::optional<int> population_cap_;
     double mind_mutation_, body_mutation_;

@@ -27,7 +27,7 @@ struct Screens {
     static void run(Window& window, const std::filesystem::path& folder) {
         Defaults defaults = {{"width", 100}, {"height", 100}, {"population", 90}, {"grass_density", 50},
                              {"seed", std::nullopt}, {"population_cap", std::nullopt}, {"mind_mutation", 50},
-                             {"body_mutation", 50}};
+                             {"body_mutation", 50}, {"year_length", 360}};
         SetupScreen setup(window, defaults);
         Canvas canvas = window.frame();
         setup.draw(canvas);

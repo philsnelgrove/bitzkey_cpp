@@ -15,7 +15,7 @@
 
 namespace bitzkey::ui {
 
-const std::array<Setting, 8> SETTINGS = {{
+const std::array<Setting, 9> SETTINGS = {{
     {"width", "Grid width", "cells across the world", 10, 250, 10},
     {"height", "Grid height", "cells down the world", 10, 250, 10},
     {"population", "Bitzkeys", "spawned at the start, a random mix of species", 0, MAX_POPULATION, 10},
@@ -25,6 +25,7 @@ const std::array<Setting, 8> SETTINGS = {{
      "no limit"},
     {"mind_mutation", "Mind mutation", "mind mutations a birth carries: 0 none, 50 about 1.5, 100 three", 0, 100, 5},
     {"body_mutation", "Body mutation", "percent chance a birth flips one body gene: 0 stable, 100 always", 0, 100, 5},
+    {"year_length", "Year length", "turns in a year, of four seasons; lifespans are counted in years", 20, 3600, 20},
 }};
 
 namespace {
@@ -95,6 +96,7 @@ Simulation::Settings SetupForm::values() const {
     settings.population_cap = at("population_cap");
     settings.mind_mutation = *at("mind_mutation");
     settings.body_mutation = *at("body_mutation");
+    settings.year_length = *at("year_length");
     const auto& found = imports();
     settings.imported.assign(found.begin(), found.begin() + std::min<std::size_t>(found.size(), MAX_IMPORTED));
     return settings;
@@ -424,8 +426,8 @@ void SetupScreen::draw(Canvas& canvas) {
 void SetupScreen::draw_setting(Canvas& canvas, const Setting& setting, const Rect& row, bool focused) {
     canvas.rect(row, focused ? Color{36, 49, 47} : Color{31, 42, 41}, 0, UI(5));
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
-    canvas.text(UI.font(Face::Sans, 15), upper(setting.label), {232, 236, 219}, row.x + UI(16), row.y + UI(5));
-    canvas.text(UI.font(Face::Sans, 12), setting.hint, {130, 152, 136}, row.x + UI(16), row.y + UI(25));
+    canvas.text(UI.font(Face::Sans, 15), upper(setting.label), {232, 236, 219}, row.x + UI(16), row.y + UI(3));
+    canvas.text(UI.font(Face::Sans, 12), setting.hint, {130, 152, 136}, row.x + UI(16), row.y + UI(22));
     const auto [minus, box, plus] = buttons(row);
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));

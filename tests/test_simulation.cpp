@@ -69,8 +69,11 @@ TEST_CASE("bodies set health pools, metabolism, stomachs and lifespans") {
     CHECK(large.metabolism == doctest::Approx(0.6));
     CHECK(small.stomach == doctest::Approx(0.5));
     CHECK(large.stomach == doctest::Approx(2.0));
-    CHECK(small.lifespan == doctest::Approx(250));
-    CHECK(large.lifespan == doctest::Approx(900));
+    CHECK(small.lifespan == doctest::Approx(360));   // a year
+    CHECK(large.lifespan == doctest::Approx(3600));  // ten years
+    // five years halfway between, rising steadily either side
+    CHECK(simulation.add_agent(encode_dna(Species::Grazer, {{"size", 3}}), 4, 4).lifespan == doctest::Approx((1 + 4 * 6.0 / 7) * 360));
+    CHECK(simulation.add_agent(encode_dna(Species::Grazer, {{"size", 4}}), 5, 5).lifespan == doctest::Approx((5 + 5 * 1.0 / 7) * 360));
     CHECK(small.steps == 2);  // grazers move half as far again, rounded up
     const Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator, {{"speed", 7}}), 3, 3);
     CHECK(predator.steps == 4);
@@ -272,8 +275,8 @@ TEST_CASE("grazers are the plant and grass specialists, and omnivores live on me
 
 TEST_CASE("plants seed less the more plants shade them") {
     Simulation simulation = world(30);
-    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"fertility", 7}}), 15, 15);
-    for (int x = 16; x <= 18; ++x) simulation.add_agent(encode_dna(Species::Plant), x, 15);  // three within three cells
+    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"fertility", 7}, {"size", 7}}), 15, 15);
+    for (int x = 16; x <= 18; ++x) simulation.add_agent(encode_dna(Species::Plant, {{"size", 7}}), x, 15);  // three within three cells, living ten years
     const std::size_t before = simulation.agents().size();
     const double damage = CLIMATE_DAMAGE;
     CLIMATE_DAMAGE = 0;  // out of their temperature through the winters, the plants wither but live
@@ -321,6 +324,99 @@ TEST_CASE("a blow that exhausts the striker kills it, and no body is left withou
     Simulation busy(Simulation::Settings{60, 60, 90, 1});
     for (int turn = 0; turn < 300; ++turn) busy.advance();
     for (const auto& agent : busy.agents()) CHECK((agent->alive() || agent->died_turn.has_value()));
+}
+
+TEST_CASE("grazers don't scavenge") {
+    Simulation simulation = world();
+    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer, {{"size", 7}}), 5, 5);
+    corpse.health = 0;
+    simulation.die(corpse, "wounded");
+    corpse.died_turn = -2;  // no longer a fresh kill
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"carrion", 7}, {"sight", 4}}), 5, 6);
+    Bitzkey& omnivore = simulation.add_agent(encode_dna(Species::Omnivore, {{"sight", 4}}), 5, 4);
+    simulation.index_cells();
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), Scavenge) == sensed.options.end());
+    CHECK(sensed.senses[SenseCarrionCloseness] == 0.0);
+    sensed = simulation.sense(omnivore);
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), Scavenge) != sensed.options.end());
+}
+
+TEST_CASE("a body is a fresh kill through its death turn and the next, then carrion") {
+    for (const bool watched : {true, false}) {  // a hunter watching from the start would eat it
+        Simulation simulation = world();
+        Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer, {{"size", 7}}), 5, 5);
+        corpse.health = 0;
+        corpse.hunger = 50;
+        simulation.die(corpse, "wounded");
+        if (watched) {
+            Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator, {{"sight", 4}}), 5, 8);
+            simulation.index_cells();
+            const Simulation::Sensed sensed = simulation.sense(predator);
+            CHECK((sensed.situation.kill == &corpse && sensed.situation.carrion == nullptr));
+            CHECK(sensed.senses[SenseKillCloseness] > 0);
+            continue;
+        }
+        simulation.take_turn();  // fresh through this turn too; it starts to rot at its end
+        CHECK(corpse.meat == doctest::Approx(40.0 - 40.0 / 29));
+        simulation.take_turn();
+        Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator, {{"sight", 4}}), 5, 8);
+        simulation.index_cells();
+        const Simulation::Sensed sensed = simulation.sense(predator);
+        CHECK((sensed.situation.kill == nullptr && sensed.situation.carrion == &corpse));
+    }
+}
+
+TEST_CASE("a hunter eats a fresh kill whole for three times the kill meal") {
+    Simulation simulation = world();
+    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 5, 5);
+    corpse.health = 0;
+    simulation.die(corpse, "killed");
+    Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator, {{"size", 7}, {"sight", 4}}), 5, 8);
+    predator.hunger = 90;
+    simulation.index_cells();
+    Simulation::Sensed sensed = simulation.sense(predator);
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), Feast) != sensed.options.end());
+    while (predator.last_action != "feasted") simulation.act(predator, Feast, sensed.situation);
+    CHECK(predator.hunger == doctest::Approx(90 - 3 * 25 / predator.stomach));  // the kill meal of the smallest prey
+    CHECK(corpse.meat == 0.0);
+    CHECK(simulation.sense(predator).situation.kill == nullptr);
+    const int identifier = corpse.identifier;
+    simulation.take_turn();
+    for (const auto& agent : simulation.agents()) CHECK(agent->identifier != identifier);  // the body is gone
+}
+
+TEST_CASE("only hunters feast, and only on what they live on") {
+    for (const auto& [species, eaten] : {std::pair{Species::Grazer, Species::Grazer}, std::pair{Species::Omnivore, Species::Predator},
+                                         std::pair{Species::Predator, Species::Plant}}) {
+        Simulation simulation = world();
+        Bitzkey& corpse = simulation.add_agent(encode_dna(eaten), 5, 5);
+        corpse.health = 0;
+        simulation.die(corpse, "killed");
+        Bitzkey& eater = simulation.add_agent(encode_dna(species, {{"sight", 4}}), 5, 6);
+        simulation.index_cells();
+        const Simulation::Sensed sensed = simulation.sense(eater);
+        CHECK(std::find(sensed.options.begin(), sensed.options.end(), Feast) == sensed.options.end());
+        CHECK(sensed.senses[SenseKillCloseness] == 0.0);
+    }
+}
+
+TEST_CASE("grass dies back a tuft at a time where it isn't medium") {
+    Simulation simulation(Simulation::Settings{20, 20, 0, 1});
+    while (simulation.turn() < 120) simulation.take_turn();  // mid-year: the arctic cold, the temperate zone medium
+    simulation.clear_grass();
+    for (int x = 0; x < 20; ++x) simulation.grass_cell(x, 1) = simulation.grass_cell(x, 5) = 3;  // arctic, then temperate
+    const double regrowth = simulation.grass_regrowth();
+    simulation.set_grass_regrowth(0);
+    for (int turn = 0; turn < GRASS_DIEBACK; ++turn) simulation.take_turn();
+    simulation.set_grass_regrowth(regrowth);
+    int arctic = 0, temperate = 0;
+    for (int x = 0; x < 20; ++x) {
+        arctic += simulation.grass_at(x, 1);
+        temperate += simulation.grass_at(x, 5);
+    }
+    CHECK(arctic == 20 * 2);  // a tuft each
+    CHECK(temperate == 20 * 3);
 }
 
 TEST_CASE("a dead Bitzkey leaves meat by how nourished it was, and the brain is gone") {

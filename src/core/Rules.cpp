@@ -34,9 +34,9 @@ std::vector<Rule> make_rules() {
         {"CORPSE_FERTILITY", "World", "Corpse fertility", "grass grows this many times as fast on and around a corpse", 1, 10, 1, true, &CORPSE_FERTILITY},
         {"CORPSE_TURNS", "World", "Corpse turns", "turns a corpse lasts while its meat rots away", 1, 500, 5, true, &CORPSE_TURNS},
         {"SPAWN_SPREAD", "World", "Spawn spread", "a starting group appears within this many cells of its centre", 0, 4, 1, true, &SPAWN_SPREAD},
-        {"PLANT_LIFESPAN", "Bodies", "Plant lifespan", "expected turns of life for a plant", 100, 20000, 100, true, &PLANT_LIFESPAN},
-        {"ANIMAL_LIFESPAN.0", "Bodies", "Lifespan, fastest", "expected turns of life at the fastest metabolism", 10, 5000, 10, true, &ANIMAL_LIFESPAN[0]},
-        {"ANIMAL_LIFESPAN.1", "Bodies", "Lifespan, slowest", "expected turns of life at the slowest metabolism", 10, 5000, 10, true, &ANIMAL_LIFESPAN[1]},
+        {"LIFESPAN_YEARS.0", "Bodies", "Lifespan, shortest", "years of life expected for the smallest bodies, plant or animal", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[0]},
+        {"LIFESPAN_YEARS.1", "Bodies", "Lifespan, middle", "years of life expected for middling bodies", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[1]},
+        {"LIFESPAN_YEARS.2", "Bodies", "Lifespan, longest", "years of life expected for the largest bodies", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[2]},
         {"AGEING", "Bodies", "Ageing", "from this share of its lifespan, an animal may die of old age", 0.0, 0.95, 0.05, false, &AGEING},
         {"METABOLISM.0", "Bodies", "Metabolism, smallest", "metabolic rate of the smallest bodies", 0.1, 5.0, 0.1, false, &METABOLISM[0]},
         {"METABOLISM.1", "Bodies", "Metabolism, largest", "metabolic rate of the largest bodies", 0.1, 5.0, 0.1, false, &METABOLISM[1]},
@@ -82,6 +82,8 @@ std::vector<Rule> make_rules() {
         {"PACK_BONUS", "Fighting", "Pack bonus", "extra force at prey that a herd-mate is also alongside", 0.0, 5.0, 0.05, false, &PACK_BONUS},
         {"KILL_MEAL", "Fighting", "Kill meal", "hunger a kill sates", 0, 200, 5, true, &KILL_MEAL},
         {"KILL_MEAL_FOR_SIZE", "Fighting", "Kill meal for size", "more hunger sated, up to this for the largest prey", 0, 200, 5, true, &KILL_MEAL_FOR_SIZE},
+        {"FRESH_KILL_TURNS", "Fighting", "Fresh kill turns", "turns after the one it died in that a body is a fresh kill", 0, 10, 1, true, &FRESH_KILL_TURNS},
+        {"FRESH_KILL_MEALS", "Fighting", "Fresh kill meals", "times the kill meal a predator or omnivore gets eating a fresh kill", 0.0, 10.0, 0.5, false, &FRESH_KILL_MEALS},
         {"KIND_DIFFERENCE", "Fighting", "Kind difference", "predators whose rings differ more are different kinds", 0.0, 1.0, 0.01, false, &KIND_DIFFERENCE},
         {"FLEE_RANGE", "Fighting", "Flee range", "a hunter is only worth fleeing within this many steps, unless alarmed", 0, 12, 1, true, &FLEE_RANGE},
         {"HERD_VIGILANCE", "Fighting", "Herd vigilance", "how far a close herd shrinks that range", 0.0, 1.0, 0.05, false, &HERD_VIGILANCE},
@@ -124,12 +126,12 @@ std::vector<Rule> make_rules() {
         {"LIGHT_RADIUS", "Plants", "Light radius", "plants compete for light with plants within this many cells", 0, 12, 1, true, &LIGHT_RADIUS},
         {"LIGHT_LIMIT", "Plants", "Light limit", "this many such plants stop a plant seeding", 1, 50, 1, true, &LIGHT_LIMIT},
         {"PLANT_CROWDING", "Plants", "Plant crowding", "a seed doesn't take where more plants grow within two cells", 0, 50, 1, true, &PLANT_CROWDING},
-        {"YEAR_LENGTH", "Climate", "Year length", "turns in a year; each quarter is a season", 4, 2000, 4, true, &YEAR_LENGTH},
         {"ARCTIC_SHARE", "Climate", "Arctic", "share of the map's height that is arctic, at the top and again at the bottom", 0.0, 0.5, 0.05, false, &ARCTIC_SHARE},
         {"EQUATOR_SHARE", "Climate", "Equator", "share of the map's height across its middle that is the equator", 0.0, 1.0, 0.05, false, &EQUATOR_SHARE},
         {"CLIMATE_HUNGER", "Climate", "Climate hunger", "times the food an animal needs a step or more from its home temperature", 1.0, 5.0, 0.1, false, &CLIMATE_HUNGER},
         {"CLIMATE_DAMAGE", "Climate", "Climate damage", "share of full health lost a turn two or more steps from home", 0.0, 1.0, 0.01, false, &CLIMATE_DAMAGE},
         {"PLANT_CLIMATE_YIELD", "Climate", "Plant climate yield", "share of its food a plant gives out of its temperature", 0.0, 1.0, 0.05, false, &PLANT_CLIMATE_YIELD},
+        {"GRASS_DIEBACK", "Climate", "Grass dieback", "where it isn't medium, turns for each tuft of a cell's grass to die", 1, 500, 1, true, &GRASS_DIEBACK},
         {"SEED_VIABILITY", "Climate", "Seed viability", "years a seed waits for its temperature before it dies", 0.0, 5.0, 0.05, false, &SEED_VIABILITY},
     };
     for (std::size_t event = 0; event < EXPERIENCES.size(); ++event) {
@@ -148,7 +150,8 @@ std::vector<Rule> make_rules() {
 }
 
 // Pairs that must stay in order, smaller first, and pairs that must differ (lifespan divides by the gap).
-constexpr std::pair<std::string_view, std::string_view> ORDERED[] = {{"LITTER_RANGE.0", "LITTER_RANGE.1"}};
+constexpr std::pair<std::string_view, std::string_view> ORDERED[] = {
+    {"LITTER_RANGE.0", "LITTER_RANGE.1"}, {"LIFESPAN_YEARS.0", "LIFESPAN_YEARS.1"}, {"LIFESPAN_YEARS.1", "LIFESPAN_YEARS.2"}};
 constexpr std::pair<std::string_view, std::string_view> DISTINCT[] = {{"METABOLISM.0", "METABOLISM.1"}};
 
 std::string lower(std::string text) {

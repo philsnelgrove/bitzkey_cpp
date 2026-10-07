@@ -123,7 +123,10 @@ const std::vector<Scenario>& scenarios() {
          {Browse, Rest, Explore}, GRAZER_LIST},
         {"Hungry, carrion in sight",
          {{SenseHunger, 0.6}, {SenseHealth, 1}, {SenseCarrionCloseness, 0.6}, {SenseAge, 0.2}},
-         {Scavenge, Rest, Explore}, ANIMAL_LIST},
+         {Scavenge, Rest, Explore}, HUNTER_LIST},
+        {"Hungry, a fresh kill in sight",
+         {{SenseHunger, 0.6}, {SenseHealth, 1}, {SenseKillCloseness, 0.6}, {SenseAge, 0.2}},
+         {Feast, Rest, Explore}, HUNTER_LIST},
         {"Peckish, prey in sight",
          {{SenseHunger, 0.5}, {SenseHealth, 1}, {SensePreyCloseness, 0.6}, {SenseAge, 0.2}},
          {Hunt, Rest, Explore}, HUNTER_LIST},
@@ -205,6 +208,8 @@ std::string brain_report(int turn, std::span<const Bitzkey* const> animals, cons
             Senses senses{};
             for (const auto& [sense, value] : scenario.situation) senses[sense] = value;
             for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = animal->feeling(trait);
+            for (const Action action : scenario.actions) senses[SenseOpen + action] = 1.0;
+            gene_senses(animal->dna, senses);
             Sample named{};
             for (const auto& [option, chance] : choice_odds(animal->brain->values(senses), options)) named[option] = chance;
             const Profile profile = animal->profile();

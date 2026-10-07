@@ -140,12 +140,13 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     grazing = GRAZING[static_cast<std::size_t>(species)];
     browsing = BROWSING[static_cast<std::size_t>(species)];
     sight = 2 + body[Sight];
-    if (species == Species::Plant) {
-        lifespan = PLANT_LIFESPAN;
-    } else {
-        const int shortest = ANIMAL_LIFESPAN[0], longest = ANIMAL_LIFESPAN[1];
+    {  // plant or animal
+        const double shortest = LIFESPAN_YEARS[0], middle = LIFESPAN_YEARS[1], longest = LIFESPAN_YEARS[2];
         const double fastest = METABOLISM[0], slowest = METABOLISM[1];
-        lifespan = shortest + (longest - shortest) * (fastest - metabolism) / (fastest - slowest);
+        const double slowing = (fastest - metabolism) / (fastest - slowest);  // 0 at the fastest metabolism, 1 the slowest
+        const double years = slowing <= 0.5 ? shortest + (middle - shortest) * (2 * slowing)
+                                            : middle + (longest - middle) * (2 * slowing - 1);
+        lifespan = years * YEAR_LENGTH;
     }
     breeding_cost = 25 - 15 * physique(Fertility);
     digestion = 0.2 + 0.8 * physique(Carrion);
@@ -189,6 +190,8 @@ Simulation::Simulation(int width, int height, int population, std::optional<std:
 Simulation::Simulation(Settings settings)
     : width_(settings.width), height_(settings.height), mind_mutation_(settings.mind_mutation / 100),
       body_mutation_(settings.body_mutation / 100) {
+    if (settings.year_length < 4) throw std::invalid_argument("A year must be at least 4 turns.");
+    YEAR_LENGTH = settings.year_length;
     if (width_ < 10 || height_ < 10) throw std::invalid_argument("World dimensions must both be at least 10 cells.");
     if (settings.population < 0) throw std::invalid_argument("Population cannot be negative.");
     if (!(0 <= settings.grass_density && settings.grass_density <= 100)) {
@@ -210,6 +213,7 @@ Simulation::Simulation(Settings settings)
     const std::size_t area = static_cast<std::size_t>(width_) * height_;
     cells_.resize(area);
     carrion_.resize(area);
+    kills_.resize(area);
     grass_.assign(area, 0);
     update_climate();
     const int initial_grass = static_cast<int>(py_round(static_cast<double>(width_ * height_) * settings.grass_density / 100));
@@ -281,8 +285,11 @@ Bitzkey& Simulation::add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> bra
             if (mind->traits[trait]) agent->mind[trait] = *mind->traits[trait];
         }
     }
-    if (agent->species != Species::Plant) {
-        agent->brain = brain ? std::move(brain) : std::make_shared<Brain>(Brain::random(random_));
+    if (agent->species != Species::Plant) {  // plants need no brain
+        const int depth = depth_for(agent->inborn[Intellect]);  // twice its inborn intellect, at least two
+        if (!brain) brain = std::make_shared<Brain>(Brain::random(random_, depth));
+        else if (brain->depth() != depth) brain = std::make_shared<Brain>(brain->resized(depth));
+        agent->brain = std::move(brain);
     }
     ++next_identifier_;
     if (lineage_.size() <= static_cast<std::size_t>(agent->identifier)) lineage_.resize(agent->identifier + 1);
@@ -459,11 +466,13 @@ void Simulation::take_turn(bool replay) {
     }
 
     germinate();
+    wither_grass();
     const double whole = std::floor(grass_regrowth_);
     const double fraction = grass_regrowth_ - whole;
     sow(static_cast<int>(whole) + ((fraction != 0.0 && random_.random() < fraction) ? 1 : 0));
     for (auto& agent : agents_) {
-        if (agent->died_turn) agent->meat = std::max(0.0, agent->meat - agent->rot);
+        // no longer fresh by next turn: it rots
+        if (agent->died_turn && turn_ - *agent->died_turn >= FRESH_KILL_TURNS) agent->meat = std::max(0.0, agent->meat - agent->rot);
     }
     for (auto& agent : agents_) {
         if (agent->died_turn && turn_ - *agent->died_turn >= CORPSE_TURNS) departed_.push_back(std::move(agent));
@@ -483,10 +492,17 @@ void Simulation::index_cells() {
     for (auto& cell : cells_) cell.clear();
     for (auto& cell : carrion_) cell.clear();
     carrion_count_ = 0;
+    for (auto& cell : kills_) cell.clear();
+    kill_count_ = 0;
     for (const auto& agent : agents_) {
         if (!in_bounds(agent->x, agent->y)) continue;
         if (agent->alive()) {
             cell_at(agent->x, agent->y).push_back(agent.get());
+        } else if (fresh(*agent)) {
+            if (agent->species != Species::Plant) {
+                kills_[static_cast<std::size_t>(agent->y) * width_ + agent->x].push_back(agent.get());
+                ++kill_count_;
+            }
         } else if (agent->meat > 0) {
             carrion_[static_cast<std::size_t>(agent->y) * width_ + agent->x].push_back(agent.get());
             ++carrion_count_;
@@ -518,6 +534,18 @@ void Simulation::seed_plant(Bitzkey& plant) {
         return;
     }
     sprout(dna, cell, plant.generation + 1);
+}
+
+void Simulation::wither_grass() {
+    // Grass dies back where it isn't medium: a tuft a cell every GRASS_DIEBACK turns, the cells
+    // taking their turns in step.
+    for (int y = 0; y < height_; ++y) {
+        if (climate_[static_cast<std::size_t>(y)] == Medium) continue;
+        for (int x = 0; x < width_; ++x) {
+            int& tufts = grass_[static_cast<std::size_t>(y) * width_ + x];
+            if (tufts > 0 && (x + y * width_ + turn_) % GRASS_DIEBACK == 0) tufts -= 1;
+        }
+    }
 }
 
 bool Simulation::room_for_seedling(Cell cell) const {
@@ -614,8 +642,11 @@ void Simulation::think(Bitzkey& agent) {
         }
     }
     const Values values = agent.brain->values(sensed.senses);
+    const double comfortable = comfort(agent, situation);
     if (agent.has_last_senses) {
-        const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comfort(agent, situation);
+        // What came of its last choice: whatever raised its health (fullness counting with it) or its
+        // mood was a success, whatever lowered them a failure, by how much; both may happen.
+        const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comfortable - agent.last_comfort;
         const double discount = 0.7 + 0.27 * agent.feeling(Patience);
         double best = values[options[0]];
         for (const int option : options) best = std::max(best, values[option]);
@@ -648,6 +679,7 @@ void Simulation::think(Bitzkey& agent) {
     agent.last_senses = sensed.senses;
     agent.last_choice = choice;
     agent.last_wellbeing = wellbeing(agent);
+    agent.last_comfort = comfortable;
     agent.reward = 0.0;
     agent.assailant.reset();  // the chance to strike back, or need to flee, passes with this choice
     agent.panicked = false;
@@ -702,7 +734,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     const bool grazes = agent.species != Species::Predator;
     s.grass_here = grazes && grass_at(agent.x, agent.y) > 0;
     if (grazes) s.grass = nearest_grass(agent, sight);
-    s.carrion = nearest_carrion(agent, sight);
+    if (agent.species != Species::Grazer) s.carrion = nearest_carrion(agent, sight);  // grazers don't scavenge
+    if (agent.species == Species::Omnivore || agent.species == Species::Predator) s.kill = nearest_kill(agent, sight);
     const Seen seen = look_around(agent, sight);
     s.quarry = seen.quarry;
     s.hunter = seen.hunter;
@@ -742,6 +775,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     available[Forage] = s.grass.has_value();
     available[Browse] = s.flora != nullptr;
     available[Scavenge] = s.carrion != nullptr;
+    available[Feast] = s.kill != nullptr;
     available[Court] = s.suitor != nullptr;
     available[Breed] = s.mate && agent.can_breed() && !s.nurseries.empty() && room() > 0 &&
                        crowding(agent, *s.mate) < CROWDING_LIMIT && food_supply(agent) >= FOOD_NEEDED;
@@ -775,6 +809,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     senses[SenseKinNear] = std::min(3, s.kin) / 3.0;
     senses[SenseOthersNear] = std::min(3, s.others) / 3.0;
     senses[SenseCarrionCloseness] = closeness(agent, cell_of(s.carrion), sight);
+    senses[SenseKillCloseness] = closeness(agent, cell_of(s.kill), sight);
     senses[SensePlantCloseness] = closeness(agent, cell_of(s.flora), sight);
     senses[SenseAssailantNear] = s.assailant != nullptr;
     senses[SenseCounterFrailty] =
@@ -789,6 +824,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     senses[SenseComfortCloseness] = discomfort ? closeness(agent, comfort, sight) : 1.0;
     senses[SenseAge] = std::min(1.0, agent.age / 400.0);
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
+    for (int action = 0; action < ACTION_COUNT; ++action) senses[SenseOpen + action] = available[action];
+    gene_senses(agent.dna, senses);
 
     s.rivalry = agent.rivalry;
     s.for_herd = s.assailant == nullptr;
@@ -830,10 +867,10 @@ void Simulation::die(Bitzkey& agent, std::string_view cause) {
     agent.last_action = cause;
     const double nourished = agent.species == Species::Plant ? 0.0 : std::max(0.0, 1 - agent.hunger / 100);
     agent.meat = (CARRION_MEAT + CARRION_MEAT_FOR_SIZE * agent.physique(Size)) * nourished * (cause == "killed" ? 0.5 : 1);
-    agent.rot = agent.meat / CORPSE_TURNS;
-    if (in_bounds(agent.x, agent.y)) {
-        carrion_[static_cast<std::size_t>(agent.y) * width_ + agent.x].push_back(&agent);
-        ++carrion_count_;
+    agent.rot = agent.meat / std::max(1, CORPSE_TURNS - FRESH_KILL_TURNS);  // it rots once no longer fresh
+    if (agent.species != Species::Plant && in_bounds(agent.x, agent.y)) {
+        kills_[static_cast<std::size_t>(agent.y) * width_ + agent.x].push_back(&agent);
+        ++kill_count_;
     }
     deaths_ += 1;
     if (agent.species == Species::Plant) {
@@ -863,6 +900,9 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
             break;
         case Scavenge:
             scavenge(agent, *s.carrion);
+            break;
+        case Feast:
+            feast(agent, *s.kill);
             break;
         case Rest:
             agent.hunger = std::max(0.0, agent.hunger - agent.burn / 2);
@@ -940,6 +980,29 @@ void Simulation::scavenge(Bitzkey& agent, Bitzkey& corpse) {
     corpse.meat -= bite;
     agent.nourish(bite * agent.digestion);
     agent.last_action = "scavenged";
+}
+
+void Simulation::feast(Bitzkey& agent, Bitzkey& corpse) {
+    // Go to the fresh kill and, once alongside, eat it whole: FRESH_KILL_MEALS times the meal of
+    // making the kill. It isn't scavenging, and nothing is left: the body is gone at the turn's end.
+    move_toward(agent, corpse.x, corpse.y);
+    if (distance(corpse.x, corpse.y, agent.x, agent.y) > 1) {
+        agent.last_action = "sought a kill";
+        return;
+    }
+    agent.nourish(FRESH_KILL_MEALS * (KILL_MEAL + KILL_MEAL_FOR_SIZE * corpse.physique(Size)));
+    corpse.meat = 0.0;
+    corpse.died_turn = turn_ - CORPSE_TURNS;
+    if (in_bounds(corpse.x, corpse.y)) {
+        auto& kills = kills_[static_cast<std::size_t>(corpse.y) * width_ + corpse.x];
+        kills.erase(std::find(kills.begin(), kills.end(), &corpse));
+        --kill_count_;
+    }
+    agent.last_action = "feasted";
+}
+
+bool Simulation::fresh(const Bitzkey& corpse) const {
+    return corpse.died_turn && turn_ - *corpse.died_turn <= FRESH_KILL_TURNS;
 }
 
 double Simulation::damage(const Bitzkey& attacker, const Bitzkey& defender) {
@@ -1061,12 +1124,14 @@ void Simulation::breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells)
                                          std::min(costs[1], std::max(0.0, 100 - second.hunger)) * second.stomach};
     const double given = py_sum(gifts);
     for (const Cell& cell : cells) {
-        auto brain = std::make_shared<Brain>(Brain::inherit(*first.brain, *second.brain, random_));
         // The child's mind starts at the average of its parents' current minds, mutated, and its
-        // dot is written from that mind, so experience is inherited and shows.
+        // dot is written from that mind, so experience is inherited and shows. Its brain, a mix of
+        // its parents', is as deep as its own inborn intellect makes it.
         const Mind mind = inherit_mind(first.mind, second.mind, random_, mind_mutation_);
-        Bitzkey& child = add_agent(cross(first.dna, second.dna, random_, mind, MIND_MUTATION_CHANCE, body_mutation_),
-                                   cell.x, cell.y, std::move(brain));
+        const Dna dna = cross(first.dna, second.dna, random_, mind, MIND_MUTATION_CHANCE, body_mutation_);
+        auto brain = std::make_shared<Brain>(
+            Brain::inherit(*first.brain, *second.brain, random_, depth_for(decode_mind(dna)[Intellect])));
+        Bitzkey& child = add_agent(dna, cell.x, cell.y, std::move(brain));
         child.mind = mind;
         child.hunger = std::max(0.0, 100 - given / static_cast<double>(cells.size()) / child.stomach);
         child.generation = std::max(first.generation, second.generation) + 1;
@@ -1142,6 +1207,18 @@ Bitzkey* Simulation::nearest_carrion(const Bitzkey& agent, int sight) const {
         if (!in_bounds(x, y)) continue;
         for (Bitzkey* corpse : carrion_[static_cast<std::size_t>(y) * width_ + x]) {
             if (corpse->meat > 0) return corpse;
+        }
+    }
+    return nullptr;
+}
+
+Bitzkey* Simulation::nearest_kill(const Bitzkey& agent, int sight) const {
+    if (kill_count_ == 0) return nullptr;
+    for (const Offset& offset : SEEN_WITHIN[static_cast<std::size_t>(sight)]) {
+        const int x = agent.x + offset.dx, y = agent.y + offset.dy;
+        if (!in_bounds(x, y)) continue;
+        for (Bitzkey* corpse : kills_[static_cast<std::size_t>(y) * width_ + x]) {
+            if (feeds_on(agent, *corpse)) return corpse;
         }
     }
     return nullptr;

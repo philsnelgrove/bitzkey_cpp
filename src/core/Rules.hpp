@@ -3,7 +3,7 @@
 // advanced panel can change them before a world starts.
 //
 // Each rule names a constant, or one entry of an array or table, by the same key as the Python
-// version (tools/Rules.py), such as FORAGE_RADIUS, ANIMAL_LIFESPAN.0, GRAZING.grazer or
+// version (tools/Rules.py), such as FORAGE_RADIUS, LIFESPAN_YEARS.0, GRAZING.grazer or
 // EXPERIENCES.kill.aggression, with the same limits and steps. Rules are program-wide: `apply` sets
 // them all, and a world plays by whatever was set when it runs. Settings the configuration panel
 // already covers (world size, population, grass density, the population cap and mutation rates)

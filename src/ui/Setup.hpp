@@ -32,7 +32,7 @@ struct Setting {
     bool optional = false;     // may be left blank, meaning "none"
     std::string_view blank;    // what a blank optional setting shows
 };
-extern const std::array<Setting, 8> SETTINGS;
+extern const std::array<Setting, 9> SETTINGS;
 
 using Defaults = std::map<std::string, std::optional<int>, std::less<>>;
 
@@ -85,7 +85,7 @@ public:
 
 private:
     friend struct Screens;  // the screenshot tool
-    static constexpr int ROW_HEIGHT = 50;
+    static constexpr int ROW_HEIGHT = 46;
     static constexpr int IMPORT_HEIGHT = 170;
     static constexpr int TEXT_LINES = 5;
 

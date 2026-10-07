@@ -40,19 +40,31 @@ TEST_CASE("zones band the map arctic, temperate, equator, temperate, arctic") {
     CHECK(rows == bands({{Cold, 20}, {Medium, 20}, {Hot, 20}, {Medium, 20}, {Cold, 20}}));
 }
 
-TEST_CASE("a year is 180 turns in four quarters") {
+TEST_CASE("a year is 360 turns in four quarters by default") {
     std::vector<int> seasons;
-    for (const int turn : {0, 44, 45, 89, 90, 134, 135, 179, 180}) seasons.push_back(season(turn));
+    for (const int turn : {0, 89, 90, 179, 180, 269, 270, 359, 360}) seasons.push_back(season(turn));
     CHECK(seasons == std::vector<int>{0, 0, 1, 1, 2, 2, 3, 3, 0});
-    CHECK((year(0) == 1 && year(179) == 1 && year(180) == 2 && year(400) == 3));
+    CHECK((year(0) == 1 && year(359) == 1 && year(360) == 2 && year(800) == 3));
+}
+
+TEST_CASE("a world sets the year length for seasons and lifespans") {
+    Simulation::Settings settings{20, 20, 0, 1};
+    settings.year_length = 100;
+    Simulation simulation(settings);
+    CHECK((season(25) == 1 && season(50) == 2 && year(100) == 2));
+    CHECK(simulation.add_agent(encode_dna(Species::Grazer), 1, 1).lifespan == doctest::Approx(100));  // the smallest live a year
+    settings.year_length = 3;
+    CHECK_THROWS_AS(Simulation{settings}, std::invalid_argument);
+    const Simulation standard(Simulation::Settings{20, 20, 0, 1});
+    CHECK(year(360) == 2);  // back to the default
 }
 
 TEST_CASE("each hemisphere and the equator are a step colder in its winter") {
     CHECK(rows_on(10) == bands({{VeryCold, 20}, {Cold, 20}, {Medium, 20}, {Medium, 20}, {Cold, 20}}));
-    CHECK(rows_on(100) == bands({{Cold, 20}, {Medium, 20}, {Medium, 20}, {Cold, 20}, {VeryCold, 20}}));
+    CHECK(rows_on(200) == bands({{Cold, 20}, {Medium, 20}, {Medium, 20}, {Cold, 20}, {VeryCold, 20}}));
     const std::vector<int> normal = bands({{Cold, 20}, {Medium, 20}, {Hot, 20}, {Medium, 20}, {Cold, 20}});
-    for (const int turn : {50, 150, 230}) CHECK(rows_on(turn) == normal);
-    CHECK(rows_on(190) == rows_on(10));  // the next year repeats
+    for (const int turn : {100, 300, 460}) CHECK(rows_on(turn) == normal);
+    CHECK(rows_on(370) == rows_on(10));  // the next year repeats
 }
 
 TEST_CASE("tolerance spares an animal one direction, and plants none") {
@@ -72,7 +84,7 @@ TEST_CASE("tolerance spares an animal one direction, and plants none") {
 }
 
 TEST_CASE("a step from home doubles an animal's food, and two steps also hurt") {
-    Simulation simulation = world_at(59);  // the next turn is in the second quarter: no winter
+    Simulation simulation = world_at(119);  // the next turn is in the second quarter: no winter
     Bitzkey& at_home = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}}), 10, 30);
     Bitzkey& one_away = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Cold}}), 30, 30);
     Bitzkey& two_away = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", VeryCold}}), 50, 30);
@@ -97,7 +109,7 @@ TEST_CASE("winter turns a home zone hostile, and the cold can kill") {
 }
 
 TEST_CASE("a plant out of its temperature withers without growing or seeding, and two steps hurt") {
-    Simulation simulation = world_at(59);
+    Simulation simulation = world_at(119);
     Bitzkey& one_away = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Hot}, {"fertility", 7}}), 50, 30);
     Bitzkey& two_away = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", VeryCold}, {"fertility", 7}}), 20, 30);
     for (Bitzkey* plant : {&one_away, &two_away}) {
@@ -113,7 +125,7 @@ TEST_CASE("a plant out of its temperature withers without growing or seeding, an
 }
 
 TEST_CASE("a plant out of its temperature gives half the food") {
-    Simulation simulation = world_at(60);
+    Simulation simulation = world_at(120);
     Bitzkey& at_home = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Medium}}), 50, 30);
     Bitzkey& away = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Cold}}), 60, 30);
     CHECK((simulation.plant_yield(at_home) == 1.0 && simulation.plant_yield(away) == 0.5));
@@ -148,7 +160,7 @@ TEST_CASE("spawned plants are at home in their zone, and imports keep theirs") {
 }
 
 TEST_CASE("an animal senses how far it is from home and how close home weather is") {
-    Simulation simulation = world_at(60);
+    Simulation simulation = world_at(120);
     Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Cold}, {"sight", 7}}), 50, 23);
     const auto comfort = simulation.comfort_row(grazer, grazer.sight);
     REQUIRE(comfort.has_value());
@@ -181,7 +193,7 @@ TEST_CASE("grass grows only where it is medium now") {
 }
 
 TEST_CASE("a seed that falls where it can't grow waits for its temperature") {
-    Simulation simulation = world_at(60);
+    Simulation simulation = world_at(120);
     simulation.set_mutation(0.5, 0.0);
     Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Cold}, {"fertility", 7}}), 50, 30);
     simulation.index_cells();
@@ -192,9 +204,9 @@ TEST_CASE("a seed that falls where it can't grow waits for its temperature") {
     REQUIRE(simulation.seeds().size() == 1);
     CHECK(simulation.agents().size() == 1);
     const Simulation::Seed seed = simulation.seeds().front();
-    CHECK((seed.generation == 1 && seed.sown == 60 && plant.children == 1));
+    CHECK((seed.generation == 1 && seed.sown == 120 && plant.children == 1));
 
-    while (simulation.turn() < 190) simulation.take_turn();  // next year's northern winter makes its zone cold
+    while (simulation.turn() < 370) simulation.take_turn();  // next year's northern winter makes its zone cold
     CHECK(simulation.seeds().empty());
     const auto& agents = simulation.agents();
     const auto sprouted = std::find_if(agents.begin(), agents.end(), [&](const auto& agent) { return agent->dna == seed.dna; });
@@ -205,18 +217,19 @@ TEST_CASE("a seed that falls where it can't grow waits for its temperature") {
 TEST_CASE("a seed stays viable for three quarters of a year") {
     Simulation simulation = world_at(0);
     simulation.seeds().push_back({50, 30, encode_dna(Species::Plant, {{"temperature", VeryCold}}), 1, 0});  // never very cold there
-    while (simulation.turn() < 134) simulation.take_turn();
+    while (simulation.turn() < 269) simulation.take_turn();
     CHECK(simulation.seeds().size() == 1);
     simulation.take_turn();
     CHECK(simulation.seeds().empty());
 }
 
 TEST_CASE("waiting seeds rewind and replay with the world") {
-    Simulation simulation(Simulation::Settings{40, 40, 60, 1});
-    for (int turn = 0; turn < 90; ++turn) simulation.advance();
+    Simulation simulation(Simulation::Settings{40, 40, 60, 3});
+    while (simulation.seeds().empty() && simulation.turn() < 300) simulation.advance();  // run until some seeds are waiting
     const std::vector<Simulation::Seed> seeds = simulation.seeds();
+    const int turn = simulation.turn();
     CHECK(!seeds.empty());
-    simulation.seek(30);
-    simulation.seek(90);
+    simulation.seek(turn / 2);
+    simulation.seek(turn);
     CHECK(simulation.seeds() == seeds);
 }

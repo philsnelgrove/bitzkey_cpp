@@ -27,7 +27,8 @@ struct Options {
                          {"seed", std::nullopt},
                          {"population_cap", std::nullopt},
                          {"mind_mutation", static_cast<int>(100 * MIND_MUTATION_CHANCE)},
-                         {"body_mutation", static_cast<int>(100 * BODY_MUTATION_CHANCE)}};
+                         {"body_mutation", static_cast<int>(100 * BODY_MUTATION_CHANCE)},
+                         {"year_length", DEFAULT_YEAR_LENGTH}};
     bool windowed = false;
 };
 

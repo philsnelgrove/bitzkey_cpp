@@ -32,6 +32,7 @@ void usage() {
         "  --population-cap N          most animals alive at once (default: no limit)\n"
         "  --mind-mutation N           percent chance per roll of a mind mutation (default 50)\n"
         "  --body-mutation N           percent chance a birth flips a body bit (default 50)\n"
+        "  --year-length N             turns in a year, of four seasons (default 360)\n"
         "  --import FILE               add the Bitzkeys exported in FILE\n"
         "  --turns N                   turns to run (default 400)\n"
         "  --report-every N            print a population line every N turns (default 100)\n"
@@ -98,6 +99,7 @@ int main(int argc, char** argv) {
             else if (flag == "--population-cap") settings.population_cap = std::stoi(value);
             else if (flag == "--mind-mutation") settings.mind_mutation = std::stod(value);
             else if (flag == "--body-mutation") settings.body_mutation = std::stod(value);
+            else if (flag == "--year-length") settings.year_length = std::stoi(value);
             else if (flag == "--turns") turns = std::stoi(value);
             else if (flag == "--report-every") report_every = std::stoi(value);
             else if (flag == "--trace") trace_path = value;
