@@ -44,6 +44,9 @@ enum Sense : int {
     SenseClimateDiscomfort,  // how far the temperature here is from home, as it feels it: 0, 0.5 a step, 1 two or more
     SenseComfortCloseness,   // 1 where it feels at home or next to such a row, falling to 0 beyond sight
     SenseAge,              // 0 at birth, 1 at 400 turns or older
+    // The time of year, as two hands of a clock a quarter of a year apart, so the year's turn is smooth:
+    SenseTimeOfYearA,      // 1 at the start of the year, falling to 0 halfway through, and rising back to 1
+    SenseTimeOfYearB,      // the same a quarter of a year later: 0 a quarter in, 1 three quarters in
     SenseMind,             // then its current temperament, each trait 0..7 scaled to 0..1
 };
 enum Action : int { Eat, Forage, Browse, Scavenge, Feast, Rest, Court, Breed, Hunt, Attack, Defend, Flee, Herd, Explore };
@@ -63,7 +66,7 @@ constexpr std::array<std::string_view, INPUT_SIZE> SENSES = {
     "ready_to_breed", "prey_near", "prey_frailty", "prey_closeness", "threat_near", "threat_danger",
     "threat_closeness", "kin_near", "others_near", "carrion_closeness", "kill_closeness", "plant_closeness",
     "assailant_near", "counter_frailty", "rivalry", "herd_near", "herd_closeness", "alarm",
-    "climate_discomfort", "comfort_closeness", "age", "aggression", "libido", "sociability", "curiosity",
+    "climate_discomfort", "comfort_closeness", "age", "time_of_year_a", "time_of_year_b", "aggression", "libido", "sociability", "curiosity",
     "fear", "appetite", "patience", "intellect", "empathy", "tolerance", "open_eat", "open_forage",
     "open_browse", "open_scavenge", "open_feast", "open_rest", "open_court", "open_breed", "open_hunt",
     "open_attack", "open_defend", "open_flee", "open_herd", "open_explore", "inborn_aggression",

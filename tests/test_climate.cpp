@@ -285,9 +285,23 @@ TEST_CASE("a seed stays viable for three quarters of a year") {
     CHECK(simulation.seeds().empty());
 }
 
+TEST_CASE("animals sense the time of year as two clock hands a quarter apart") {
+    Simulation simulation = world_at(0);
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer), 50, 50);
+    std::vector<std::pair<double, double>> hands;
+    for (int turn = 0; turn <= 360; ++turn) {
+        if (turn % 90 == 0) {
+            const Simulation::Sensed sensed = simulation.sense(grazer);
+            hands.emplace_back(sensed.senses[SenseTimeOfYearA], sensed.senses[SenseTimeOfYearB]);
+        }
+        if (turn < 360) simulation.take_turn();
+    }
+    CHECK(hands == std::vector<std::pair<double, double>>{{1.0, 0.5}, {0.5, 0.0}, {0.0, 0.5}, {0.5, 1.0}, {1.0, 0.5}});
+}
+
 TEST_CASE("waiting seeds rewind and replay with the world") {
-    Simulation simulation(Simulation::Settings{40, 40, 60, 3});
-    while (simulation.seeds().empty() && simulation.turn() < 300) simulation.advance();  // run until some seeds are waiting
+    Simulation simulation(Simulation::Settings{40, 40, 60, 4});
+    while (simulation.seeds().empty() && simulation.turn() < 300 && !simulation.ended()) simulation.advance();  // until some seeds wait
     const std::vector<Simulation::Seed> seeds = simulation.seeds();
     const int turn = simulation.turn();
     CHECK(!seeds.empty());

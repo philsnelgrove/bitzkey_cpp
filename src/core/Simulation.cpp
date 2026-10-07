@@ -835,6 +835,9 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     senses[SenseClimateDiscomfort] = std::min(2, discomfort) / 2.0;
     senses[SenseComfortCloseness] = discomfort ? closeness(agent, comfort, sight) : 1.0;
     senses[SenseAge] = std::min(1.0, agent.age / 400.0);
+    const double day = static_cast<double>(turn_ % YEAR_LENGTH) / YEAR_LENGTH;  // 0 at the year's start, nearly 1 at its end
+    senses[SenseTimeOfYearA] = std::abs(2 * day - 1);
+    senses[SenseTimeOfYearB] = std::abs(2 * std::fmod(day + 0.25, 1.0) - 1);
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
     for (int action = 0; action < ACTION_COUNT; ++action) senses[SenseOpen + action] = available[action];
     gene_senses(agent.dna, senses);
