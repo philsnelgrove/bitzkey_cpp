@@ -470,6 +470,8 @@ void Simulation::take_turn(bool replay) {
             seed_plant(*agent);
             continue;
         }
+        agent->seen_success *= SOCIAL_MEMORY;
+        agent->seen_failure *= SOCIAL_MEMORY;
         settle(*agent);
         if (agent->hunger >= 80) experience(*agent, Starving);
         think(*agent);
@@ -832,6 +834,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
         view.middle ? std::max(0.0, 1 - static_cast<double>(distance(view.middle->x, view.middle->y, agent.x, agent.y)) / HERD_RADIUS)
                     : 0.0;
     senses[SenseAlarm] = agent.alarm.has_value();
+    senses[SenseHerdSuccess] = agent.seen_success;
+    senses[SenseHerdFailure] = agent.seen_failure;
     senses[SenseClimateDiscomfort] = std::min(2, discomfort) / 2.0;
     senses[SenseComfortCloseness] = discomfort ? closeness(agent, comfort, sight) : 1.0;
     senses[SenseAge] = std::min(1.0, agent.age / 400.0);
@@ -875,6 +879,7 @@ void Simulation::die(Bitzkey& agent, std::string_view cause) {
     if (agent.brain && agent.has_last_senses) {
         const double penalty = cause == "old age" ? 0.0 : DEATH_PENALTY;
         learn(agent, agent.reward + wellbeing(agent) - agent.last_wellbeing - penalty);
+        if (cause != "old age") witness(agent, -DEATH_PENALTY);  // its herd sees it fail
     }
     agent.brain.reset();
     agent.health = std::min(agent.health, 0.0);  // whatever the cause, a recorded death leaves it dead
@@ -1055,8 +1060,10 @@ void Simulation::attack(Bitzkey& agent, Bitzkey& victim) {
             experience(victim, WoundedAlone);
         }
     } else {
-        agent.nourish(KILL_MEAL + KILL_MEAL_FOR_SIZE * victim.physique(Size));
+        const double meal = KILL_MEAL + KILL_MEAL_FOR_SIZE * victim.physique(Size);
+        agent.nourish(meal);
         agent.reward += 2 * joy;
+        witness(agent, meal / agent.stomach / 100);  // its pack sees it succeed: the fullness it gained
         if (rival_weight(agent, victim) > 0) {  // one fewer rival for the feeding ground
             agent.reward += RIVAL_KILL_JOY * agent.rivalry * (1 - 0.5 * agent.feeling(Tolerance));
         }
@@ -1324,6 +1331,25 @@ double Simulation::rival_weight(const Bitzkey& hunter, const Bitzkey& other) {
         return other.species == Species::Predator ? 1 - hunter.feeling(Empathy) : 0.0;
     }
     return 0.0;
+}
+
+void Simulation::witness(const Bitzkey& actor, double outcome) {
+    if (!actor.has_last_senses) return;
+    for (Bitzkey* observer : nearby(actor, MAX_SIGHT)) {
+        if (!observer->brain || !society(*observer, actor) || distance(observer->x, observer->y, actor.x, actor.y) > observer->sight) {
+            continue;
+        }
+        const double heed = observer->feeling(Empathy) * observer->feeling(Intellect);
+        observer->own_brain().learn(actor.last_senses, actor.last_choice, outcome, LEARNING_RATE * heed * SOCIAL_LEARNING);
+        observer->reward += SOCIAL_MOOD * heed * outcome;
+        if (outcome > 0) observer->seen_success = 1.0;
+        else observer->seen_failure = 1.0;
+    }
+}
+
+bool Simulation::society(const Bitzkey& observer, const Bitzkey& actor) const {
+    return &observer != &actor && observer.species != Species::Plant && observer.species == actor.species &&
+           (observer.species != Species::Predator || same_kind(observer, actor)) && willing(observer, actor);
 }
 
 bool Simulation::herd_mate(const Bitzkey& agent, const Bitzkey& other) const {

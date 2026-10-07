@@ -58,6 +58,12 @@ inline double CURIOSITY_JOY = 0.15;
 inline double FEAR_DREAD = 0.3;
 inline double UNEASE = 0.1;
 inline double EMPATHY_PAIN = 0.15;
+// Society: an animal sees what happens to its herd-mates (its pack, for a predator) within its sight. A
+// herd-mate's kill is a success, its death (but of old age) a failure; the witness learns from it as
+// if it had made the herd-mate's last choice itself, and feels it, by its empathy times its intellect.
+inline double SOCIAL_LEARNING = 1.0;  // how fast it learns from what it sees, beside learning from its own choices
+inline double SOCIAL_MOOD = 0.3;      // how much what it sees moves its mood
+inline double SOCIAL_MEMORY = 0.8;    // the share of a seen success or failure it still senses a turn later
 inline double OTHER_KIND = 0.4;
 inline double LEARNING_RATE = 0.045;
 inline std::array<double, 2> PANIC = {0.3, 1.0};
@@ -195,6 +201,8 @@ struct Bitzkey {
     bool hunts_grazers = true;          // hunters: whether grazers were common enough to hunt
     bool hunts_omnivores = true;        // predators: the same for omnivores
     std::optional<int> alarm;           // what struck a herd-mate close by since it last acted
+    double seen_success = 0.0;          // a herd-mate's success it saw, fading turn by turn
+    double seen_failure = 0.0;          // a herd-mate's failure it saw, the same
     std::optional<int> herd_assailant;  // what struck a herd-mate close by, from alongside it
     double meat = 0.0;                  // a corpse's meat left for scavengers
     double rot = 0.0;                   // meat lost to rot each turn
@@ -397,6 +405,12 @@ public:
     std::pair<bool, bool> prey_switching(const Bitzkey& hunter) const;
     static double flee_range(const Bitzkey& agent, int herd_near);
     bool herd_mate(const Bitzkey& agent, const Bitzkey& other) const;
+    // The herd-mates within sight of an animal's success (an outcome above 0) or failure learn from it
+    // as if they had made its last choice themselves, feel it, and sense it for a while; how much
+    // they take it in is their empathy times their intellect.
+    void witness(const Bitzkey& actor, double outcome);
+    // Whether an animal counts another, alive or not, as one of its herd (or pack).
+    bool society(const Bitzkey& observer, const Bitzkey& actor) const;
 
 private:
     struct Snapshot {

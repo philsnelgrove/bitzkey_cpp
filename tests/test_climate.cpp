@@ -299,6 +299,52 @@ TEST_CASE("animals sense the time of year as two clock hands a quarter apart") {
     CHECK(hands == std::vector<std::pair<double, double>>{{1.0, 0.5}, {0.5, 0.0}, {0.0, 0.5}, {0.5, 1.0}, {1.0, 0.5}});
 }
 
+TEST_CASE("herd-mates in sight learn from a death and feel it, by empathy and intellect") {
+    Simulation simulation = world_at(200);
+    simulation.add_agent(encode_dna(Species::Predator), 90, 90);  // far off
+    const Dna bright = encode_dna(Species::Grazer, {{"empathy", 7}, {"intellect", 7}, {"sight", 3}});
+    Bitzkey& dying = simulation.add_agent(bright, 50, 50);
+    Bitzkey& witness = simulation.add_agent(bright, 50, 53);  // three cells off: in sight
+    Bitzkey& dull = simulation.add_agent(encode_dna(Species::Grazer, {{"empathy", 7}, {"intellect", 0}, {"sight", 3}}), 51, 50);
+    Bitzkey& far = simulation.add_agent(bright, 50, 59);  // out of sight
+    Bitzkey& stranger = simulation.add_agent(encode_dna(Species::Omnivore, {{"empathy", 7}, {"intellect", 7}, {"sight", 3}}), 49, 50);
+    simulation.index_cells();
+    const Simulation::Sensed sensed = simulation.sense(dying);
+    dying.last_senses = sensed.senses;
+    dying.last_choice = sensed.options.front();
+    dying.has_last_senses = true;
+    const Brain before = *witness.brain;
+    dying.health = 0;
+    simulation.die(dying, "froze");
+    Brain expected = before;
+    expected.learn(dying.last_senses, dying.last_choice, -DEATH_PENALTY, LEARNING_RATE);
+    CHECK(*witness.brain == expected);
+    CHECK((witness.reward == SOCIAL_MOOD * -DEATH_PENALTY && witness.seen_failure == 1.0));
+    for (const Bitzkey* unmoved : {&dull, &far, &stranger}) CHECK((unmoved->reward == 0.0 && unmoved->seen_failure == 0.0));
+}
+
+TEST_CASE("a pack learns from a kill, and what it saw is an input that fades") {
+    Simulation simulation = world_at(200);
+    simulation.add_agent(encode_dna(Species::Predator), 90, 90);
+    const Dna pack = encode_dna(Species::Predator, {{"empathy", 7}, {"intellect", 7}, {"sight", 3}, {"strength", 7}, {"weapons", 7}});
+    Bitzkey& hunter = simulation.add_agent(pack, 50, 50);
+    Bitzkey& mate = simulation.add_agent(pack, 52, 50);
+    Bitzkey& prey = simulation.add_agent(encode_dna(Species::Grazer), 50, 51);
+    prey.health = 0.1;
+    simulation.index_cells();
+    const Simulation::Sensed sensed = simulation.sense(hunter);
+    hunter.last_senses = sensed.senses;
+    hunter.last_choice = sensed.options.front();
+    hunter.has_last_senses = true;
+    simulation.attack(hunter, prey);
+    CHECK(!prey.alive());
+    CHECK(mate.seen_success == 1.0);
+    const Simulation::Sensed seen = simulation.sense(mate);
+    CHECK(seen.senses[SenseHerdSuccess] == 1.0);
+    simulation.take_turn();
+    CHECK(mate.seen_success == doctest::Approx(SOCIAL_MEMORY));
+}
+
 TEST_CASE("waiting seeds rewind and replay with the world") {
     Simulation simulation(Simulation::Settings{40, 40, 60, 4});
     while (simulation.seeds().empty() && simulation.turn() < 300 && !simulation.ended()) simulation.advance();  // until some seeds wait
