@@ -208,7 +208,7 @@ TEST_CASE("each species weighs the food it eats against the mouths sharing it") 
     const Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer), 15, 15);
     const Bitzkey& omnivore = simulation.add_agent(encode_dna(Species::Omnivore), 14, 15);
     const Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator), 17, 15);
-    simulation.add_agent(encode_dna(Species::Plant), 15, 17);
+    simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Hot}}), 15, 17);  // at home on the equator
     simulation.add_agent(encode_dna(Species::Grazer), 15, 18);
     simulation.index_cells();
     simulation.set_grass_regrowth(0);  // judge the standing grass alone
@@ -403,7 +403,7 @@ TEST_CASE("only hunters feast, and only on what they live on") {
 
 TEST_CASE("grass dies back a tuft at a time where it isn't medium") {
     Simulation simulation(Simulation::Settings{20, 20, 0, 1});
-    while (simulation.turn() < 120) simulation.take_turn();  // mid-year: the arctic cold, the temperate zone medium
+    while (simulation.turn() < 200) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium
     simulation.clear_grass();
     for (int x = 0; x < 20; ++x) simulation.grass_cell(x, 1) = simulation.grass_cell(x, 5) = 3;  // arctic, then temperate
     const double regrowth = simulation.grass_regrowth();
@@ -443,8 +443,8 @@ TEST_CASE("a world with no animals left has ended") {
 TEST_CASE("grass grows twice as fast on and around corpses") {
     Simulation simulation = world();
     const auto& rows = simulation.medium_rows();  // grass grows only where it is medium
-    for (const int y : {6, 7, 8}) CHECK(std::find(rows.begin(), rows.end(), y) != rows.end());
-    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 0, 7);
+    for (const int y : {7, 8, 9}) CHECK(std::find(rows.begin(), rows.end(), y) != rows.end());
+    Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 0, 8);
     corpse.health = 0;
     simulation.die(corpse, "wounded");
     simulation.clear_grass();
@@ -453,7 +453,7 @@ TEST_CASE("grass grows twice as fast on and around corpses") {
     int cells = 0;
     for (int dx = -1; dx <= 1; ++dx) {
         for (int dy = -1; dy <= 1; ++dy) {
-            fertile += simulation.grass_at(py_mod(dx, 12), 7 + dy);
+            fertile += simulation.grass_at(py_mod(dx, 12), 8 + dy);
             ++cells;
         }
     }

@@ -536,7 +536,7 @@ void App::draw_sidebar(Canvas& canvas) {
     const int turn = simulation_->turn();
     canvas.text_at(font, format("YEAR %d", year(turn)), {232, 236, 219}, [&](Rect& box) { box.topright_at(x + width, UI(84)); });
     canvas.text_at(small, upper(SEASONS[static_cast<std::size_t>(season(turn))]),
-                   season(turn) % 2 == 0 ? Color{140, 185, 230} : Color{157, 177, 159},
+                   season(turn) % 2 ? Color{140, 185, 230} : Color{157, 177, 159},
                    [&](Rect& box) { box.topright_at(x + width, UI(108)); });
     canvas.line(x, UI(138), x + width, UI(138), {54, 68, 62});
     canvas.text(font, "POPULATION", {220, 229, 211}, x, UI(153));

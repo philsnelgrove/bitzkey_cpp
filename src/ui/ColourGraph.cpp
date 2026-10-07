@@ -553,7 +553,7 @@ void ColourGraph::draw_seasons(Canvas& canvas, const Rect& chart, const Rect& ti
     const auto left_of = [&](int turn) { return static_cast<int>(py_round(chart.x + (turn - first) * span)); };
     const auto ceiling = [](long long top, long long bottom) { return static_cast<int>((top + bottom - 1) / bottom); };
     for (int quarter = first * 4 / length; static_cast<long long>(quarter) * length / 4 <= last; ++quarter) {
-        if (quarter % 4 != 0 && quarter % 4 != 2) continue;
+        if (quarter % 4 != 1 && quarter % 4 != 3) continue;
         const int start = std::max(first, ceiling(static_cast<long long>(quarter) * length, 4));
         const int end = std::min(last + 1, ceiling(static_cast<long long>(quarter + 1) * length, 4));
         if (end > start) canvas.fill_rect({left_of(start), timeline.y + 1, left_of(end) - left_of(start), timeline.h - 2}, {30, 42, 56});

@@ -117,8 +117,8 @@ inline int PLANT_CROWDING = 3;
 inline double TEMPERAMENT_RELAPSE = 0.005;
 // Climate. The map is banded into zones across its height: ARCTIC_SHARE at the top and at the
 // bottom is arctic, cold; a strip of EQUATOR_SHARE across the middle is the equator, hot; the rest
-// is temperate, medium. Every YEAR_LENGTH turns is a year. Through its first quarter the north,
-// from the top down to and through the equator, is a step colder; through its third quarter the
+// is temperate, medium. Every YEAR_LENGTH turns is a year, starting mild. Through its second quarter
+// the north, from the top down to and through the equator, is a step colder; through its fourth the
 // south, from the bottom up to and through the equator, is. Every Bitzkey has a home temperature,
 // and may tolerate heat or cold, feeling a step less of it; plants tolerate nothing, and a plant
 // spawned at the start is at home in its zone's usual temperature.
@@ -126,9 +126,9 @@ constexpr int DEFAULT_YEAR_LENGTH = 360;
 inline int YEAR_LENGTH = DEFAULT_YEAR_LENGTH;  // each world sets it from its year length setting
 inline double ARCTIC_SHARE = 0.2;
 inline double EQUATOR_SHARE = 0.2;
-inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home needs this many times the food
-inline double CLIMATE_DAMAGE = 0.1;   // two steps or more from home, a Bitzkey loses this share of its full health a turn
-inline double PLANT_CLIMATE_YIELD = 0.5;  // a plant out of its temperature gives this share of its food
+inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home, or a plant too hot, needs this many times the food
+inline double CLIMATE_DAMAGE = 0.1;   // for each step from home, a Bitzkey loses this share of its full health a turn; plants from two
+inline double PLANT_CLIMATE_YIELD = 0.0;  // a plant out of its temperature gives this share of its food
 inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass loses a tuft every this many turns
 // A dead animal is a fresh kill, not yet carrion, through the turn it died and FRESH_KILL_TURNS more;
 // then it starts to rot. A predator or omnivore may eat a fresh kill of what it lives on whole,
@@ -138,7 +138,7 @@ inline double FRESH_KILL_MEALS = 3.0;
 inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
 inline double STARTING_TOLERANCE = 0.1;  // the chance a random starting genome carries each tolerance flag
 enum Temperature : int { Hot, Medium, Cold, VeryCold };
-constexpr std::array<std::string_view, 4> SEASONS = {"northern winter", "mild", "southern winter", "mild"};
+constexpr std::array<std::string_view, 4> SEASONS = {"mild", "northern winter", "mild", "southern winter"};
 
 int season(int turn);  // the quarter of the year a turn falls in, 0 to 3
 int year(int turn);    // the year a turn falls in, from 1

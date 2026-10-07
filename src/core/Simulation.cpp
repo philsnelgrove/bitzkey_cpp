@@ -115,7 +115,7 @@ int temperature_at(int y, int height, int turn) {
     const double place = (y + 0.5) / height;
     const bool equator = std::abs(place - 0.5) < EQUATOR_SHARE / 2;
     const int quarter = season(turn);
-    const bool winter = (quarter == 0 && (place < 0.5 || equator)) || (quarter == 2 && (place > 0.5 || equator));
+    const bool winter = (quarter == 1 && (place < 0.5 || equator)) || (quarter == 3 && (place > 0.5 || equator));
     return zone_temperature(y, height) + (winter ? 1 : 0);
 }
 
@@ -442,12 +442,14 @@ void Simulation::take_turn(bool replay) {
         const bool plant = agent->species == Species::Plant;
         const int here = in_bounds(agent->x, agent->y) ? climate_[static_cast<std::size_t>(agent->y)] : Medium;
         const int steps = agent->climate_steps(here);
-        agent->hunger += agent->burn * (steps && !plant ? CLIMATE_HUNGER : 1.0);
+        const bool hungrier = steps && (!plant || here < agent->climate.temperature);  // out of its temperature; a plant, too hot
+        agent->hunger += agent->burn * (hungrier ? CLIMATE_HUNGER : 1.0);
         if (agent->cooldown) agent->cooldown -= 1;
         if (agent->health < agent->max_health && agent->hunger < 65) agent->heal(0.005);
-        if (steps >= 2) agent->health -= CLIMATE_DAMAGE * agent->max_health;
+        // a tenth of its health a step; a plant takes one step in its stride
+        if (steps >= (plant ? 2 : 1)) agent->health -= CLIMATE_DAMAGE * steps * agent->max_health;
         if (agent->hunger >= 100) {  // out of its temperature, it died of exposure
-            die(*agent, steps && !plant ? exposure(*agent, here) : "starved");
+            die(*agent, hungrier ? exposure(*agent, here) : "starved");
             continue;
         }
         if (agent->health <= 0) {
