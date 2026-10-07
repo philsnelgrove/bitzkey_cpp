@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/PyFormat.hpp"
+#include "ui/Advanced.hpp"
 #include "ui/Designer.hpp"
 #include "ui/Platform.hpp"
 
@@ -287,6 +288,17 @@ bool SetupScreen::design() {
     return true;
 }
 
+bool SetupScreen::advanced() {
+    const auto [outcome, rules] = AdvancedScreen(window_, rules_).run();
+    if (outcome == AdvancedScreen::Outcome::Quit) return false;
+    if (rules) {
+        rules_ = *rules;
+        tell(std::to_string(rules_.size()) + " advanced rule" + (rules_.size() != 1 ? "s" : "") +
+             " changed from the defaults.");
+    }
+    return true;
+}
+
 void SetupScreen::paste_clipboard() {
     if (const auto text = clipboard_text()) {
         form_.paste(*text);
@@ -333,6 +345,7 @@ SetupScreen::Layout SetupScreen::layout() const {
     places.box = {section.x, section.y + UI(36), section.w, UI(16 * TEXT_LINES + 12)};
     places.start = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
     places.quit = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
+    places.advanced = Rect{0, 0, UI(120), UI(28)}.topright_at(card.right() - UI(20), card.y + UI(28));
     return places;
 }
 
@@ -348,6 +361,7 @@ SetupScreen::Click SetupScreen::click(int x, int y) {
     if (places.start.contains(x, y)) return Click::Start;
     if (places.quit.contains(x, y)) return Click::Quit;
     if (places.design.contains(x, y)) return design() ? Click::None : Click::WindowClosed;
+    if (places.advanced.contains(x, y)) return advanced() ? Click::None : Click::WindowClosed;
     if (places.paste.contains(x, y)) {
         paste_clipboard();
     } else if (places.load.contains(x, y)) {
@@ -380,6 +394,14 @@ void SetupScreen::draw(Canvas& canvas) {
     canvas.text(small, "NEW WORLD  /  CONFIGURATION", {144, 170, 151}, card.x + UI(52) + title, card.y + UI(33));
     canvas.text(UI.font(Face::Sans, 15), "Set up the world, then start the simulation.", {157, 177, 159}, card.x + UI(28),
                 card.y + UI(66));
+    const bool changed = !rules_.empty();
+    canvas.rect(places.advanced, changed ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(4));
+    canvas.text_at(UI.font(Face::Sans, 13, true), "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211},
+                   [&](Rect& box) { box.center_at(places.advanced.centerx(), places.advanced.centery()); });
+    if (changed) {
+        canvas.text_at(small, std::to_string(rules_.size()) + " rule" + (rules_.size() != 1 ? "s" : "") + " changed",
+                       {238, 183, 110}, [&](Rect& box) { box.midtop_at(places.advanced.centerx(), places.advanced.bottom() + UI(4)); });
+    }
     for (std::size_t index = 0; index < SETTINGS.size(); ++index) {
         draw_setting(canvas, SETTINGS[index], places.rows[index], static_cast<int>(index) == form_.focus);
     }

@@ -4,6 +4,7 @@ so the two versions can be compared line by line.
 It only reads the Python project; nothing there is changed.
 
     python parity/trace.py --seed 7 --turns 200 --out python_trace.txt
+    python parity/trace.py --seed 7 --rule CORPSE_TURNS=60 --rule GRAZING.grazer=1.5 --out python_trace.txt
 """
 
 import argparse
@@ -24,10 +25,23 @@ parser.add_argument("--mind-mutation", type=float, default=50)
 parser.add_argument("--body-mutation", type=float, default=50)
 parser.add_argument("--turns", type=int, default=200)
 parser.add_argument("--out", type=Path, required=True)
+parser.add_argument("--rule", action="append", default=[], metavar="KEY=VALUE",
+                    help="change one of the advanced rules; may be repeated")
 options = parser.parse_args()
 
 sys.path.insert(0, str(options.python_project))
+from tools import Rules  # noqa: E402
 from tools.Simulation import Simulation  # noqa: E402
+
+changes = {}
+for rule in options.rule:
+    key, _, value = rule.partition("=")
+    if key not in Rules.BY_KEY or not value:
+        parser.error(f"unknown rule {rule}")
+    changes[key] = float(value)
+if problems := Rules.problems({**Rules.DEFAULTS, **changes}):
+    parser.error(problems[0])
+Rules.apply(changes)
 
 
 def trace_line(world: Simulation) -> str:

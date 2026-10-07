@@ -9,6 +9,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
+#include "ui/Advanced.hpp"
 #include "ui/App.hpp"
 #include "ui/Designer.hpp"
 #include "ui/Setup.hpp"
@@ -33,6 +34,21 @@ struct Screens {
         setup.ask_to_quit();
         setup.draw(canvas);
         save(canvas, folder / "setup-quit.bmp");
+        setup.dialog_.reset();
+        setup.rules_ = {{"CORPSE_TURNS", 60}};
+        setup.draw(canvas);
+        save(canvas, folder / "setup-advanced.bmp");
+
+        AdvancedScreen advanced(window, setup.rules_);
+        advanced.form_.select(2);
+        advanced.show_focus();
+        advanced.draw(canvas);
+        save(canvas, folder / "advanced.bmp");
+        advanced.form_.select(70);
+        advanced.show_focus();
+        advanced.form_.type_text("0.3");
+        advanced.draw(canvas);
+        save(canvas, folder / "advanced-mid.bmp");
 
         Designer designer(window, encode_dna(Species::Predator, {{"size", 6}, {"strength", 5}, {"weapons", 7}, {"armour", 3},
                                                                  {"speed", 4}, {"sight", 5}, {"fertility", 4}, {"aggression", 6},

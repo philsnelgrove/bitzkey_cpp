@@ -15,6 +15,7 @@
 #include "core/Exchange.hpp"
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
+#include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 
 using namespace bitzkey;
@@ -36,7 +37,19 @@ void usage() {
         "  --report-every N            print a population line every N turns (default 100)\n"
         "  --trace FILE                write one line per turn, for comparing with the Python version\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
-        "  --brain-report FILE         write the brain report at the end\n";
+        "  --brain-report FILE         write the brain report at the end\n"
+        "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
+        "  --rules                     list the advanced rules, with their defaults and limits\n";
+}
+
+// Every rule, one line each, as the Python version lists them:
+//   KEY  group  default  minimum..maximum by step  label: hint
+void list_rules() {
+    for (const rules::Rule& rule : rules::all()) {
+        std::cout << rule.key << "  " << rule.group << "  " << rules::shown(rule, rule.get()) << "  "
+                  << rules::shown(rule, rule.minimum) << ".." << rules::shown(rule, rule.maximum) << " by "
+                  << rules::shown(rule, rule.step) << "  " << rule.label << ": " << rule.hint << '\n';
+    }
 }
 
 std::string trace_line(const Simulation& world) {
@@ -63,11 +76,16 @@ int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
     std::optional<std::string> trace_path, export_path, report_path;
+    rules::Values changes;
     try {
         for (int index = 1; index < argc; ++index) {
             const std::string flag = argv[index];
             if (flag == "--help" || flag == "-h") {
                 usage();
+                return 0;
+            }
+            if (flag == "--rules") {
+                list_rules();
                 return 0;
             }
             if (index + 1 >= argc) throw std::invalid_argument("missing value for " + flag);
@@ -85,6 +103,12 @@ int main(int argc, char** argv) {
             else if (flag == "--trace") trace_path = value;
             else if (flag == "--export") export_path = value;
             else if (flag == "--brain-report") report_path = value;
+            else if (flag == "--rule") {
+                const std::size_t equals = value.find('=');
+                const std::string key = value.substr(0, equals);
+                if (equals == std::string::npos || !rules::find(key)) throw std::invalid_argument("unknown rule " + value);
+                changes[key] = std::stod(value.substr(equals + 1));
+            }
             else if (flag == "--import") {
                 std::ifstream file(value, std::ios::binary);
                 if (!file) throw std::invalid_argument("cannot read " + value);
@@ -101,6 +125,14 @@ int main(int argc, char** argv) {
         usage();
         return 2;
     }
+
+    rules::Values values = rules::defaults();
+    for (const auto& [key, value] : changes) values[key] = value;
+    if (const auto found = rules::problems(values); !found.empty()) {
+        std::cerr << "bitzkey_cli: " << found.front() << '\n';
+        return 2;
+    }
+    rules::apply(changes);
 
     try {
         Simulation world(settings);

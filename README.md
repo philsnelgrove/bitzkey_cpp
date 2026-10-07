@@ -27,7 +27,8 @@ check below compares them.
 
 Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
-`--windowed`. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
+`--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 114
+as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, and MAX, which simulates as many turns as fit
 in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest
 group for each action, by species); it scrolls with the wheel or its scroll bar, and selecting a
@@ -73,7 +74,13 @@ The script is `packaging\bitzkey.iss`. The icon, `packaging\bitzkey.ico`, is dra
 
 Options: `--width`, `--height`, `--population`, `--seed`, `--grass-density`, `--population-cap`,
 `--mind-mutation`, `--body-mutation`, `--import FILE`, `--turns`, `--report-every`,
-`--trace FILE`, `--export FILE`, `--brain-report FILE`. Run with `--help` for details.
+`--trace FILE`, `--export FILE`, `--brain-report FILE`, `--rule KEY=VALUE` (change an advanced
+rule; repeat it for more) and `--rules` (list them, with their defaults and limits). Run with
+`--help` for details.
+
+```powershell
+.\build\Release\bitzkey_cli.exe --seed 1 --turns 400 --rule CORPSE_TURNS=60 --rule GRAZING.grazer=1.5
+```
 
 ## Checking the port against Python
 
@@ -87,9 +94,18 @@ and the exact sums of hunger and health. `bitzkey_cli --trace` writes the same l
 fc parity\cpp.txt parity\py.txt
 ```
 
+Both take `--rule KEY=VALUE` to compare worlds under changed advanced rules. `src/core/Rules.cpp`
+lists the rules in the order of the Python table (`tools/Rules.py`). `bitzkey_cli --rules` prints
+them in the same format as this Python loop, so the two lists can be compared line by line:
+
+```powershell
+..\bitzkey\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, '../bitzkey'); from tools import Rules as R; [print(f'{r.key}  {r.group}  {R.shown(r, R.get(r.key))}  {R.shown(r, r.minimum)}..{R.shown(r, r.maximum)} by {R.shown(r, r.step)}  {r.label}: {r.hint}') for r in R.RULES]"
+```
+
 Both versions share every rule, including food-aware breeding, prey switching, light competition
 between plants, and the rewind history's memory budget of about 1 GB (see the Python README). Seeds 1, 2 (with a population cap, custom mutation rates, sparse grass and a 60 x 50 world) and
-7 have been checked identical over 150 to 300 turns.
+7 have been checked identical over 150 to 300 turns. Seed 7 has also been checked identical over 300 turns with ten
+advanced rules changed, among them a territory, a diet, an experience, the seed reach and the brain's temperature.
 
 ## Speed
 
@@ -99,10 +115,11 @@ The benchmark world used for the Python optimisations (seed 1, 100 x 100, turns 
 ## Layout
 
 - `src/core/`: the simulation: `PyRandom` (Python's generator), `PyFormat` (Python's number
-  conventions), `Genome`, `Brain`, `Insights`, `Census`, `Exchange`, `Simulation`.
+  conventions), `Genome`, `Brain`, `Insights`, `Census`, `Exchange`, `Simulation`, `Rules` (the
+  advanced rules).
 - `src/cli/`: the command-line runner.
 - `src/ui/`: the window app: `Canvas` (software drawing with pygame's shapes), `Window`, `Ui`
-  (scaling and fonts), `Look`, `Dialog`, `Setup`, `Designer`, `ColourGraph`, `App`.
+  (scaling and fonts), `Look`, `Dialog`, `Setup`, `Advanced`, `Designer`, `ColourGraph`, `App`.
 - `src/ui/Icons.cpp`: the species icons (tree, leaf, apple, drumstick), drawn from shapes.
 - `tools/screens.cpp`: draws every screen off-screen to BMP files, for checking the interface.
 - `tests/`: unit tests (doctest).

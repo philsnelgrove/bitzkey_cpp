@@ -10,17 +10,7 @@
 
 namespace bitzkey {
 
-namespace {
-
-// How experiences reshape temperament, in shares of a trait's full range before scaling by
-// plasticity.
-enum Event { Kill, Hit, Stung, Wounded, WoundedAlone, Bred, BredIntoHunger, Starving, ForagedMeal, Discovery,
-             Ambushed, Defended, Panicked };
-struct Shift {
-    int trait;
-    double change;
-};
-const std::array<std::vector<Shift>, 13> EXPERIENCES = {{
+std::array<std::vector<Shift>, 13> EXPERIENCES = {{
     {{Aggression, 0.04}, {Fear, -0.02}},          // kill
     {{Aggression, 0.0067}},                       // hit
     {{Aggression, -0.0133}, {Fear, 0.0133}},      // stung
@@ -35,6 +25,12 @@ const std::array<std::vector<Shift>, 13> EXPERIENCES = {{
     {{Fear, -0.0133}, {Aggression, 0.0067}},      // defended
     {{Fear, 0.0067}},                             // panicked
 }};
+
+namespace {
+
+// The experiences, in the order of EXPERIENCES.
+enum Event { Kill, Hit, Stung, Wounded, WoundedAlone, Bred, BredIntoHunger, Starving, ForagedMeal, Discovery,
+             Ambushed, Defended, Panicked };
 
 struct Offset {
     int dx, dy;
@@ -70,7 +66,9 @@ std::array<std::vector<Offset>, MAX_SIGHT + 1> make_within(bool seen) {
 }
 const auto SIGHT_WITHIN = make_within(false);
 const auto SEEN_WITHIN = make_within(true);
-const std::int64_t SEED_OFFSETS = static_cast<std::int64_t>(SIGHT_WITHIN[SEED_REACH].size());
+
+// How many of the first sight offsets a seed reaches.
+std::int64_t seed_offsets() { return static_cast<std::int64_t>(SIGHT_WITHIN[static_cast<std::size_t>(SEED_REACH)].size()); }
 
 // The offsets within `radius` steps, the own cell among them, column by column.
 const std::vector<Offset>& nearby_offsets(int radius) {
@@ -117,8 +115,8 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     toughness = (1 - SIZE_IN_MIGHT) * physique(Armour) + SIZE_IN_MIGHT * size;
     const int base_steps = 1 + body[Speed] * 3 / TRAIT_MAX;
     steps = species == Species::Grazer ? static_cast<int>(base_steps * GRAZER_SPEED + 0.5) : base_steps;
-    grazing = species == Species::Grazer ? 1.25 : species == Species::Omnivore ? 0.5 : 0.0;
-    browsing = species == Species::Grazer ? 1.25 : species == Species::Omnivore ? 0.75 : 0.0;
+    grazing = GRAZING[static_cast<std::size_t>(species)];
+    browsing = BROWSING[static_cast<std::size_t>(species)];
     sight = 2 + body[Sight];
     if (species == Species::Plant) {
         lifespan = PLANT_LIFESPAN;
@@ -450,7 +448,7 @@ void Simulation::seed_plant(Bitzkey& plant) {
     int shade = 0;
     for (const Bitzkey* other : nearby(plant, LIGHT_RADIUS)) shade += other->species == Species::Plant;
     if (roll >= chance * std::max(0.0, 1 - static_cast<double>(shade) / LIGHT_LIMIT)) return;
-    const Offset offset = SIGHT_OFFSETS[static_cast<std::size_t>(random_.randrange(SEED_OFFSETS))];
+    const Offset offset = SIGHT_OFFSETS[static_cast<std::size_t>(random_.randrange(seed_offsets()))];
     const Cell cell{py_mod(plant.x + offset.dx, width_), py_mod(plant.y + offset.dy, height_)};
     for (const Bitzkey* other : cell_at(cell.x, cell.y)) {
         if (other->alive()) return;
@@ -1168,8 +1166,8 @@ Simulation::HerdView Simulation::herd(const Bitzkey& agent) const {
 }
 
 std::pair<double, double> Simulation::territory(const Bitzkey& hunter) const {
-    const bool predator = hunter.species == Species::Predator;
-    const double fewest = predator ? 1 : 2, most = predator ? 5 : 10, strength = predator ? 1.0 : 0.5;
+    const Territory& rule = TERRITORY[hunter.species == Species::Predator ? 0 : 1];
+    const double fewest = rule.fewest, most = rule.most, strength = rule.strength;
     const double tolerated = fewest + (most - fewest) * hunter.feeling(Empathy);
     double rivals = 0.0, own = 0.0;
     for (const Bitzkey* other : nearby(hunter, TERRITORY_RADIUS)) {

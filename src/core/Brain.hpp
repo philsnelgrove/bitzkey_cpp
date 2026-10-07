@@ -60,8 +60,8 @@ int action_index(std::string_view name);  // -1 when unknown
 int sense_index(std::string_view name);   // -1 when unknown
 
 constexpr int HIDDEN_SIZE = 12;
-constexpr double TEMPERATURE = 0.2;
-constexpr double MUTATION = 0.05;
+inline double TEMPERATURE = 0.2;
+inline double MUTATION = 0.05;
 constexpr int RECORD_DIGITS = 6;  // decimal places kept when a brain is exported
 
 using Senses = std::array<double, INPUT_SIZE>;

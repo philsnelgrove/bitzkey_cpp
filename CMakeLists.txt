@@ -40,6 +40,7 @@ add_library(bitzkey_core STATIC
     src/core/Census.cpp
     src/core/Exchange.cpp
     src/core/Simulation.cpp
+    src/core/Rules.cpp
 )
 target_include_directories(bitzkey_core PUBLIC src)
 target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json)
@@ -68,6 +69,7 @@ add_executable(bitzkey WIN32
     src/ui/Icons.cpp
     src/ui/Dialog.cpp
     src/ui/Setup.cpp
+    src/ui/Advanced.cpp
     src/ui/Designer.cpp
     src/ui/ColourGraph.cpp
     src/ui/App.cpp
@@ -81,7 +83,7 @@ add_custom_command(TARGET bitzkey POST_BUILD
 # Screenshots of every screen, drawn off-screen, for checking the interface.
 add_executable(bitzkey_screens tools/screens.cpp
     src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Setup.cpp
-    src/ui/Designer.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp)
+    src/ui/Advanced.cpp src/ui/Designer.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp)
 target_include_directories(bitzkey_screens PRIVATE src)
 target_link_libraries(bitzkey_screens PRIVATE bitzkey_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 
@@ -97,6 +99,7 @@ add_executable(bitzkey_tests
     tests/test_brain.cpp
     tests/test_simulation.cpp
     tests/test_exchange.cpp
+    tests/test_rules.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_core doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

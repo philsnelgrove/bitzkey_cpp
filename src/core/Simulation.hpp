@@ -22,98 +22,119 @@ namespace bitzkey {
 constexpr int GRID_SIZE = 100;
 constexpr int INITIAL_POPULATION = 90;
 constexpr double GRASS_DENSITY = 50;      // percent of cells that start with grass
-constexpr double GRASS_REGROWTH = 0.004;  // share of the starting grass that grows back each turn
+inline double GRASS_REGROWTH = 0.004;  // share of the starting grass that grows back each turn
 constexpr int MAX_POPULATION = 600;       // the most Bitzkeys spawned at the start
-constexpr int CROWDING_RADIUS = 4;
-constexpr int CROWDING_LIMIT = 10;
+inline int CROWDING_RADIUS = 4;
+inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
-constexpr int SPAWN_SPREAD = 2;
+inline int SPAWN_SPREAD = 2;
 constexpr int DENSE_HISTORY = 500;
 constexpr int CHECKPOINTS = 200;
 // History keeps to a memory budget: when a snapshot of the world grows large, fewer recent turns
 // are kept and fewer checkpoints, so that all of them fit.
 constexpr std::size_t HISTORY_BUDGET = std::size_t{1} << 30;  // bytes
 constexpr std::size_t MIN_SNAPSHOTS = 20;
-constexpr int CORPSE_FERTILITY = 2;
-constexpr int CORPSE_TURNS = 30;
-constexpr double BREED_RESERVE = 10;
-constexpr double MATE_RING_DIFFERENCE = 0.05;
-constexpr double MATE_DOT_DIFFERENCE = 0.20;
-constexpr std::array<int, 2> LITTER_RANGE = {1, 6};
-constexpr double LITTER_SIZE_WEIGHT = 0.5;
-constexpr double PLANT_LIFESPAN = 4000;
-constexpr std::array<int, 2> ANIMAL_LIFESPAN = {250, 900};
-constexpr std::array<double, 2> METABOLISM = {1.6, 0.6};
-constexpr std::array<double, 2> STOMACH = {0.5, 2.0};
-constexpr double SIZE_IN_MIGHT = 0.5;
-constexpr double AGEING = 0.7;
-constexpr double DEATH_PENALTY = 2.0;
-constexpr double BREED_JOY = 1.0;
-constexpr double FIGHT_JOY = 0.5;
-constexpr double COMPANY_JOY = 0.1;
-constexpr double CURIOSITY_JOY = 0.15;
-constexpr double FEAR_DREAD = 0.3;
-constexpr double UNEASE = 0.1;
-constexpr double EMPATHY_PAIN = 0.15;
-constexpr double OTHER_KIND = 0.4;
-constexpr double LEARNING_RATE = 0.045;
-constexpr std::array<double, 2> PANIC = {0.3, 1.0};
-constexpr double THORN_FORCE = 15;
-constexpr double THORN_SIZE_SHARE = 0.2;
-constexpr int TERRITORY_RADIUS = 6;
-constexpr int TERRITORY_RAMP = 3;
-constexpr double RIVAL_UNEASE = 0.3;
-constexpr double RIVAL_KILL_JOY = 1.0;
-constexpr int HERD_RADIUS = 4;
-constexpr int HERD_SPREAD = 3;
-constexpr double HERD_JOY = 0.15;
-constexpr double HERD_LONELINESS = 0.1;
-constexpr double HERD_SAFETY = 0.6;
-constexpr double HERD_DEFEND_JOY = 0.5;
-constexpr double PACK_BONUS = 0.5;
-constexpr double KIND_DIFFERENCE = 0.05;
+inline int CORPSE_FERTILITY = 2;
+inline int CORPSE_TURNS = 30;
+inline double BREED_RESERVE = 10;
+inline double MATE_RING_DIFFERENCE = 0.05;
+inline double MATE_DOT_DIFFERENCE = 0.20;
+inline std::array<int, 2> LITTER_RANGE = {1, 6};
+inline double LITTER_SIZE_WEIGHT = 0.5;
+inline double PLANT_LIFESPAN = 4000;
+inline std::array<int, 2> ANIMAL_LIFESPAN = {250, 900};
+inline std::array<double, 2> METABOLISM = {1.6, 0.6};
+inline std::array<double, 2> STOMACH = {0.5, 2.0};
+inline double SIZE_IN_MIGHT = 0.5;
+inline double AGEING = 0.7;
+inline double DEATH_PENALTY = 2.0;
+inline double BREED_JOY = 1.0;
+inline double FIGHT_JOY = 0.5;
+inline double COMPANY_JOY = 0.1;
+inline double CURIOSITY_JOY = 0.15;
+inline double FEAR_DREAD = 0.3;
+inline double UNEASE = 0.1;
+inline double EMPATHY_PAIN = 0.15;
+inline double OTHER_KIND = 0.4;
+inline double LEARNING_RATE = 0.045;
+inline std::array<double, 2> PANIC = {0.3, 1.0};
+inline double THORN_FORCE = 15;
+inline double THORN_SIZE_SHARE = 0.2;
+inline int TERRITORY_RADIUS = 6;
+inline int TERRITORY_RAMP = 3;
+inline double RIVAL_UNEASE = 0.3;
+inline double RIVAL_KILL_JOY = 1.0;
+inline int HERD_RADIUS = 4;
+inline int HERD_SPREAD = 3;
+inline double HERD_JOY = 0.15;
+inline double HERD_LONELINESS = 0.1;
+inline double HERD_SAFETY = 0.6;
+inline double HERD_DEFEND_JOY = 0.5;
+inline double PACK_BONUS = 0.5;
+inline double KIND_DIFFERENCE = 0.05;
 // Breeding responsibly: before breeding, an animal weighs the food it eats within FORAGE_RADIUS
 // against the mouths that share it, itself included. Below FOOD_NEEDED meals a mouth it doesn't
 // breed; between that and twice that, its litter shrinks in proportion.
-constexpr int FORAGE_RADIUS = 6;
-constexpr double FOOD_NEEDED = 3.0;
-constexpr double PLANT_MEALS = 2.0;   // meals a plant is worth to a full-efficiency browser
-constexpr double PREY_MEALS = 2.0;    // meals a prey animal is worth
-constexpr double SHARED_DIET = 0.5;
+inline int FORAGE_RADIUS = 6;
+inline double FOOD_NEEDED = 3.0;
+inline double PLANT_MEALS = 2.0;   // meals a plant is worth to a full-efficiency browser
+inline double PREY_MEALS = 2.0;    // meals a prey animal is worth
+inline double SHARED_DIET = 0.5;
 // Prey switching: a hunter goes after a kind of prey only while it makes up at least SWITCH_SHARE
 // of the food it weighs within FORAGE_RADIUS (for omnivores, grazers against plants; for predators,
 // grazers against omnivores), so a scarce prey is left alone to recover.
-constexpr double SWITCH_SHARE = 0.25;   // how much another species eating some of the same food counts as a mouth
-constexpr double STRIKE_EFFORT = 0.2;
-constexpr double PREDATOR_LITTERS = 0.5;
-constexpr double STRIKE_FORCE = 1.5;
-constexpr double KILL_MEAL = 25;
-constexpr double KILL_MEAL_FOR_SIZE = 45;
-constexpr double CARRION_MEAT = 30;
-constexpr double CARRION_MEAT_FOR_SIZE = 50;
-constexpr double SCAVENGE_BITE = 25;
-constexpr double GRAZER_SPEED = 1.5;
-constexpr int FLEE_RANGE = 3;          // a hunter is only worth fleeing within this many steps, unless alarmed
-constexpr double HERD_VIGILANCE = 0.5; // how far three herd-mates close by, at full instinct, shrink that range
-constexpr double GRASS_OUTLOOK = 150;  // judging grass before breeding, count what regrows in this many turns
-constexpr double STANDING_GRASS = 0.25;  // and this share of the grass standing now
-constexpr double GRASS_MEAL = 35;
-constexpr double PLANT_MEAL = 45;
-constexpr double PLANT_MEAL_FOR_SIZE = 25;
-constexpr double PLANT_BITE = 15;
-constexpr double PLANT_REGROWTH = 0.02;
-constexpr int PLANT_RECOVERY = 8;
-constexpr std::array<double, 2> SEED_CHANCE = {0.03, 0.10};
-constexpr double SEED_COST = 20;
-constexpr double SEED_HUNGER = 40;
-constexpr double SEEDLING_HUNGER = 50;
-constexpr int SEED_REACH = 5;
-constexpr int LIGHT_RADIUS = 3;  // plants compete for light with the plants within this many cells
-constexpr int LIGHT_LIMIT = 3;   // each cuts a plant's chance of seeding by this share, to none at this many
-constexpr int PLANT_CROWDING = 3;
-constexpr double TEMPERAMENT_RELAPSE = 0.005;
+inline double SWITCH_SHARE = 0.25;   // how much another species eating some of the same food counts as a mouth
+inline double STRIKE_EFFORT = 0.2;
+inline double PREDATOR_LITTERS = 0.5;
+inline double STRIKE_FORCE = 1.5;
+inline double KILL_MEAL = 25;
+inline double KILL_MEAL_FOR_SIZE = 45;
+inline double CARRION_MEAT = 30;
+inline double CARRION_MEAT_FOR_SIZE = 50;
+inline double SCAVENGE_BITE = 25;
+inline double GRAZER_SPEED = 1.5;
+inline int FLEE_RANGE = 3;          // a hunter is only worth fleeing within this many steps, unless alarmed
+inline double HERD_VIGILANCE = 0.5; // how far three herd-mates close by, at full instinct, shrink that range
+inline double GRASS_OUTLOOK = 150;  // judging grass before breeding, count what regrows in this many turns
+inline double STANDING_GRASS = 0.25;  // and this share of the grass standing now
+inline double GRASS_MEAL = 35;
+inline double PLANT_MEAL = 45;
+inline double PLANT_MEAL_FOR_SIZE = 25;
+inline double PLANT_BITE = 15;
+inline double PLANT_REGROWTH = 0.02;
+inline int PLANT_RECOVERY = 8;
+inline std::array<double, 2> SEED_CHANCE = {0.03, 0.10};
+inline double SEED_COST = 20;
+inline double SEED_HUNGER = 40;
+inline double SEEDLING_HUNGER = 50;
+inline int SEED_REACH = 5;
+inline int LIGHT_RADIUS = 3;  // plants compete for light with the plants within this many cells
+inline int LIGHT_LIMIT = 3;   // each cuts a plant's chance of seeding by this share, to none at this many
+inline int PLANT_CROWDING = 3;
+inline double TEMPERAMENT_RELAPSE = 0.005;
 constexpr int MAX_SIGHT = 2 + TRAIT_MAX;
+// For each territorial species, predators then omnivores: how many rivals it tolerates from the
+// least to the most empathetic, and how strongly overcrowding moves it (its rivalry at most).
+struct Territory {
+    int fewest, most;
+    double strength;
+};
+inline std::array<Territory, 2> TERRITORY = {{{1, 5, 1.0}, {2, 10, 0.5}}};
+// Separate niches, by species: grazers are the specialists, getting more from grass and plants than
+// anyone; omnivores live on meat, getting only three quarters of the food in plants and half of grass.
+inline std::array<double, 4> GRAZING = {0.0, 1.25, 0.5, 0.0};   // share of the food in grass each species gets
+inline std::array<double, 4> BROWSING = {0.0, 1.25, 0.75, 0.0}; // share of the food in plants
+// How experiences reshape temperament, in shares of a trait's full range before scaling by
+// plasticity: for each experience, the mind traits it shifts.
+struct Shift {
+    int trait;
+    double change;
+};
+constexpr std::array<std::string_view, 13> EXPERIENCE_NAMES = {
+    "kill", "hit", "stung", "wounded", "wounded_alone", "bred", "bred_into_hunger", "starving", "foraged_meal",
+    "discovery", "ambushed", "defended", "panicked"};
+extern std::array<std::vector<Shift>, 13> EXPERIENCES;
 
 struct Cell {
     int x = 0, y = 0;
@@ -160,8 +181,6 @@ struct Bitzkey {
     Traits inborn;
     Body body;
     double max_health, metabolism, stomach, burn, might, toughness, lifespan, breeding_cost, digestion;
-    // Separate niches: grazers are the specialists, getting more from grass and plants than anyone;
-    // omnivores live on meat, getting only three quarters of the food in plants and half of grass.
     double grazing;   // share of the food in grass it gets
     double browsing;  // share of the food in plants
     int steps, sight;

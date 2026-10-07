@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/Exchange.hpp"
+#include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/Dialog.hpp"
@@ -79,6 +80,8 @@ public:
     // The chosen settings, or none if the user quit. Running it again, after a simulation, starts
     // from the same values.
     std::optional<Simulation::Settings> run();
+    // The advanced rules changed from their defaults, for the worlds started from here.
+    const rules::Values& rules() const { return rules_; }
 
 private:
     friend struct Screens;  // the screenshot tool
@@ -87,7 +90,7 @@ private:
     static constexpr int TEXT_LINES = 5;
 
     struct Layout {
-        Rect card, box, design, paste, load, clear, start, quit;
+        Rect card, box, design, paste, load, clear, start, quit, advanced;
         std::vector<Rect> rows;
     };
     Layout layout() const;
@@ -98,7 +101,8 @@ private:
     bool ready();
     void tell(const std::string& note);
     void ask_to_quit();
-    bool design();  // false if the window was closed from the designer
+    bool design();    // false if the window was closed from the designer
+    bool advanced();  // false if the window was closed from the advanced rules
     void paste_clipboard();
     void choose_file();
     void load(const std::filesystem::path& path);
@@ -112,6 +116,7 @@ private:
     Uint32 note_until_ = 0;
     std::optional<Dialog> dialog_;   // the quit confirmation, while it is open
     std::optional<Dna> last_design_;  // the designer reopens on the last design applied
+    rules::Values rules_;             // the advanced rules changed from their defaults
 };
 
 }  // namespace bitzkey::ui

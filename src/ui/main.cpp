@@ -8,6 +8,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
+#include "core/Rules.hpp"
 #include "ui/App.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Ui.hpp"
@@ -66,6 +67,7 @@ int main(int argc, char** argv) {
         Window window(!options.windowed);
         SetupScreen setup(window, options.defaults);
         while (const auto settings = setup.run()) {
+            rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts
             App app(window, *settings);
             if (app.run() == App::Result::Quit) break;
         }
