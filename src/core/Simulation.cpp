@@ -120,12 +120,31 @@ int zone_temperature(int y, int height) {
     return std::abs(place - 0.5) < EQUATOR_SHARE / 2 ? Hot : Medium;
 }
 
-int temperature_at(int y, int height, int turn) {
+int season_temperature(int y, int height, int quarter) {
     const double place = (y + 0.5) / height;
     const bool equator = std::abs(place - 0.5) < EQUATOR_SHARE / 2;
-    const int quarter = season(turn);
     const bool winter = (quarter == 1 && (place < 0.5 || equator)) || (quarter == 3 && (place > 0.5 || equator));
     return zone_temperature(y, height) + (winter ? 1 : 0);
+}
+
+double season_progress(int turn) {
+    const int quarter = season(turn);
+    if ((turn < YEAR_LENGTH && quarter == 0) || SEASON_TURNING <= 0) return 1.0;
+    const double into = static_cast<double>(turn % YEAR_LENGTH * 4 - quarter * YEAR_LENGTH) / YEAR_LENGTH;  // share of the season gone
+    return std::min(1.0, into / SEASON_TURNING);
+}
+
+double temperature_at(int y, int height, int turn) {
+    const int quarter = season(turn);
+    const int now = season_temperature(y, height, quarter);
+    const double progress = season_progress(turn);
+    if (progress >= 1) return now;
+    const int before = season_temperature(y, height, (quarter + 3) % 4);
+    return before + (now - before) * progress;
+}
+
+double dieback_threshold(int x, int y) {
+    return static_cast<double>((static_cast<long long>(x) * 7919 + static_cast<long long>(y) * 104729) % 1000) / 1000;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -161,7 +180,7 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
     digestion = 0.2 + 0.8 * physique(Carrion);
 }
 
-double Bitzkey::exposure_share(int here) const {
+double Bitzkey::exposure_share(double here) const {
     const int home = climate.temperature;
     if (species != Species::Plant && ((here > home && climate.cold) || (here < home && climate.heat))) return HARDINESS;
     return 1.0;
@@ -421,16 +440,28 @@ EndReason Simulation::end_reason() const {
 // ---------------------------------------------------------------------------------------------
 // A turn
 
-std::string_view Simulation::exposure(const Bitzkey& agent, int here) {
+std::string_view Simulation::exposure(const Bitzkey& agent, double here) {
     return here > agent.climate.temperature ? "froze" : "overheated";
 }
 
 void Simulation::update_climate() {
+    // How well grass grows in each row: fully where it is medium, less the further it has turned from
+    // medium, and not at all a step away.
     climate_.resize(static_cast<std::size_t>(height_));
-    medium_rows_.clear();
+    growth_.resize(static_cast<std::size_t>(height_));
+    grass_rows_.clear();
+    grass_reach_.clear();
+    double reach = 0.0;
     for (int y = 0; y < height_; ++y) {
-        climate_[static_cast<std::size_t>(y)] = temperature_at(y, height_, turn_);
-        if (climate_[static_cast<std::size_t>(y)] == Medium) medium_rows_.push_back(y);
+        const double temperature = temperature_at(y, height_, turn_);
+        const double growth = std::max(0.0, 1 - std::abs(temperature - static_cast<int>(Medium)));
+        climate_[static_cast<std::size_t>(y)] = temperature;
+        growth_[static_cast<std::size_t>(y)] = growth;
+        if (growth > 0) {
+            grass_rows_.push_back(y);
+            reach += growth;
+            grass_reach_.push_back(reach);
+        }
     }
 }
 
@@ -447,15 +478,18 @@ void Simulation::take_turn(bool replay) {
         if (!agent->alive()) continue;
         agent->age += 1;
         const bool plant = agent->species == Species::Plant;
-        const int here = in_bounds(agent->x, agent->y) ? climate_[static_cast<std::size_t>(agent->y)] : Medium;
-        const int steps = agent->climate_steps(here);
-        const bool hungrier = steps && (!plant || here < agent->climate.temperature);  // out of its temperature; a plant, too hot
+        const double here = in_bounds(agent->x, agent->y) ? climate_[static_cast<std::size_t>(agent->y)] : Medium;
+        const double steps = agent->climate_steps(here);
+        const bool hungrier = steps > 0 && (!plant || here < agent->climate.temperature);  // out of its temperature; a plant, too hot
         const double share = agent->exposure_share(here);  // less for the hardy
-        agent->hunger += agent->burn * (hungrier ? 1 + (CLIMATE_HUNGER - 1) * share : 1.0);
+        // The extra food it needs rises with the weather's turning, to the full amount a step away.
+        agent->hunger += agent->burn * (hungrier ? 1 + (CLIMATE_HUNGER - 1) * share * std::min(1.0, steps) : 1.0);
         if (agent->cooldown) agent->cooldown -= 1;
         if (agent->health < agent->max_health && agent->hunger < 65) agent->heal(0.005);
-        // a tenth of its health a step; a plant takes one step in its stride
-        if (steps >= (plant ? 2 : 1)) agent->health -= CLIMATE_DAMAGE * steps * share * agent->max_health;
+        // A tenth of its health a step, part steps in part; a plant takes one step in its stride, and is
+        // hurt more and more as the weather turns toward a second, to full harm two away.
+        const double felt = plant ? std::max(0.0, std::min(steps, 2 * (steps - 1))) : steps;
+        if (felt > 0) agent->health -= CLIMATE_DAMAGE * felt * share * agent->max_health;
         if (agent->hunger >= 100) {  // out of its temperature, it died of exposure
             die(*agent, hungrier ? exposure(*agent, here) : "starved");
             continue;
@@ -470,7 +504,7 @@ void Simulation::take_turn(bool replay) {
         }
         if (plant) {
             agent->hunger = std::max(0.0, agent->hunger - 1.5);
-            if (steps) {  // out of its temperature, a plant neither grows nor seeds
+            if (steps >= 0.5) {  // nearer another temperature than its own, a plant neither grows nor seeds
                 agent->last_action = "withering";
                 continue;
             }
@@ -551,7 +585,7 @@ void Simulation::seed_plant(Bitzkey& plant) {
     plant.hunger += SEED_COST;
     plant.children += 1;
     plant.last_action = "seeded";
-    if (climate_[static_cast<std::size_t>(cell.y)] != decode_climate(dna).temperature) {  // too hot or cold: the seed waits
+    if (std::abs(climate_[static_cast<std::size_t>(cell.y)] - decode_climate(dna).temperature) >= 0.5) {  // too hot or cold: the seed waits
         seeds_.push_back({cell.x, cell.y, dna, plant.generation + 1, turn_});
         return;
     }
@@ -560,12 +594,14 @@ void Simulation::seed_plant(Bitzkey& plant) {
 
 void Simulation::wither_grass() {
     // Grass dies back where it isn't medium: a tuft a cell every GRASS_DIEBACK turns, the cells
-    // taking their turns in step.
+    // taking their turns in step. While a row turns away from medium, only some of its cells die back,
+    // more as it turns further: each cell whose fixed threshold its shortfall passes.
     for (int y = 0; y < height_; ++y) {
-        if (climate_[static_cast<std::size_t>(y)] == Medium) continue;
+        const double shortfall = 1 - growth_[static_cast<std::size_t>(y)];
+        if (shortfall <= 0) continue;
         for (int x = 0; x < width_; ++x) {
             int& tufts = grass_[static_cast<std::size_t>(y) * width_ + x];
-            if (tufts > 0 && (x + y * width_ + turn_) % GRASS_DIEBACK == 0) tufts -= 1;
+            if (tufts > 0 && shortfall > dieback_threshold(x, y) && (x + y * width_ + turn_) % GRASS_DIEBACK == 0) tufts -= 1;
         }
     }
 }
@@ -593,7 +629,8 @@ void Simulation::germinate() {
     std::vector<Seed> waiting;
     for (const Seed& seed : seeds_) {
         if (turn_ - seed.sown >= viable) continue;
-        if (climate_[static_cast<std::size_t>(seed.y)] == decode_climate(seed.dna).temperature && room_for_seedling({seed.x, seed.y})) {
+        if (std::abs(climate_[static_cast<std::size_t>(seed.y)] - decode_climate(seed.dna).temperature) < 0.5 &&
+            room_for_seedling({seed.x, seed.y})) {
             sprout(seed.dna, {seed.x, seed.y}, seed.generation);
         } else {
             waiting.push_back(seed);
@@ -603,9 +640,9 @@ void Simulation::germinate() {
 }
 
 void Simulation::sow(int tufts) {
-    // Grass grows only where it is medium; on and around a corpse, it grows CORPSE_FERTILITY times
-    // as fast.
-    if (medium_rows_.empty()) return;
+    // Grass grows only where it is medium, and less in a row turning to or from medium, by how medium
+    // it is; on and around a corpse, it grows CORPSE_FERTILITY times as fast.
+    if (grass_rows_.empty()) return;
     std::vector<std::uint8_t> fertile;
     for (const auto& corpse : agents_) {
         if (!corpse->died_turn) continue;
@@ -619,7 +656,9 @@ void Simulation::sow(int tufts) {
     }
     for (int tuft = 0; tuft < tufts; ++tuft) {
         const int x = static_cast<int>(random_.randrange(width_));
-        const int y = medium_rows_[static_cast<std::size_t>(random_.randrange(static_cast<std::int64_t>(medium_rows_.size())))];
+        const auto reached = std::upper_bound(grass_reach_.begin(), grass_reach_.end(), random_.random() * grass_reach_.back());
+        const std::size_t row = std::min(static_cast<std::size_t>(reached - grass_reach_.begin()), grass_rows_.size() - 1);
+        const int y = grass_rows_[row];
         const std::size_t at = static_cast<std::size_t>(y) * width_ + x;
         grass_[at] += (!fertile.empty() && fertile[at]) ? CORPSE_FERTILITY : 1;
     }
@@ -780,9 +819,9 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     }
     s.defend_target = s.assailant ? s.assailant : herd_assailant;
     const HerdView view = herd(agent);
-    const int here = in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium;
-    const int discomfort = agent.climate_steps(here);
-    const std::optional<Cell> comfort = discomfort ? comfort_row(agent, sight) : std::nullopt;
+    const double here = in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium;
+    const double discomfort = agent.climate_steps(here);
+    const std::optional<Cell> comfort = discomfort > 0 ? comfort_row(agent, sight) : std::nullopt;
     bool alarmed = false;
     if (agent.alarm) {
         for (Bitzkey* other : nearby(agent, 3)) {
@@ -852,8 +891,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     senses[SenseAlarm] = agent.alarm.has_value();
     senses[SenseHerdSuccess] = agent.seen_success;
     senses[SenseHerdFailure] = agent.seen_failure;
-    senses[SenseClimateDiscomfort] = std::min(2, discomfort) / 2.0;
-    senses[SenseComfortCloseness] = discomfort ? closeness(agent, comfort, sight) : 1.0;
+    senses[SenseClimateDiscomfort] = std::min(2.0, discomfort) / 2;
+    senses[SenseComfortCloseness] = discomfort > 0 ? closeness(agent, comfort, sight) : 1.0;
     senses[SenseAge] = std::min(1.0, agent.age / 400.0);
     const double day = static_cast<double>(turn_ % YEAR_LENGTH) / YEAR_LENGTH;  // 0 at the year's start, nearly 1 at its end
     senses[SenseTimeOfYearA] = std::abs(2 * day - 1);
@@ -871,7 +910,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     s.herd = view.any;
     s.herd_near = view.close;
     s.herd_middle = view.middle;
-    s.exposure = std::min(2, discomfort) / 2.0 * agent.exposure_share(here);
+    s.exposure = std::min(2.0, discomfort) / 2 * agent.exposure_share(here);
     return sensed;
 }
 
@@ -1241,7 +1280,7 @@ std::vector<Cell> Simulation::free_cells_near(const Bitzkey& agent) const {
 }
 
 std::optional<Cell> Simulation::nearest_grass(const Bitzkey& agent, int sight) const {
-    const int worst = agent.climate_steps(in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium);
+    const double worst = agent.climate_steps(in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium);
     for (const Offset& offset : SIGHT_WITHIN[static_cast<std::size_t>(sight)]) {
         if (grass_at(agent.x + offset.dx, agent.y + offset.dy) > 0 &&
             agent.climate_steps(temperature(agent.y + offset.dy)) <= worst) {
@@ -1252,7 +1291,7 @@ std::optional<Cell> Simulation::nearest_grass(const Bitzkey& agent, int sight) c
 }
 
 double Simulation::warmth(const Bitzkey& agent, int y) const {
-    return std::max(-2, std::min(2, agent.climate.temperature - temperature(y))) / 2.0;
+    return std::max(-2.0, std::min(2.0, agent.climate.temperature - temperature(y))) / 2;
 }
 
 Bitzkey* Simulation::nearest_carrion(const Bitzkey& agent, int sight) const {
@@ -1445,13 +1484,13 @@ double Simulation::diet_share(const Bitzkey& eater, const Bitzkey& other) {
 }
 
 double Simulation::plant_yield(const Bitzkey& plant) const {
-    return plant.climate_steps(in_bounds(plant.x, plant.y) ? temperature(plant.y) : Medium) ? PLANT_CLIMATE_YIELD : 1.0;
+    return 1 - (1 - PLANT_CLIMATE_YIELD) * std::min(1.0, plant.climate_steps(in_bounds(plant.x, plant.y) ? temperature(plant.y) : Medium));
 }
 
 std::optional<Cell> Simulation::comfort_row(const Bitzkey& agent, int sight) const {
     for (int rows_away = 1; rows_away <= sight; ++rows_away) {
         for (const int y : {agent.y - rows_away, agent.y + rows_away}) {
-            if (0 <= y && y < height_ && !agent.climate_steps(temperature(y))) return Cell{agent.x, y};
+            if (0 <= y && y < height_ && agent.climate_steps(temperature(y)) < 0.5) return Cell{agent.x, y};
         }
     }
     return std::nullopt;
@@ -1464,13 +1503,14 @@ double Simulation::food_supply(const Bitzkey& agent) const {
     // crowd can't breed on a stock it is about to eat.
     double food = 0.0;
     if (agent.grazing != 0.0) {
-        int cells = 0, tufts = 0;
+        double cells = 0.0;
+        int tufts = 0;
         for (const Offset& offset : nearby_offsets(FORAGE_RADIUS)) {
             if (!in_bounds(agent.x + offset.dx, agent.y + offset.dy)) continue;
-            cells += temperature(agent.y + offset.dy) == Medium;
+            cells += growth(agent.y + offset.dy);
             tufts += grass_at(agent.x + offset.dx, agent.y + offset.dy);
         }
-        const int growing = width_ * static_cast<int>(medium_rows_.size());
+        const double growing = grass_rows_.empty() ? 0.0 : width_ * grass_reach_.back();
         const double regrowth = growing ? cells * grass_regrowth_ / growing * GRASS_OUTLOOK : 0.0;
         food += agent.grazing * (STANDING_GRASS * tufts + regrowth);
     }

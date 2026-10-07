@@ -137,6 +137,9 @@ inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home, or 
 inline double CLIMATE_DAMAGE = 0.1;   // for each step from home, a Bitzkey loses this share of its full health a turn; plants from two
 inline double PLANT_CLIMATE_YIELD = 0.0;  // a plant out of its temperature gives this share of its food
 inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass loses a tuft every this many turns
+// The weather turns gradually: through this share of each season, every row's temperature moves
+// steadily from the last season's to this one's, and the climate's effects move with it.
+inline double SEASON_TURNING = 1.0 / 3;
 // A dead animal is a fresh kill, not yet carrion, through the turn it died and FRESH_KILL_TURNS more;
 // then it starts to rot. A predator or omnivore may eat a fresh kill of what it lives on whole,
 // FRESH_KILL_MEALS times the meal of making the kill, and nothing is left.
@@ -151,7 +154,15 @@ constexpr std::array<std::string_view, 4> SEASONS = {"mild", "northern winter", 
 int season(int turn);  // the quarter of the year a turn falls in, 0 to 3
 int year(int turn);    // the year a turn falls in, from 1
 int zone_temperature(int y, int height);       // a row's temperature outside the winters
-int temperature_at(int y, int height, int turn);  // a row's temperature on a turn
+int season_temperature(int y, int height, int quarter);  // a row's settled temperature in a quarter of the year
+// How far the weather has turned from the last season's to this one's: 0 as a season begins, 1 once
+// SEASON_TURNING of it has passed. The world's first season starts settled.
+double season_progress(int turn);
+// A row's temperature on a turn, from 0 (hot) to 3 (very cold): its season's, though early in a
+// season it is still turning from the last season's, part way between the two.
+double temperature_at(int y, int height, int turn);
+// A cell's fixed share, 0 to 1, below which a row's shortfall from medium makes its grass die back.
+double dieback_threshold(int x, int y);
 constexpr int MAX_SIGHT = 2 + TRAIT_MAX;
 // For each territorial species, predators then omnivores: how many rivals it tolerates from the
 // least to the most empathetic, and how strongly overcrowding moves it (its rivalry at most).
@@ -238,11 +249,11 @@ struct Bitzkey {
     void heal(double amount) { health = std::min(max_health, health + max_health * amount * metabolism); }
     Brain& own_brain();  // the brain, made this animal's own before it changes
     // How many steps a temperature is from home.
-    int climate_steps(int here) const { return std::abs(here - climate.temperature); }
+    double climate_steps(double here) const { return std::abs(here - climate.temperature); }  // part steps while the weather turns
     // The share of exposure's penalties it suffers here: HARDINESS for an animal tolerant of heat
     // where it is hotter than home, or of cold where it is colder; otherwise all of them. Plants
     // tolerate nothing.
-    double exposure_share(int here) const;
+    double exposure_share(double here) const;
     Rgb dot_color() const { return color_from_word(mind_word(dna)); }
     Rgb ring_color() const { return color_from_word(body_word(dna)); }
 };
@@ -294,7 +305,10 @@ public:
     Dna lineage(int identifier) const { return lineage_.at(static_cast<std::size_t>(identifier)); }
     PyRandom& random() { return random_; }
     double grass_regrowth() const { return grass_regrowth_; }
-    int temperature(int y) const { return climate_[static_cast<std::size_t>(y)]; }  // a row's temperature now
+    // A row's temperature now, part way between two while the weather turns.
+    double temperature(int y) const { return climate_[static_cast<std::size_t>(y)]; }
+    // How well grass grows in a row: fully where it is medium, less the further it has turned from medium.
+    double growth(int y) const { return growth_[static_cast<std::size_t>(y)]; }
     // A seed waiting where it fell for the temperature it can grow in.
     struct Seed {
         int x, y;
@@ -304,7 +318,7 @@ public:
     };
     std::vector<Seed>& seeds() { return seeds_; }
     const std::vector<Seed>& seeds() const { return seeds_; }
-    const std::vector<int>& medium_rows() const { return medium_rows_; }
+    const std::vector<int>& grass_rows() const { return grass_rows_; }  // the rows where grass grows at all
     void set_grass_regrowth(double tufts) { grass_regrowth_ = tufts; }
 
     // Step one turn: replaying the recorded run, or simulating a new turn, unless it has ended.
@@ -323,7 +337,7 @@ public:
     void index_cells();
     void update_climate();  // each row's temperature this turn, and the medium rows grass grows in
     // How the climate killed it: colder than home, it froze; hotter, it overheated.
-    static std::string_view exposure(const Bitzkey& agent, int here);
+    static std::string_view exposure(const Bitzkey& agent, double here);
     void seed_plant(Bitzkey& plant);
     void germinate();
 
@@ -489,8 +503,10 @@ private:
     std::vector<int> grass_;
     double grass_regrowth_;
     std::vector<Seed> seeds_;
-    std::vector<int> climate_;      // each row's temperature this turn
-    std::vector<int> medium_rows_;  // the rows where it is medium, where grass grows
+    std::vector<double> climate_;      // each row's temperature this turn
+    std::vector<double> growth_;       // each row's share of medium, where grass grows
+    std::vector<int> grass_rows_;      // the rows where grass grows at all
+    std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
     std::vector<Snapshot> history_;
     int frontier_ = 0;
     int checkpoint_stride_ = 1;

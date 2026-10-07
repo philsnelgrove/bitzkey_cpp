@@ -137,6 +137,7 @@ std::vector<Rule> make_rules() {
         {"CLIMATE_HUNGER", "Climate", "Climate hunger", "times the food needed a step or more from home (a plant, only too hot)", 1.0, 5.0, 0.1, false, &CLIMATE_HUNGER},
         {"CLIMATE_DAMAGE", "Climate", "Climate damage", "share of full health lost a turn for each step from home (plants from two)", 0.0, 1.0, 0.01, false, &CLIMATE_DAMAGE},
         {"PLANT_CLIMATE_YIELD", "Climate", "Plant climate yield", "share of its food a plant gives out of its temperature", 0.0, 1.0, 0.05, false, &PLANT_CLIMATE_YIELD},
+        {"SEASON_TURNING", "Climate", "Season turning", "share of each season over which the weather turns from the last", 0.0, 1.0, 0.05, false, &SEASON_TURNING},
         {"GRASS_DIEBACK", "Climate", "Grass dieback", "where it isn't medium, turns for each tuft of a cell's grass to die", 1, 500, 1, true, &GRASS_DIEBACK},
         {"SEED_VIABILITY", "Climate", "Seed viability", "years a seed waits for its temperature before it dies", 0.0, 5.0, 0.05, false, &SEED_VIABILITY},
         {"STARTING_TOLERANCE", "Climate", "Starting tolerance", "chance a random starting genome carries each tolerance flag", 0.0, 1.0, 0.05, false, &STARTING_TOLERANCE},

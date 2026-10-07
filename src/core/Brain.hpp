@@ -44,14 +44,15 @@ enum Sense : int {
     SenseAlarm,            // 1 when a herd-mate close by was struck since it last acted
     SenseHerdSuccess,      // 1 when it has just seen a herd-mate succeed (a kill), fading turn by turn
     SenseHerdFailure,      // 1 when it has just seen a herd-mate fail (die), fading turn by turn
-    SenseClimateDiscomfort,  // how far the temperature here is from home, as it feels it: 0, 0.5 a step, 1 two or more
+    SenseClimateDiscomfort,  // how far the temperature here is from home, as it feels it: 0.5 a step, to 1 two or more
     SenseComfortCloseness,   // 1 where it feels at home or next to such a row, falling to 0 beyond sight
     SenseAge,              // 0 at birth, 1 at 400 turns or older
     // The time of year, as two hands of a clock a quarter of a year apart, so the year's turn is smooth:
     SenseTimeOfYearA,      // 1 at the start of the year, falling to 0 halfway through, and rising back to 1
     SenseTimeOfYearB,      // the same a quarter of a year later: 0 a quarter in, 1 three quarters in
     SenseLatitude,         // -1 at the top (north) edge of the map, 0 on the equator, 1 at the bottom (south) edge
-    // How much warmer than home it is, in steps, 1 two or more too hot, -1 two or more too cold:
+    // How much warmer than home it is, in steps, 1 two or more too hot, -1 two or more too cold, part
+    // way while the weather turns, as the zones' colours show:
     SenseWarmth,           // here
     SenseWarmthNorth,      // at the edge of its sight to the north, or the map's edge if nearer
     SenseWarmthSouth,      // and to the south

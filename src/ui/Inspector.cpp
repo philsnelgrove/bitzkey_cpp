@@ -36,7 +36,7 @@ std::string hardiness(bool heat, bool cold) {
 
 // Its home temperature, the temperature where it is (coloured by how far that is from home, as it
 // feels it), and what it tolerates; temperatures are shortened if the line is too narrow.
-void draw_climate(Canvas& canvas, const Bitzkey& agent, int x, int y, int width, std::optional<int> here) {
+void draw_climate(Canvas& canvas, const Bitzkey& agent, int x, int y, int width, std::optional<double> here) {
     TTF_Font* small = UI.font(Face::Sans, 12);
     const std::string hardy = hardiness(agent.climate.heat, agent.climate.cold);
     const int hardy_width = hardy.empty() ? 0 : Canvas::text_width(small, hardy);
@@ -46,9 +46,9 @@ void draw_climate(Canvas& canvas, const Bitzkey& agent, int x, int y, int width,
         parts.clear();
         parts.emplace_back("HOME " + upper((*names)[static_cast<std::size_t>(home)]), TEMPERATURE_COLOURS[static_cast<std::size_t>(home)]);
         if (here) {
-            const int steps = agent.climate_steps(*here);
-            const Color colour = !steps ? Color{175, 192, 172} : steps == 1 ? Color{238, 183, 110} : Color{235, 100, 90};
-            parts.emplace_back("HERE " + upper((*names)[static_cast<std::size_t>(*here)]), colour);
+            const double steps = agent.climate_steps(*here);  // part steps while the weather turns: shown as the nearer
+            const Color colour = steps < 0.5 ? Color{175, 192, 172} : steps < 1.5 ? Color{238, 183, 110} : Color{235, 100, 90};
+            parts.emplace_back("HERE " + upper((*names)[static_cast<std::size_t>(*here + 0.5)]), colour);
         }
         int total = hardy_width;
         for (const auto& [text, colour] : parts) total += Canvas::text_width(small, text) + UI(14);
@@ -67,7 +67,7 @@ void bar(Canvas& canvas, int x, int y, int width, double value, Color color) {
 }  // namespace
 
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width, bool known,
-                  std::optional<int> here) {
+                  std::optional<double> here) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
     TTF_Font* mono = UI.font(Face::Mono, 14);
@@ -133,7 +133,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     }
 }
 
-Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y, std::optional<int> here) {
+Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y, std::optional<double> here) {
     const int width = UI(300), padding = UI(12);
     Rect box{mouse_x + UI(18), mouse_y + UI(12), width + 2 * padding, UI(known ? DETAILS_HEIGHT : GENOME_HEIGHT) + 2 * padding};
     if (box.right() > canvas.width()) box.x = mouse_x - UI(18) - box.w;

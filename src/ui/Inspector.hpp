@@ -21,10 +21,10 @@ constexpr std::array<Color, 4> TEMPERATURE_COLOURS = {{{238, 160, 110}, {175, 19
 // y. A Bitzkey not `known` is one no longer (or not yet) in the world, rebuilt from its genome, so
 // only what its genes fix is shown. `here` is the temperature where it is.
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width,
-                  bool known = true, std::optional<int> here = std::nullopt);
+                  bool known = true, std::optional<double> here = std::nullopt);
 
 // The details in a box beside the mouse, kept on the screen. Returns the box.
 Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y,
-                  std::optional<int> here = std::nullopt);
+                  std::optional<double> here = std::nullopt);
 
 }  // namespace bitzkey::ui

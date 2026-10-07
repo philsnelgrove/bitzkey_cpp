@@ -429,7 +429,7 @@ TEST_CASE("the top and bottom of the map are barriers, but east and west wrap") 
 
 TEST_CASE("grass dies back a tuft at a time where it isn't medium") {
     Simulation simulation(Simulation::Settings{20, 20, 0, 1});
-    while (simulation.turn() < 200) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium
+    while (simulation.turn() < 220) simulation.take_turn();  // mid-year, mild: the arctic cold, the temperate zone medium
     simulation.clear_grass();
     for (int x = 0; x < 20; ++x) simulation.grass_cell(x, 1) = simulation.grass_cell(x, 5) = 3;  // arctic, then temperate
     const double regrowth = simulation.grass_regrowth();
@@ -468,7 +468,7 @@ TEST_CASE("a world with no animals left has ended") {
 
 TEST_CASE("grass grows twice as fast on and around corpses") {
     Simulation simulation = world();
-    const auto& rows = simulation.medium_rows();  // grass grows only where it is medium
+    const auto& rows = simulation.grass_rows();  // grass grows only where it is medium
     for (const int y : {7, 8, 9}) CHECK(std::find(rows.begin(), rows.end(), y) != rows.end());
     Bitzkey& corpse = simulation.add_agent(encode_dna(Species::Grazer), 0, 8);
     corpse.health = 0;

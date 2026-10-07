@@ -10,10 +10,18 @@
 
 namespace bitzkey::ui {
 
-Color zone_colour(int temperature) {
-    const Color& tint = ZONE_TINTS[static_cast<std::size_t>(temperature)];
-    const auto blend = [](int grey, int toward) { return static_cast<std::uint8_t>(py_round(grey + (toward - grey) * ZONE_TINT)); };
-    return {blend(WORLD_GREY.r, tint.r), blend(WORLD_GREY.g, tint.g), blend(WORLD_GREY.b, tint.b)};
+Color zone_colour(double temperature) {
+    const int top = static_cast<int>(ZONE_TINTS.size()) - 1;
+    const int lower = std::min(static_cast<int>(temperature), top);
+    const int upper = std::min(lower + 1, top);
+    const double turned = temperature - lower;
+    const Color& low = ZONE_TINTS[static_cast<std::size_t>(lower)];
+    const Color& high = ZONE_TINTS[static_cast<std::size_t>(upper)];
+    const auto blend = [turned](int grey, int from, int to) {
+        const double tint = from + (to - from) * turned;
+        return static_cast<std::uint8_t>(py_round(grey + (tint - grey) * ZONE_TINT));
+    };
+    return {blend(WORLD_GREY.r, low.r, high.r), blend(WORLD_GREY.g, low.g, high.g), blend(WORLD_GREY.b, low.b, high.b)};
 }
 
 int dot_radius(int size, int largest) {

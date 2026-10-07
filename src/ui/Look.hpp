@@ -29,7 +29,7 @@ constexpr Color SELECTED{25, 32, 32};     // the ring round the selected Bitzkey
 constexpr Color EXPORTING{205, 120, 30};  // the ring round Bitzkeys on the export list
 
 // The world's grey tinted for a temperature.
-Color zone_colour(int temperature);
+Color zone_colour(double temperature);  // part way between two tints while the weather turns
 
 inline Color to_color(const Rgb& rgb) {
     return {static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)};
