@@ -154,7 +154,9 @@ Bitzkey::Bitzkey(int identifier_, Dna dna_, int x_, int y_)
 
 int Bitzkey::climate_steps(int here) const {
     const int difference = here - climate.temperature;  // above 0, colder than home
-    if (species != Species::Plant && ((difference > 0 && climate.cold) || (difference < 0 && climate.heat))) return 0;
+    if (species != Species::Plant && ((difference > 0 && climate.cold) || (difference < 0 && climate.heat))) {
+        return std::abs(difference) - 1;
+    }
     return std::abs(difference);
 }
 
@@ -267,6 +269,9 @@ void Simulation::spawn_group(Dna dna, int size, const std::shared_ptr<const Brai
                              const std::optional<PartialMind>& mind, bool native) {
     const int x = static_cast<int>(random_.randrange(SPAWN_SPREAD, width_ - SPAWN_SPREAD));
     const int y = static_cast<int>(random_.randrange(SPAWN_SPREAD, height_ - SPAWN_SPREAD));
+    if (native) {  // tolerance is rare at the start
+        for (const Dna flag : {HEAT_TOLERANCE, COLD_TOLERANCE}) dna = random_.random() < STARTING_TOLERANCE ? dna | flag : dna & ~flag;
+    }
     if (native && decode_body(dna)[SpeciesTrait] == static_cast<int>(Species::Plant)) {
         dna = (dna & ~(Dna{0x3} << TEMPERATURE_SHIFT)) | static_cast<Dna>(zone_temperature(y, height_)) << TEMPERATURE_SHIFT;
     }
@@ -409,6 +414,10 @@ EndReason Simulation::end_reason() const {
 // ---------------------------------------------------------------------------------------------
 // A turn
 
+std::string_view Simulation::exposure(const Bitzkey& agent, int here) {
+    return here > agent.climate.temperature ? "froze" : "overheated";
+}
+
 void Simulation::update_climate() {
     climate_.resize(static_cast<std::size_t>(height_));
     medium_rows_.clear();
@@ -437,12 +446,12 @@ void Simulation::take_turn(bool replay) {
         if (agent->cooldown) agent->cooldown -= 1;
         if (agent->health < agent->max_health && agent->hunger < 65) agent->heal(0.005);
         if (steps >= 2) agent->health -= CLIMATE_DAMAGE * agent->max_health;
-        if (agent->hunger >= 100) {
-            die(*agent, "starved");
+        if (agent->hunger >= 100) {  // out of its temperature, it died of exposure
+            die(*agent, steps && !plant ? exposure(*agent, here) : "starved");
             continue;
         }
         if (agent->health <= 0) {
-            die(*agent, here > agent->climate.temperature ? "froze" : "overheated");
+            die(*agent, exposure(*agent, here));
             continue;
         }
         if (dies_of_age(*agent)) {

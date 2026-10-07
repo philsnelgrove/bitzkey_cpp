@@ -67,7 +67,7 @@ TEST_CASE("each hemisphere and the equator are a step colder in its winter") {
     CHECK(rows_on(370) == rows_on(10));  // the next year repeats
 }
 
-TEST_CASE("tolerance spares an animal one direction, and plants none") {
+TEST_CASE("tolerance spares an animal a step in one direction, and plants none") {
     const Bitzkey tender(0, encode_dna(Species::Grazer), 1, 1);
     const Bitzkey hardy(1, encode_dna(Species::Grazer, {{"cold_tolerance", 1}}), 1, 1);
     const Bitzkey warm(2, encode_dna(Species::Grazer, {{"heat_tolerance", 1}}), 1, 1);
@@ -78,8 +78,10 @@ TEST_CASE("tolerance spares an animal one direction, and plants none") {
         return found;
     };
     CHECK(steps(tender) == std::vector<int>{1, 0, 1, 2});
-    CHECK(steps(hardy) == std::vector<int>{1, 0, 0, 0});
+    CHECK(steps(hardy) == std::vector<int>{1, 0, 0, 1});
     CHECK(steps(warm) == std::vector<int>{0, 0, 1, 2});
+    const Bitzkey hot(4, encode_dna(Species::Grazer, {{"temperature", Hot}, {"cold_tolerance", 1}}), 1, 1);
+    CHECK(steps(hot) == std::vector<int>{0, 0, 1, 2});  // a step less
     CHECK(steps(plant) == std::vector<int>{1, 0, 1, 2});
 }
 
@@ -96,6 +98,26 @@ TEST_CASE("a step from home doubles an animal's food, and two steps also hurt") 
     CHECK(two_away.hunger >= 1.5 * two_away.burn - 1e-9);
     CHECK((at_home.health == at_home.max_health && one_away.health == one_away.max_health));
     CHECK(two_away.health < 0.93 * two_away.max_health);
+}
+
+TEST_CASE("starving out of its temperature is dying of exposure") {
+    Simulation simulation = world_at(120);
+    Bitzkey& away = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Cold}}), 20, 50);  // on the equator: too hot
+    Bitzkey& at_home = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}}), 40, 50);
+    away.hunger = at_home.hunger = 99.9;
+    simulation.add_agent(encode_dna(Species::Predator), 90, 90);
+    simulation.take_turn();
+    CHECK((away.last_action == "overheated" && at_home.last_action == "starved"));
+}
+
+TEST_CASE("tolerance is rare in the starting genomes") {
+    const Simulation simulation(Simulation::Settings{100, 100, 600, 5});
+    int flags = 0, count = 0;
+    for (const auto& agent : simulation.agents()) {
+        flags += agent->climate.heat + agent->climate.cold;
+        count += 2;
+    }
+    CHECK(static_cast<double>(flags) / count == doctest::Approx(0.1).epsilon(0.5));
 }
 
 TEST_CASE("winter turns a home zone hostile, and the cold can kill") {

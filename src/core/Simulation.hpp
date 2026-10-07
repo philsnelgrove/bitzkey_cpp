@@ -120,8 +120,8 @@ inline double TEMPERAMENT_RELAPSE = 0.005;
 // is temperate, medium. Every YEAR_LENGTH turns is a year. Through its first quarter the north,
 // from the top down to and through the equator, is a step colder; through its third quarter the
 // south, from the bottom up to and through the equator, is. Every Bitzkey has a home temperature,
-// and may tolerate heat (zones hotter than home) or cold (zones colder); plants tolerate nothing, and
-// a plant spawned at the start is at home in its zone's usual temperature.
+// and may tolerate heat or cold, feeling a step less of it; plants tolerate nothing, and a plant
+// spawned at the start is at home in its zone's usual temperature.
 constexpr int DEFAULT_YEAR_LENGTH = 360;
 inline int YEAR_LENGTH = DEFAULT_YEAR_LENGTH;  // each world sets it from its year length setting
 inline double ARCTIC_SHARE = 0.2;
@@ -136,6 +136,7 @@ inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass lose
 inline int FRESH_KILL_TURNS = 1;
 inline double FRESH_KILL_MEALS = 3.0;
 inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
+inline double STARTING_TOLERANCE = 0.1;  // the chance a random starting genome carries each tolerance flag
 enum Temperature : int { Hot, Medium, Cold, VeryCold };
 constexpr std::array<std::string_view, 4> SEASONS = {"northern winter", "mild", "southern winter", "mild"};
 
@@ -226,8 +227,8 @@ struct Bitzkey {
     void nourish(double food) { hunger = std::max(0.0, hunger - food / stomach); }
     void heal(double amount) { health = std::min(max_health, health + max_health * amount * metabolism); }
     Brain& own_brain();  // the brain, made this animal's own before it changes
-    // How many steps a temperature is from home, as it feels it: an animal tolerant of heat doesn't
-    // feel hotter, nor one tolerant of cold colder. Plants feel every step.
+    // How many steps a temperature is from home, as it feels it: an animal tolerant of heat feels a
+    // step less of it, and one tolerant of cold the same. Plants feel every step.
     int climate_steps(int here) const;
     Rgb dot_color() const { return color_from_word(mind_word(dna)); }
     Rgb ring_color() const { return color_from_word(body_word(dna)); }
@@ -308,6 +309,8 @@ public:
                        const std::optional<PartialMind>& mind = std::nullopt);
     void index_cells();
     void update_climate();  // each row's temperature this turn, and the medium rows grass grows in
+    // How the climate killed it: colder than home, it froze; hotter, it overheated.
+    static std::string_view exposure(const Bitzkey& agent, int here);
     void seed_plant(Bitzkey& plant);
     void germinate();
 
@@ -405,7 +408,8 @@ private:
 
     std::vector<int> group_sizes(int population);
     std::pair<int, int> history_room() const;  // recent turns kept every turn, and older checkpoints
-    // `native` plants take the usual temperature of their centre's zone as their home.
+    // `native` groups have random starting genomes: each carries a tolerance flag only with
+    // STARTING_TOLERANCE, and plants take the usual temperature of their centre's zone as their home.
     void spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain = nullptr,
                      const std::optional<PartialMind>& mind = std::nullopt, bool native = false);
     void record();
