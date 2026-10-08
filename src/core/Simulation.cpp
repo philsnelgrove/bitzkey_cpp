@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <set>
 #include <type_traits>
 #include <random>
@@ -411,8 +412,20 @@ std::vector<std::vector<int>> Simulation::plant_homes(std::vector<int>& species)
     return homes;
 }
 
+std::vector<int> Simulation::home_rows(int home) const {
+    int nearest = std::numeric_limits<int>::max();
+    for (int y = SPAWN_SPREAD; y < height_ - SPAWN_SPREAD; ++y) nearest = std::min(nearest, std::abs(zone_temperature(y, height_) - home));
+    std::vector<int> rows;
+    for (int y = SPAWN_SPREAD; y < height_ - SPAWN_SPREAD; ++y) {
+        if (std::abs(zone_temperature(y, height_) - home) == nearest) rows.push_back(y);
+    }
+    return rows;
+}
+
 void Simulation::spawn_group(Dna dna, int size, const std::shared_ptr<const Brain>& brain,
-                             const std::optional<PartialMind>& mind, bool native, const std::vector<int>& rows) {
+                             const std::optional<PartialMind>& mind, bool native, const std::vector<int>& given_rows) {
+    // In one of the rows given, if any; otherwise, with SPAWN_AT_HOME, in its home zone.
+    const std::vector<int> rows = !given_rows.empty() || !SPAWN_AT_HOME ? given_rows : home_rows(decode_climate(dna).temperature);
     const int x = static_cast<int>(random_.randrange(SPAWN_SPREAD, width_ - SPAWN_SPREAD));
     const int y = rows.empty() ? static_cast<int>(random_.randrange(SPAWN_SPREAD, height_ - SPAWN_SPREAD))
                                : rows[static_cast<std::size_t>(random_.randrange(static_cast<std::int64_t>(rows.size())))];
@@ -479,7 +492,7 @@ std::vector<int> Simulation::history_turns() const {
 
 void Simulation::record() {
     // Keep a copy of the newest turn, then let the oldest go while the history holds more than
-    // HISTORY_TURNS turns or HISTORY_MEMORY bytes.
+    // HISTORY_TURNS turns or HISTORY_MEMORY gigabytes.
     frontier_ = turn_;
     if (!history_.empty() && history_.back().turn == turn_) {  // recorded again, as it now is
         history_bytes_ -= history_.back().bytes;
@@ -494,7 +507,8 @@ void Simulation::record() {
     history_bytes_ += held.bytes;
     history_.push_back(std::move(held));
     while (history_.size() > 1 &&
-           (history_.size() > static_cast<std::size_t>(HISTORY_TURNS) || history_bytes_ > HISTORY_MEMORY)) {
+           ((HISTORY_TURNS < HISTORY_ALL && history_.size() > static_cast<std::size_t>(HISTORY_TURNS)) ||
+            static_cast<double>(history_bytes_) > HISTORY_MEMORY * static_cast<double>(std::uintmax_t{1} << 30))) {
         history_bytes_ -= history_.front().bytes;
         history_.pop_front();
     }

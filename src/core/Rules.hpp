@@ -33,6 +33,9 @@ using Values = std::map<std::string, double, std::less<>>;
 
 const std::vector<Rule>& all();              // by group, in the panel's order
 const Rule* find(std::string_view key);      // none for an unknown key
+// A warning shown with a rule, in full when it is chosen: a cost it runs up beyond the simulation
+// itself. Empty for most.
+std::string_view warning(std::string_view key);
 const Values& defaults();                    // as the program started
 Values current();
 // Why a set of values (every rule's) can't be applied, if it can't.

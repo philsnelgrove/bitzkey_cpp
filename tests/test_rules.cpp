@@ -26,7 +26,10 @@ int corpses_kept(int turns) {
 }  // namespace
 
 TEST_CASE("every default is within its rule and of its kind") {
-    CHECK(rules::all().size() == 144);
+    CHECK(rules::all().size() == 147);
+    const rules::Rule& turns = *rules::find("HISTORY_TURNS");
+    CHECK((rules::shown(turns, turns.maximum) == "ALL" && rules::shown(turns, 100) == "100"));  // its top keeps every turn
+    CHECK(!rules::warning("HISTORY_MEMORY").empty());
     for (const rules::Rule& rule : rules::all()) {
         CAPTURE(rule.key);
         const double value = rules::defaults().at(rule.key);

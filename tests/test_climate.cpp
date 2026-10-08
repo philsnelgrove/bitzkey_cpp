@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <numeric>
 #include <set>
 #include <vector>
 
@@ -557,4 +558,21 @@ TEST_CASE("waiting seeds rewind and replay with the world") {
     simulation.seek(turn / 2);
     simulation.seek(turn);
     CHECK(simulation.seeds() == seeds);
+}
+
+TEST_CASE("groups spawn where their home temperature is usual") {
+    for (const std::uint64_t seed : {1, 2, 3}) {
+        const Simulation simulation(Simulation::Settings{100, 100, 90, seed});
+        for (const auto& agent : simulation.agents()) {  // each within the spread of a centre at home
+            const int home = std::min(decode_climate(agent->dna).temperature, 2);  // very cold homes take the arctic
+            bool found = false;
+            for (int y = agent->y - SPAWN_SPREAD; y <= agent->y + SPAWN_SPREAD; ++y) found = found || zone_temperature(y, 100) == home;
+            CHECK(found);
+        }
+    }
+    const Simulation empty(Simulation::Settings{100, 100, 0, 1});
+    std::vector<int> equator(20);
+    std::iota(equator.begin(), equator.end(), 40);
+    CHECK(empty.home_rows(Hot) == equator);
+    CHECK(empty.home_rows(VeryCold).size() == 36);  // the arctic, north and south
 }

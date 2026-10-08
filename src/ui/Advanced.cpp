@@ -302,10 +302,12 @@ void AdvancedScreen::draw(Canvas& canvas) {
     canvas.text_at(bold, "CANCEL", {220, 229, 211},
                    [&](Rect& box) { box.center_at(places.cancel.centerx(), places.cancel.centery()); });
     const bool noting = SDL_GetTicks() < note_until_;
+    const std::string_view warning = rules::warning(form_.focused().key);  // the chosen rule's, in full
     canvas.text_at(small,
                    noting ? note_
-                          : "UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x10)   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
-                   noting ? Color{238, 183, 110} : Color{130, 152, 136},
+                   : !warning.empty() ? fit(small, std::string(warning), card.w - UI(48))
+                                      : "UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x10)   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
+                   noting || !warning.empty() ? Color{238, 183, 110} : Color{130, 152, 136},
                    [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(14)); });
 }
 
@@ -315,7 +317,9 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
     const auto [minus, box, plus] = buttons(row);
     TTF_Font* small = UI.font(Face::Sans, 12);
     canvas.text(UI.font(Face::Sans, 15), upper(rule.label), {232, 236, 219}, row.x + UI(14), row.y + UI(3));
-    canvas.text(small, fit(small, rule.hint, minus.x - row.x - UI(28)), {130, 152, 136}, row.x + UI(14), row.y + UI(21));
+    const bool warned = !rules::warning(rule.key).empty();  // a cost to heed: its hint in amber, the warning in full when chosen
+    canvas.text(small, fit(small, (warned ? "WARNING  " : "") + rule.hint, minus.x - row.x - UI(28)),
+                warned ? Color{238, 183, 110} : Color{130, 152, 136}, row.x + UI(14), row.y + UI(21));
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.text_at(UI.font(Face::Sans, 22, true), sign, {220, 229, 211},

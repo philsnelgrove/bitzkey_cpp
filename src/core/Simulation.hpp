@@ -32,12 +32,14 @@ inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
+inline int SPAWN_AT_HOME = 1;  // 1: a group appears in rows whose usual temperature is its home (the nearest, if none); 0: anywhere
 // The history is kept in memory: the world at each of the latest HISTORY_TURNS turns, whole, so the map
 // can be rewound to any of them at once, with nothing to replay. When a crowded world's brains make them
-// large, fewer are kept, so they fit HISTORY_MEMORY; the newest turn is always kept. Older turns live on
+// large, fewer are kept, so they fit HISTORY_MEMORY gigabytes; the newest turn is always kept. Older turns live on
 // only in the colour graph.
 inline int HISTORY_TURNS = 100;
-inline std::uintmax_t HISTORY_MEMORY = std::uintmax_t{1} << 30;  // bytes, near enough
+constexpr int HISTORY_ALL = 5000;  // at this many history turns or more, every turn is kept, so far as the memory allows
+inline double HISTORY_MEMORY = 1.0;  // GB, near enough
 constexpr std::uintmax_t AGENT_BYTES = 1000;  // what a Bitzkey takes in the history, besides its brain, near enough
 // Earlier versions kept the history on disk, in folders among the temporary files.
 constexpr std::string_view HISTORY_PREFIX = "bitzkey-history-";  // their names start so
@@ -391,6 +393,9 @@ public:
 
     // The rest is public so tests can drive single steps, as the Python tests do.
     void take_turn();
+    // The rows a group's centre may fall in whose usual temperature is `home`, or nearest it: a very cold
+    // home has no zone of its own outside the winters, so it takes the arctic.
+    std::vector<int> home_rows(int home) const;
     Bitzkey& add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> brain = nullptr,
                        const std::optional<PartialMind>& mind = std::nullopt);
     void index_cells();

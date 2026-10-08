@@ -34,6 +34,9 @@ std::vector<Rule> make_rules() {
         {"CORPSE_FERTILITY", "World", "Corpse fertility", "grass grows this many times as fast on and around a corpse", 1, 10, 1, true, &CORPSE_FERTILITY},
         {"CORPSE_TURNS", "World", "Corpse turns", "turns a corpse lasts while its meat rots away", 1, 500, 5, true, &CORPSE_TURNS},
         {"SPAWN_SPREAD", "World", "Spawn spread", "a starting group appears within this many cells of its centre", 0, 4, 1, true, &SPAWN_SPREAD},
+        {"SPAWN_AT_HOME", "World", "Spawn at home", "1: starting and imported groups appear where their home temperature is usual; 0: anywhere", 0, 1, 1, true, &SPAWN_AT_HOME},
+        {"HISTORY_TURNS", "World", "History turns", "turns of the world kept whole, to rewind the map to; at the top, all", 1, HISTORY_ALL, 10, true, &HISTORY_TURNS},
+        {"HISTORY_MEMORY", "World", "History memory", "most memory, in GB, the rewind history may take", 0.1, 64.0, 0.1, false, &HISTORY_MEMORY},
         {"LIFESPAN_YEARS.0", "Bodies", "Lifespan, shortest", "years of life expected for the smallest bodies, plant or animal", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[0]},
         {"LIFESPAN_YEARS.1", "Bodies", "Lifespan, middle", "years of life expected for middling bodies", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[1]},
         {"LIFESPAN_YEARS.2", "Bodies", "Lifespan, longest", "years of life expected for the largest bodies", 0.5, 30.0, 0.5, false, &LIFESPAN_YEARS[2]},
@@ -182,6 +185,12 @@ std::string lower(std::string text) {
 
 }  // namespace
 
+std::string_view warning(std::string_view key) {
+    if (key == "HISTORY_TURNS") return "MEMORY: each turn kept holds the whole world, about 200 KB a brain (some 20 MB a turn with 100 animals), up to the history memory limit";
+    if (key == "HISTORY_MEMORY") return "MEMORY: keep this well below your computer's free memory, or Bitzkey will slow to a crawl or crash";
+    return {};
+}
+
 const std::vector<Rule>& all() {
     static const std::vector<Rule> rules = make_rules();
     return rules;
@@ -239,6 +248,7 @@ Values changed(const Values& values) {
 }
 
 std::string shown(const Rule& rule, double value) {
+    if (rule.key == "HISTORY_TURNS" && value >= rule.maximum) return "ALL";  // its top keeps every turn
     if (rule.integer) return std::to_string(static_cast<long long>(value));
     char text[32];
     std::snprintf(text, sizeof text, "%.6g", value);

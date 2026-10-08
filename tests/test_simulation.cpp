@@ -641,7 +641,7 @@ TEST_CASE("the latest turns are kept in memory and reached at once exactly") {
 TEST_CASE("the history keeps only the latest turns and fits its memory") {
     const double saved = CLIMATE_DAMAGE;
     const int turns = HISTORY_TURNS;
-    const std::uintmax_t memory = HISTORY_MEMORY;
+    const double memory = HISTORY_MEMORY;
     CLIMATE_DAMAGE = 0;  // a world that lasts
     HISTORY_TURNS = 10;
     Simulation simulation(Simulation::Settings{20, 20, 30, 4});
@@ -653,9 +653,13 @@ TEST_CASE("the history keeps only the latest turns and fits its memory") {
     CHECK(simulation.turn() == 31);
     CHECK_FALSE(simulation.rewind());
     simulation.seek(40);
-    HISTORY_MEMORY = 1;  // far too little: only the newest is kept
+    HISTORY_TURNS = HISTORY_ALL;  // "all": every turn from here on
+    for (int turn = 0; turn < 20; ++turn) simulation.advance();
+    CHECK(simulation.history_turns().size() == 30);
+    simulation.seek(60);
+    HISTORY_MEMORY = 1e-9;  // far too little: only the newest is kept
     simulation.advance();
-    CHECK(simulation.history_turns() == std::vector<int>{41});
+    CHECK(simulation.history_turns() == std::vector<int>{61});
     std::uintmax_t brains = 0;
     for (const auto& agent : simulation.agents()) brains += AGENT_BYTES + agent->brain_bytes();
     CHECK(simulation.history_bytes() == brains);
