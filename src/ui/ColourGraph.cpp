@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <iterator>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "core/PyFormat.hpp"
 #include "ui/Icons.hpp"
@@ -171,8 +172,7 @@ ColourGraph::Layout ColourGraph::layout() const {
     places.timeline = {places.chart.x, places.chart.bottom() + UI(4), places.chart.w, UI(24)};
     int right = panel.right() - UI(24);
     for (const auto& [button, width] : {std::pair{&places.save, 76}, std::pair{&places.copy, 76},
-                                        std::pair{&places.clear, 76}, std::pair{&places.living, 116},
-                                        std::pair{&places.sort, 170}}) {
+                                        std::pair{&places.clear, 76}, std::pair{&places.sort, 170}}) {
         *button = {right - UI(width), panel.y + UI(18), UI(width), UI(30)};
         right -= UI(width + 8);
     }
@@ -266,11 +266,6 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
             menu_open_ = true;
         } else if (places.clear.contains(x, y)) {
             select({}, Mode::Replace);
-        } else if (places.living.contains(x, y)) {
-            std::set<int> living;  // drop the dead from the selection
-            std::set_intersection(selection_.begin(), selection_.end(), alive_.begin(), alive_.end(),
-                                  std::inserter(living, living.end()));
-            select(living, Mode::Replace);
         } else if (timeline.contains(x, y)) {
             scrub_ = turn_at(x);
         } else if (chart.contains(x, y)) {
@@ -289,11 +284,15 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
             if (std::max(std::abs(event.button.x - start_x), std::abs(event.button.y - start_y)) < UI(DRAG_THRESHOLD)) {
                 const auto hit = bitzkey_at(start_x, start_y);
                 std::set<int> picked;
-                if (hit) picked.insert(*hit);
+                if (hit && alive_.contains(*hit)) picked.insert(*hit);  // only the living can be picked
                 select(picked, ctrl ? Mode::Remove : shift ? Mode::Toggle : Mode::Replace);
             } else {
                 const Rect box = box_between(start_x, start_y, event.button.x, event.button.y).clip(chart);
-                select(bitzkeys_in(box), ctrl ? Mode::Remove : shift ? Mode::Add : Mode::Replace);
+                std::set<int> picked;
+                for (const int identifier : bitzkeys_in(box)) {
+                    if (alive_.contains(identifier)) picked.insert(identifier);
+                }
+                select(picked, ctrl ? Mode::Remove : shift ? Mode::Add : Mode::Replace);
             }
         }
     }
@@ -308,6 +307,7 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
     const int now = simulation.turn();
     std::vector<int> present;
     for (const Bitzkey* agent : simulation.living()) present.push_back(agent->identifier);
+    const std::unordered_set<int> alive(present.begin(), present.end());
     struct Moment {
         int end;
         std::span<const int> members;
@@ -325,8 +325,9 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
     peak_ = nice_ceiling(static_cast<double>(most));
     const double unit = chart.h / peak_;
 
-    // Stacked by species, plants at the bottom; within each, by the sort's trait if there is one,
-    // then similar colours together: greys by lightness, then hues round the wheel.
+    // Stacked by species, plants at the bottom; within each, by the sort's trait if there is one, then
+    // similar colours together: greys by lightness, then hues round the wheel. A trait sorts only the
+    // living, the dead being remembered by their colour alone, beneath them.
     using Key = std::tuple<int, int, int, double, double, std::uint32_t, int>;
     std::unordered_map<int, Key> order;
     const auto key_of = [&](int identifier) -> const Key& {
@@ -334,7 +335,8 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
         if (found == order.end()) {
             const Dna dna = simulation.lineage(identifier);
             const auto [group, hue, value] = colour_order(color_from_word(dot_ ? mind_word(dna) : body_word(dna)));
-            found = order.emplace(identifier, Key{decode_body(dna)[SpeciesTrait], sort_value(dna, sort_), group, hue, value,
+            const int trait = sort_ == 0 ? 0 : alive.contains(identifier) ? sort_value(dna, sort_) : -1;
+            found = order.emplace(identifier, Key{decode_body(dna)[SpeciesTrait], trait, group, hue, value,
                                                   dot_ ? mind_word(dna) : body_word(dna), identifier}).first;
         }
         return found->second;
@@ -396,6 +398,12 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     height_ = canvas.height();
     alive_.clear();
     for (const Bitzkey* agent : simulation.living()) alive_.insert(agent->identifier);
+    if (std::any_of(selection_.begin(), selection_.end(), [&](int identifier) { return !alive_.contains(identifier); })) {
+        std::set<int> living;  // the dead are forgotten but for their colour
+        std::set_intersection(selection_.begin(), selection_.end(), alive_.begin(), alive_.end(),
+                              std::inserter(living, living.end()));
+        select(living, Mode::Replace);
+    }
     now_ = simulation.turn();
     frontier_ = simulation.frontier();
     ended_ = simulation.ended();
@@ -412,8 +420,8 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
                 std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot    C  copy    S  save    K  catalog    "
                             "G or ESC  ") + (ended_ ? "new world" : "close"),
                 {144, 170, 151}, panel.x + UI(24), panel.y + UI(54));
-    for (const auto& [button, name] : {std::pair{places.living, "LIVING ONLY"}, std::pair{places.clear, "CLEAR"},
-                                       std::pair{places.copy, "COPY"}, std::pair{places.save, "SAVE"}}) {
+    for (const auto& [button, name] : {std::pair{places.clear, "CLEAR"}, std::pair{places.copy, "COPY"},
+                                       std::pair{places.save, "SAVE"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.text_at(font, name, {220, 229, 211}, [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
     }
@@ -473,14 +481,10 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
                 {144, 170, 151}, panel.x + UI(24), panel.bottom() - UI(28));
     if (menu_open_) {
         draw_menu(canvas);
-    } else if (hovered && !press_) {
+    } else if (hovered && alive_.contains(*hovered) && !press_) {  // the dead show only their colour, below
         const auto& agents = simulation.agents();
         const auto found = std::find_if(agents.begin(), agents.end(), [&](const auto& agent) { return agent->identifier == *hovered; });
-        if (found != agents.end()) {
-            draw_tooltip(canvas, **found, true, mouse_x_, mouse_y_, simulation.temperature((*found)->y));
-        } else {
-            draw_tooltip(canvas, Bitzkey(*hovered, simulation.lineage(*hovered), 0, 0), false, mouse_x_, mouse_y_);
-        }
+        if (found != agents.end()) draw_tooltip(canvas, **found, true, mouse_x_, mouse_y_, simulation.temperature((*found)->y));
     }
 }
 
@@ -597,11 +601,8 @@ void ColourGraph::draw_seasons(Canvas& canvas, const Rect& chart, const Rect& ti
 std::string ColourGraph::describe(const Simulation& simulation, std::optional<int> hovered) const {
     std::set<int> living;
     for (const Bitzkey* agent : simulation.living()) living.insert(agent->identifier);
-    int alive = 0;
-    for (const int identifier : selection_) alive += living.contains(identifier);
-    std::string chosen = selection_.empty() ? "Nothing selected"
-                                            : format("%zu selected (%d alive)", selection_.size(), alive);
-    if (sort_ != 0) chosen = "Each species sorted by " + sort_name(sort_) + ", lowest at the bottom.     " + chosen;
+    std::string chosen = selection_.empty() ? "Nothing selected" : format("%zu selected", selection_.size());
+    if (sort_ != 0) chosen = "The living sorted by " + sort_name(sort_) + ", lowest at the bottom.     " + chosen;
     if (simulation.turn() < simulation.frontier()) {
         chosen = format("Rewound to turn %d of %d.     ", simulation.turn(), simulation.frontier()) + chosen;
     } else if (const EndReason reason = simulation.end_reason(); reason != EndReason::None) {
@@ -610,9 +611,12 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
     }
     if (!hovered) return chosen;
     const Dna dna = simulation.lineage(*hovered);
-    return chosen + format("     |     #%03d  %s  %s   ring %08X   dot %08X", *hovered,
+    if (!living.contains(*hovered)) {  // remembered by its colour alone
+        return chosen + format("     |     dead   ring %08X   dot %08X", body_word(dna), mind_word(dna));
+    }
+    return chosen + format("     |     #%03d  %s  alive   ring %08X   dot %08X", *hovered,
                            std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(),
-                           living.contains(*hovered) ? "alive" : "dead", body_word(dna), mind_word(dna));
+                           body_word(dna), mind_word(dna));
 }
 
 }  // namespace bitzkey::ui

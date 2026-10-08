@@ -669,7 +669,7 @@ void App::draw_world(Canvas& canvas) {
         if (!reach.contains(px, py)) continue;
         const int radius = dot_radius(agent->body[Size], largest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
-        if ((selected_id_ && agent->identifier == *selected_id_) || graph_.selection().contains(agent->identifier)) {
+        if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             canvas.circle(px, py, radius + RING_WIDTH + UI(3), SELECTED, std::max(1, UI(1)));
         }
         if (std::any_of(export_list_.begin(), export_list_.end(),

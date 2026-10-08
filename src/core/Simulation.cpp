@@ -76,6 +76,29 @@ const auto SEEN_WITHIN = make_within(true);
 std::int64_t seed_offsets() { return static_cast<std::int64_t>(SIGHT_WITHIN[static_cast<std::size_t>(SEED_REACH)].size()); }
 
 // The offsets within `radius` steps, the own cell among them, column by column.
+// Where young may be born around their mother, nearest first: the sides, then the corners, then each
+// ring further out, up to `reach`, its nearest cells first.
+const std::vector<Offset>& birth_offsets(int reach) {
+    static std::array<std::vector<Offset>, 16> cache;
+    auto& offsets = cache.at(static_cast<std::size_t>(reach));
+    if (offsets.empty()) {
+        offsets = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
+        std::vector<Offset> further;
+        for (int dy = -reach; dy <= reach; ++dy) {
+            for (int dx = -reach; dx <= reach; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) > 1) further.push_back({dx, dy});
+            }
+        }
+        const auto key = [](const Offset& offset) {
+            return std::tuple{std::max(std::abs(offset.dx), std::abs(offset.dy)), offset.dx * offset.dx + offset.dy * offset.dy,
+                              offset.dy, offset.dx};
+        };
+        std::sort(further.begin(), further.end(), [&](const Offset& a, const Offset& b) { return key(a) < key(b); });
+        offsets.insert(offsets.end(), further.begin(), further.end());
+    }
+    return offsets;
+}
+
 const std::vector<Offset>& nearby_offsets(int radius) {
     static std::array<std::vector<Offset>, 16> cache;
     auto& offsets = cache.at(static_cast<std::size_t>(radius));
@@ -225,6 +248,21 @@ Profile Bitzkey::profile() const {
     return profile;
 }
 
+static std::uintmax_t brain_bytes(const Brain& brain) {
+    std::uintmax_t bytes = sizeof(Brain);
+    for (const Layer& layer : brain.layers) bytes += sizeof(Layer) + layer.weights.size() * sizeof(double);
+    if (brain.traces) {
+        for (const Layer& layer : brain.traces->layers) bytes += sizeof(Layer) + layer.weights.size() * sizeof(double);
+    }
+    return bytes;
+}
+
+std::uintmax_t Bitzkey::brain_bytes() const {
+    std::uintmax_t bytes = brain ? bitzkey::brain_bytes(*brain) : 0;
+    for (const Young& young : womb) bytes += young.brain ? bitzkey::brain_bytes(*young.brain) : 0;
+    return bytes;
+}
+
 Brain& Bitzkey::own_brain() {
     if (brain.use_count() > 1) brain = std::make_shared<Brain>(*brain);
     return *brain;
@@ -237,7 +275,12 @@ int litter_size(std::span<const std::pair<int, int>> parents, Species species) {
         tendencies.push_back((1 - LITTER_SIZE_WEIGHT) * share(litter) + LITTER_SIZE_WEIGHT * (1 - share(size)));
     }
     const double tendency = py_sum(tendencies) / static_cast<double>(parents.size());
-    const int litter = smallest + static_cast<int>(tendency * (largest - smallest) + 0.5);
+    int litter = smallest + static_cast<int>(tendency * (largest - smallest) + 0.5);
+    // The smallest bodies have SMALL_LITTERS times as many, falling evenly to the usual for the largest.
+    std::vector<double> sizes;
+    for (const auto& [trait, size] : parents) sizes.push_back(share(size));
+    const double small = 1 - py_sum(sizes) / static_cast<double>(parents.size());
+    litter = static_cast<int>(litter * (1 + (SMALL_LITTERS - 1) * small) + 0.5);
     return species == Species::Predator ? static_cast<int>(std::ceil(litter * PREDATOR_LITTERS)) : litter;
 }
 
@@ -407,241 +450,11 @@ Bitzkey& Simulation::add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> bra
 // ---------------------------------------------------------------------------------------------
 // History
 
-namespace {
-
-// Writing a snapshot of the world to a file, and reading it back, field by field, as the machine
-// holds them: a file is only ever read back by the run that wrote it.
-class Writer {  // into memory, to be written to its file on the history's own thread
-public:
-    explicit Writer(std::string& out) : out_(out) {}
-    template <class T>
-    void put(const T& value) {
-        static_assert(std::is_trivially_copyable_v<T>);
-        out_.append(reinterpret_cast<const char*>(&value), sizeof value);
-    }
-    template <class T>
-    void put_all(const std::vector<T>& values) {
-        static_assert(std::is_trivially_copyable_v<T>);
-        put(values.size());
-        out_.append(reinterpret_cast<const char*>(values.data()), values.size() * sizeof(T));
-    }
-    template <class T>
-    void put_maybe(const std::optional<T>& value) {
-        put(value.has_value());
-        if (value) put(*value);
-    }
-    void put_text(std::string_view text) {
-        put(text.size());
-        out_.append(text);
-    }
-
-private:
-    std::string& out_;
-};
-
-class Reader {
-public:
-    explicit Reader(const std::filesystem::path& path) : in_(path, std::ios::binary) {
-        if (!in_) throw std::runtime_error("Couldn't read the history file " + path.string());
-    }
-    template <class T>
-    T take() {
-        T value;
-        in_.read(reinterpret_cast<char*>(&value), sizeof value);
-        if (!in_) throw std::runtime_error("A history file ends early.");
-        return value;
-    }
-    template <class T>
-    std::vector<T> take_all() {
-        std::vector<T> values(take<std::size_t>());
-        in_.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(T)));
-        if (!in_) throw std::runtime_error("A history file ends early.");
-        return values;
-    }
-    template <class T>
-    std::optional<T> take_maybe() {
-        if (!take<bool>()) return std::nullopt;
-        return take<T>();
-    }
-    std::string take_text() {
-        std::string text(take<std::size_t>(), '\0');
-        in_.read(text.data(), static_cast<std::streamsize>(text.size()));
-        if (!in_) throw std::runtime_error("A history file ends early.");
-        return text;
-    }
-
-private:
-    std::ifstream in_;
-};
-
-void put_layers(Writer& out, const std::vector<Layer>& layers) {
-    out.put(layers.size());
-    for (const Layer& layer : layers) {
-        out.put(layer.reads);
-        out.put_all(layer.weights);
-        out.put(layer.biases);
-    }
-}
-
-std::vector<Layer> take_layers(Reader& in) {
-    std::vector<Layer> layers(in.take<std::size_t>());
-    for (Layer& layer : layers) {
-        layer.reads = in.take<int>();
-        layer.weights = in.take_all<double>();
-        layer.biases = in.take<decltype(layer.biases)>();
-    }
-    return layers;
-}
-
-void put_brain(Writer& out, const Brain& brain) {
-    put_layers(out, brain.layers);
-    out.put(brain.output_weights);
-    out.put(brain.output_biases);
-    out.put(brain.traces.has_value());
-    if (brain.traces) {
-        put_layers(out, brain.traces->layers);
-        out.put(brain.traces->output_weights);
-        out.put(brain.traces->output_biases);
-    }
-}
-
-Brain take_brain(Reader& in) {
-    Brain brain;
-    brain.layers = take_layers(in);
-    brain.output_weights = in.take<Brain::OutputWeights>();
-    brain.output_biases = in.take<decltype(brain.output_biases)>();
-    if (in.take<bool>()) {
-        brain.traces.emplace();
-        brain.traces->layers = take_layers(in);
-        brain.traces->output_weights = in.take<Brain::OutputWeights>();
-        brain.traces->output_biases = in.take<decltype(brain.traces->output_biases)>();
-    }
-    return brain;
-}
-
-void put_bitzkey(Writer& out, const Bitzkey& agent) {
-    out.put(agent.identifier);
-    out.put(agent.dna);
-    out.put(agent.x);
-    out.put(agent.y);
-    out.put(agent.hunger);
-    out.put(agent.health);
-    out.put(agent.age);
-    out.put(agent.cooldown);
-    out.put_text(agent.last_action);
-    out.put(agent.brain != nullptr);
-    if (agent.brain) put_brain(out, *agent.brain);
-    out.put(agent.generation);
-    out.put(agent.children);
-    out.put_maybe(agent.died_turn);
-    out.put_maybe(agent.assailant);
-    out.put(agent.panicked);
-    out.put(agent.rivalry);
-    out.put(agent.own_rivalry);
-    out.put(agent.hunts_grazers);
-    out.put(agent.hunts_omnivores);
-    out.put_maybe(agent.alarm);
-    out.put(agent.seen_success);
-    out.put(agent.seen_failure);
-    out.put_maybe(agent.herd_assailant);
-    out.put(agent.meat);
-    out.put(agent.rot);
-    out.put(agent.mind);
-    out.put(agent.has_last_senses);
-    out.put(agent.last_senses);
-    out.put(agent.last_choice);
-    out.put(agent.last_wellbeing);
-    out.put(agent.last_comfort);
-    out.put(agent.reward);
-    out.put(agent.odds);
-    out.put(agent.odds_offered);
-    out.put(agent.trail.size());
-    for (const auto& [x, y] : agent.trail) {
-        out.put(x);
-        out.put(y);
-    }
-}
-
-std::unique_ptr<Bitzkey> take_bitzkey(Reader& in) {
-    const int identifier = in.take<int>();
-    const Dna dna = in.take<Dna>();
-    const int x = in.take<int>();
-    const int y = in.take<int>();
-    auto agent = std::make_unique<Bitzkey>(identifier, dna, x, y);  // what the genome fixes, it works out again
-    agent->hunger = in.take<double>();
-    agent->health = in.take<double>();
-    agent->age = in.take<int>();
-    agent->cooldown = in.take<int>();
-    agent->last_action = kept_text(in.take_text());
-    if (in.take<bool>()) agent->brain = std::make_shared<Brain>(take_brain(in));
-    agent->generation = in.take<int>();
-    agent->children = in.take<int>();
-    agent->died_turn = in.take_maybe<int>();
-    agent->assailant = in.take_maybe<int>();
-    agent->panicked = in.take<bool>();
-    agent->rivalry = in.take<double>();
-    agent->own_rivalry = in.take<double>();
-    agent->hunts_grazers = in.take<bool>();
-    agent->hunts_omnivores = in.take<bool>();
-    agent->alarm = in.take_maybe<int>();
-    agent->seen_success = in.take<double>();
-    agent->seen_failure = in.take<double>();
-    agent->herd_assailant = in.take_maybe<int>();
-    agent->meat = in.take<double>();
-    agent->rot = in.take<double>();
-    agent->mind = in.take<Mind>();
-    agent->has_last_senses = in.take<bool>();
-    agent->last_senses = in.take<Senses>();
-    agent->last_choice = in.take<int>();
-    agent->last_wellbeing = in.take<double>();
-    agent->last_comfort = in.take<double>();
-    agent->reward = in.take<double>();
-    agent->odds = in.take<decltype(agent->odds)>();
-    agent->odds_offered = in.take<std::uint32_t>();
-    agent->trail.resize(in.take<std::size_t>());
-    for (auto& [cell_x, cell_y] : agent->trail) {
-        cell_x = in.take<int>();
-        cell_y = in.take<int>();
-    }
-    return agent;
-}
-
-}  // namespace
 
 std::string_view kept_text(std::string_view text) {
     static std::set<std::string, std::less<>> kept;
     const auto found = kept.find(text);
     return found != kept.end() ? *found : *kept.emplace(text).first;
-}
-
-TemporaryFolder::TemporaryFolder() {
-    static std::mt19937_64 names(std::random_device{}());
-    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    for (int attempt = 0; path_.empty(); ++attempt) {
-        const std::filesystem::path candidate = std::filesystem::temp_directory_path() /
-            (std::string(HISTORY_PREFIX) + std::to_string(stamp) + "-" + std::to_string(names()));
-        if (std::filesystem::create_directory(candidate)) path_ = candidate;
-        else if (attempt > 100) throw std::runtime_error("Couldn't make a folder for the history among the temporary files.");
-    }
-}
-
-TemporaryFolder::~TemporaryFolder() { remove(); }
-
-TemporaryFolder::TemporaryFolder(TemporaryFolder&& other) noexcept : path_(std::exchange(other.path_, {})) {}
-
-TemporaryFolder& TemporaryFolder::operator=(TemporaryFolder&& other) noexcept {
-    if (this != &other) {
-        remove();
-        path_ = std::exchange(other.path_, {});
-    }
-    return *this;
-}
-
-void TemporaryFolder::remove() {
-    if (path_.empty()) return;
-    std::error_code ignored;
-    std::filesystem::remove_all(path_, ignored);
-    path_.clear();
 }
 
 void remove_stale_histories() {
@@ -654,142 +467,53 @@ void remove_stale_histories() {
     }
 }
 
-HistoryWriter::HistoryWriter() : thread_([this] { run(); }) {}
-
-HistoryWriter::~HistoryWriter() {
-    {
-        std::lock_guard lock(mutex_);
-        stopping_ = true;
-    }
-    changed_.notify_all();
-    thread_.join();
-}
-
-void HistoryWriter::run() {
-    std::unique_lock lock(mutex_);
-    while (true) {
-        changed_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
-        if (jobs_.empty()) return;  // stopping, with everything done
-        Job job = std::move(jobs_.front());
-        jobs_.pop_front();
-        busy_ = true;
-        const bool failed = failure_ != nullptr;
-        lock.unlock();
-        std::exception_ptr failure;
-        if (!failed) {
-            try {
-                if (job.data) {
-                    std::ofstream out(job.path, std::ios::binary | std::ios::trunc);
-                    out.write(job.data->data(), static_cast<std::streamsize>(job.data->size()));
-                    out.flush();
-                    if (!out) throw std::runtime_error("Couldn't write the history file " + job.path.string() + "; is the disk full?");
-                } else {
-                    std::error_code ignored;
-                    std::filesystem::remove(job.path, ignored);
-                }
-            } catch (...) {
-                failure = std::current_exception();
-            }
-        }
-        lock.lock();
-        if (failure) failure_ = failure;
-        busy_ = false;
-        changed_.notify_all();
-    }
-}
-
-void HistoryWriter::throw_failure() {
-    if (failure_) std::rethrow_exception(failure_);
-}
-
-void HistoryWriter::write(std::filesystem::path path, std::string data) {
-    std::unique_lock lock(mutex_);
-    throw_failure();
-    changed_.wait(lock, [this] { return jobs_.size() < HISTORY_QUEUE; });
-    jobs_.push_back({std::move(path), std::move(data)});
-    changed_.notify_all();
-}
-
-void HistoryWriter::remove(std::filesystem::path path) {
-    std::lock_guard lock(mutex_);
-    jobs_.push_back({std::move(path), std::nullopt});
-    changed_.notify_all();
-}
-
-void HistoryWriter::wait() {
-    std::unique_lock lock(mutex_);
-    changed_.wait(lock, [this] { return jobs_.empty() && !busy_; });
-    throw_failure();
-}
-
-void Simulation::flush_history() { writer_->wait(); }
-
 std::vector<int> Simulation::history_turns() const {
     std::vector<int> turns;
-    for (const SnapshotFile& file : history_) turns.push_back(file.turn);
+    for (const Snapshot& held : history_) turns.push_back(held.turn);
     return turns;
 }
 
-std::string Simulation::snapshot() const {
-    std::string data;
-    Writer out(data);
-    out.put(turn_);
-    out.put(deaths_);
-    out.put(next_identifier_);
-    out.put(agents_.size());
-    for (const auto& agent : agents_) put_bitzkey(out, *agent);
-    out.put_all(grass_);
-    out.put_all(seeds_);
-    const PyRandom::State random = random_.getstate();
-    out.put(random.mt);
-    out.put(random.index);
-    out.put_maybe(random.gauss_next);
-    const Insights::State insights = insights_.snapshot();
-    out.put_all(insights.offered);
-    out.put_all(insights.chosen);
-    return data;
-}
-
 void Simulation::record() {
-    // Hand the newest turn to the disk, then delete the oldest while the history is over its budget.
+    // Keep a copy of the newest turn, then let the oldest go while the history holds more than
+    // HISTORY_TURNS turns or HISTORY_MEMORY bytes.
     frontier_ = turn_;
-    std::string data = snapshot();
-    char name[32];
-    std::snprintf(name, sizeof name, "turn-%08d.snapshot", turn_);
-    const std::filesystem::path path = history_folder_.path() / name;
-    history_.push_back({turn_, path, data.size()});
-    history_bytes_ += data.size();
-    writer_->write(path, std::move(data));
-    while (history_bytes_ > HISTORY_BUDGET && history_.size() > 1) {
+    if (!history_.empty() && history_.back().turn == turn_) {  // recorded again, as it now is
+        history_bytes_ -= history_.back().bytes;
+        history_.pop_back();
+    }
+    Snapshot held{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
+    held.agents.reserve(agents_.size());
+    for (const auto& agent : agents_) {
+        held.agents.push_back(*agent);
+        held.bytes += AGENT_BYTES + agent->brain_bytes();
+    }
+    history_bytes_ += held.bytes;
+    history_.push_back(std::move(held));
+    while (history_.size() > 1 &&
+           (history_.size() > static_cast<std::size_t>(HISTORY_TURNS) || history_bytes_ > HISTORY_MEMORY)) {
         history_bytes_ -= history_.front().bytes;
-        writer_->remove(history_.front().path);
         history_.pop_front();
     }
 }
 
-void Simulation::restore(const SnapshotFile& file) {
-    flush_history();  // its file written
-    Reader in(file.path);
-    turn_ = in.take<int>();
-    deaths_ = in.take<int>();
-    next_identifier_ = in.take<int>();
+void Simulation::restore(const Snapshot& held) {
+    turn_ = held.turn;
+    deaths_ = held.deaths;
+    next_identifier_ = held.next_identifier;
     for (auto& agent : agents_) departed_.push_back(std::move(agent));
     agents_.clear();
-    const std::size_t count = in.take<std::size_t>();
-    for (std::size_t index = 0; index < count; ++index) agents_.push_back(take_bitzkey(in));
-    grass_ = in.take_all<int>();
-    seeds_ = in.take_all<Seed>();
-    PyRandom::State random;
-    random.mt = in.take<decltype(random.mt)>();
-    random.index = in.take<int>();
-    random.gauss_next = in.take_maybe<double>();
-    random_.setstate(random);
-    Insights::State insights;
-    insights.offered = in.take_all<double>();
-    insights.chosen = in.take_all<double>();
-    insights_.restore(insights);
+    for (const Bitzkey& agent : held.agents) agents_.push_back(std::make_unique<Bitzkey>(agent));
+    grass_ = held.grass;
+    seeds_ = held.seeds;
+    random_.setstate(held.random);
+    insights_.restore(held.insights);
     update_climate();
     index_cells();
+}
+
+void Simulation::close() {
+    history_.clear();
+    history_bytes_ = 0;
 }
 
 void Simulation::seek(int target) {
@@ -914,6 +638,7 @@ void Simulation::take_turn() {
             seed_plant(*agent);
             continue;
         }
+        if (agent->due_turn && *agent->due_turn <= turn_) give_birth(*agent);
         agent->seen_success *= SOCIAL_MEMORY;
         agent->seen_failure *= SOCIAL_MEMORY;
         settle(*agent);
@@ -967,6 +692,10 @@ void Simulation::index_cells() {
     departed_.clear();
 }
 
+int gestation(int size) {
+    return GESTATION[0] + static_cast<int>(static_cast<double>((GESTATION[1] - GESTATION[0]) * size) / TRAIT_MAX + 0.5);
+}
+
 void Simulation::seed_plant(Bitzkey& plant) {
     if (plant.hunger > SEED_HUNGER) return;
     // Plants compete for light: the more plants grow within LIGHT_RADIUS, the less likely a plant
@@ -987,11 +716,7 @@ void Simulation::seed_plant(Bitzkey& plant) {
     plant.children += 1;
     plant.last_action = "seeded";
     if (!plant.alive()) die(plant, "seeded to death");  // it spent the last of its food on the seed
-    if (std::abs(climate_[static_cast<std::size_t>(cell.y)] - decode_climate(dna).temperature) >= 0.5) {  // too hot or cold: the seed waits
-        seeds_.push_back({cell.x, cell.y, dna, plant.generation + 1, turn_});
-        return;
-    }
-    sprout(dna, cell, plant.generation + 1);
+    seeds_.push_back({cell.x, cell.y, dna, plant.generation + 1, turn_});  // it lies PLANT_GESTATION turns before it can sprout
 }
 
 void Simulation::wither_grass() {
@@ -1025,13 +750,14 @@ void Simulation::sprout(Dna dna, Cell cell, int generation) {
 }
 
 void Simulation::germinate() {
-    // Waiting seeds sprout once their cell is at their temperature and there is room, unless they
-    // have waited SEED_VIABILITY of a year, when they are dead.
+    // Seeds sprout once they have lain PLANT_GESTATION turns, their cell is at their temperature and
+    // there is room, unless they have waited SEED_VIABILITY of a year, when they are dead.
     const double viable = SEED_VIABILITY * YEAR_LENGTH;
     std::vector<Seed> waiting;
     for (const Seed& seed : seeds_) {
         if (turn_ - seed.sown >= viable) continue;
-        if (std::abs(climate_[static_cast<std::size_t>(seed.y)] - decode_climate(seed.dna).temperature) < 0.5 &&
+        if (turn_ - seed.sown >= PLANT_GESTATION &&
+            std::abs(climate_[static_cast<std::size_t>(seed.y)] - decode_climate(seed.dna).temperature) < 0.5 &&
             room_for_seedling({seed.x, seed.y})) {
             sprout(seed.dna, {seed.x, seed.y}, seed.generation);
         } else {
@@ -1355,6 +1081,8 @@ void Simulation::die(Bitzkey& agent, std::string_view cause) {
         if (cause != "old age") witness(agent, -DEATH_PENALTY);  // its herd sees it fail
     }
     agent.brain.reset();
+    agent.womb.clear();  // the young it carried die with it
+    agent.due_turn.reset();
     agent.health = std::min(agent.health, 0.0);  // whatever the cause, a recorded death leaves it dead
     agent.died_turn = turn_;
     agent.last_action = cause;
@@ -1411,7 +1139,7 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
             break;
         case Breed:
             agent.last_action = "mated";  // before breeding, so a parent that dies of it says so
-            breed(agent, *s.mate, s.nurseries);
+            breed(agent, *s.mate);
             break;
         case Hunt: {
             Bitzkey& quarry = *s.quarry;
@@ -1636,19 +1364,20 @@ void Simulation::struck(Bitzkey& victim, const Bitzkey& striker) {
     }
 }
 
-void Simulation::breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells) {
+void Simulation::breed(Bitzkey& first, Bitzkey& second) {
+    // The parent that chose to breed conceives the litter and carries it for its gestation.
     const std::array<std::pair<int, int>, 2> parents = {std::pair{first.body[Litter], first.body[Size]},
                                                         std::pair{second.body[Litter], second.body[Size]}};
     int litter = litter_size(parents, first.species);
     litter = std::max(1, static_cast<int>(litter * (1 - static_cast<double>(crowding(first, second)) / CROWDING_LIMIT) + 0.5));
     litter = std::max(1, static_cast<int>(litter * std::min(1.0, food_supply(first) / (2 * FOOD_NEEDED)) + 0.5));
-    const double allowed = std::max(1.0, std::min(static_cast<double>(litter), room()));
-    if (static_cast<double>(cells.size()) > allowed) cells.resize(static_cast<std::size_t>(allowed));
+    litter = static_cast<int>(std::max(1.0, std::min(static_cast<double>(litter), room())));
     const std::array<double, 2> costs = {first.breeding_cost, second.breeding_cost};
     const std::array<double, 2> gifts = {std::min(costs[0], std::max(0.0, 100 - first.hunger)) * first.stomach,
                                          std::min(costs[1], std::max(0.0, 100 - second.hunger)) * second.stomach};
     const double given = py_sum(gifts);
-    for (const Cell& cell : cells) {
+    const int generation = std::max(first.generation, second.generation) + 1;
+    for (int young = 0; young < litter; ++young) {
         // The child's mind starts at the average of its parents' current minds, mutated, and its
         // dot is written from that mind, so experience is inherited and shows. Its brain, a mix of
         // its parents', is as deep as its own inborn intellect makes it.
@@ -1656,18 +1385,15 @@ void Simulation::breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells)
         const Dna dna = cross(first.dna, second.dna, random_, mind, MIND_MUTATION_CHANCE, body_mutation_);
         auto brain = std::make_shared<Brain>(
             Brain::inherit(*first.brain, *second.brain, random_, depth_for(decode_mind(dna)[Intellect])));
-        Bitzkey& child = add_agent(dna, cell.x, cell.y, std::move(brain));
-        child.mind = mind;
-        child.hunger = std::max(0.0, 100 - given / static_cast<double>(cells.size()) / child.stomach);
-        child.generation = std::max(first.generation, second.generation) + 1;
-        population_ += 1;
+        first.womb.push_back({dna, mind, std::move(brain), given / litter, generation});
     }
+    first.due_turn = turn_ + gestation(first.body[Size]);
     const std::array<Bitzkey*, 2> pair = {&first, &second};
     for (int index = 0; index < 2; ++index) {
         Bitzkey& parent = *pair[index];
         parent.hunger += costs[index];
         parent.cooldown = static_cast<int>(py_round(20 - 15 * parent.physique(Fertility)));
-        parent.children += static_cast<int>(cells.size());
+        parent.children += litter;
         parent.reward += BREED_JOY * parent.feeling(Libido);
         if (!parent.alive()) {
             die(parent, "bred to death");
@@ -1707,10 +1433,26 @@ int Simulation::crowding(const Bitzkey& agent, const Bitzkey& partner) const {
     return count;
 }
 
+void Simulation::give_birth(Bitzkey& mother) {
+    const std::vector<Cell> cells = free_cells_near(mother);
+    const auto born = static_cast<std::size_t>(std::min({static_cast<double>(mother.womb.size()),
+                                                         static_cast<double>(cells.size()), std::max(0.0, room())}));
+    for (std::size_t index = 0; index < born; ++index) {
+        Bitzkey::Young& young = mother.womb[index];
+        Bitzkey& child = add_agent(young.dna, cells[index].x, cells[index].y, std::move(young.brain));
+        child.mind = young.mind;
+        child.hunger = std::max(0.0, 100 - young.energy / child.stomach);
+        child.generation = young.generation;
+        population_ += 1;
+    }
+    mother.womb.clear();
+    mother.due_turn.reset();
+}
+
 std::vector<Cell> Simulation::free_cells_near(const Bitzkey& agent) const {
-    static constexpr std::array<Offset, 8> around = {{{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}}};
+    // The empty cells around an animal, up to BIRTH_REACH away and nearest first, where young can be born.
     std::vector<Cell> cells;
-    for (const Offset& offset : around) {
+    for (const Offset& offset : birth_offsets(BIRTH_REACH)) {
         if (agent.y + offset.dy < 0 || agent.y + offset.dy >= height_) continue;  // beyond the top or bottom of the map
         const Cell cell{py_mod(agent.x + offset.dx, width_), agent.y + offset.dy};
         const auto& list = cells_[static_cast<std::size_t>(cell.y) * width_ + cell.x];

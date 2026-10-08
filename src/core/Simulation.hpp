@@ -2,18 +2,14 @@
 // Turn-based Bitzkey world and its deterministic history.
 
 #include <array>
-#include <condition_variable>
 #include <cstdint>
 #include <deque>
-#include <exception>
 #include <filesystem>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,68 +32,24 @@ inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
-// The history is kept on disk, not in memory: every turn, whole, as a file in a folder of the world's own
-// among the temporary files, deleted with the world. The files are written on a thread of their own
-// while the world carries on, so no turn waits for the disk; at most HISTORY_QUEUE turns wait to be
-// written before the world waits for them. Any turn kept is reached at once, with nothing to replay.
-// The history keeps to a disk budget: once its files fill HISTORY_BUDGET, the oldest turns are
-// deleted, so it reaches back only as far as the budget allows; the newest turn is always kept.
-inline std::uintmax_t HISTORY_BUDGET = std::uintmax_t{25} << 30;  // bytes
-constexpr std::size_t HISTORY_QUEUE = 8;
-constexpr std::string_view HISTORY_PREFIX = "bitzkey-history-";  // the history folders' names start so
-constexpr int STALE_HISTORY_HOURS = 24;  // a history folder left this long by a run that never closed it is cleared away
+// The history is kept in memory: the world at each of the latest HISTORY_TURNS turns, whole, so the map
+// can be rewound to any of them at once, with nothing to replay. When a crowded world's brains make them
+// large, fewer are kept, so they fit HISTORY_MEMORY; the newest turn is always kept. Older turns live on
+// only in the colour graph.
+inline int HISTORY_TURNS = 100;
+inline std::uintmax_t HISTORY_MEMORY = std::uintmax_t{1} << 30;  // bytes, near enough
+constexpr std::uintmax_t AGENT_BYTES = 1000;  // what a Bitzkey takes in the history, besides its brain, near enough
+// Earlier versions kept the history on disk, in folders among the temporary files.
+constexpr std::string_view HISTORY_PREFIX = "bitzkey-history-";  // their names start so
+constexpr int STALE_HISTORY_HOURS = 24;  // one left this long by a run that never closed it is cleared away
 
-// Clear away history folders left among the temporary files by runs that never closed them, once they
-// are STALE_HISTORY_HOURS old, so a crash doesn't leave them filling the disk.
+// Clear away history folders that earlier versions left among the temporary files, once they are
+// STALE_HISTORY_HOURS old, so they don't go on filling the disk.
 void remove_stale_histories();
 // Text kept for as long as the program runs, for a name read back from a file to be held where the
 // names written into the program are: an animal's last action.
 std::string_view kept_text(std::string_view text);
 
-// A folder of its own among the temporary files, deleted with it. It can be moved, but not copied.
-class TemporaryFolder {
-public:
-    TemporaryFolder();
-    ~TemporaryFolder();
-    TemporaryFolder(TemporaryFolder&& other) noexcept;
-    TemporaryFolder& operator=(TemporaryFolder&& other) noexcept;
-    TemporaryFolder(const TemporaryFolder&) = delete;
-    TemporaryFolder& operator=(const TemporaryFolder&) = delete;
-    const std::filesystem::path& path() const { return path_; }
-
-private:
-    void remove();
-    std::filesystem::path path_;
-};
-
-// Writes the history's files on a thread of its own, in the order given, so the world needn't wait for
-// the disk; a file is deleted the same way, after it is written. A failure, such as a full disk, is
-// thrown the next time the world hands over a file or waits for them.
-class HistoryWriter {
-public:
-    HistoryWriter();
-    ~HistoryWriter();  // once everything handed over is done
-    HistoryWriter(const HistoryWriter&) = delete;
-    HistoryWriter& operator=(const HistoryWriter&) = delete;
-    void write(std::filesystem::path path, std::string data);  // waits while HISTORY_QUEUE are waiting
-    void remove(std::filesystem::path path);
-    void wait();  // until every file handed over is written (or deleted)
-
-private:
-    struct Job {
-        std::filesystem::path path;
-        std::optional<std::string> data;  // none to delete it
-    };
-    void run();
-    void throw_failure();  // with the lock held
-    std::mutex mutex_;
-    std::condition_variable changed_;
-    std::deque<Job> jobs_;
-    bool busy_ = false;
-    bool stopping_ = false;
-    std::exception_ptr failure_;
-    std::thread thread_;  // last, so it starts once the rest is ready
-};
 inline int CORPSE_FERTILITY = 2;
 inline int CORPSE_TURNS = 30;
 inline double BREED_RESERVE = 10;
@@ -105,6 +57,11 @@ inline double MATE_RING_DIFFERENCE = 0.05;
 inline double MATE_DOT_DIFFERENCE = 0.20;
 inline std::array<int, 2> LITTER_RANGE = {1, 6};
 inline double LITTER_SIZE_WEIGHT = 0.5;
+inline double SMALL_LITTERS = 2.0;  // the smallest bodies' litters are this many times the usual, falling evenly to the usual for the largest
+// Turns an animal carries its young, from mating to birth: from the first for the smallest body to the
+// second for the largest, evenly between, rounded half up.
+inline std::array<int, 2> GESTATION = {10, 50};
+inline int BIRTH_REACH = 2;  // young are born on the free cells nearest their mother, up to this many cells away
 // Years a Bitzkey, plant or animal, is expected to live: the smallest bodies, with the fastest
 // metabolisms; middling ones; and the largest, with the slowest. Between them, lifespan rises steadily
 // with the metabolism slowing.
@@ -222,6 +179,7 @@ inline int WAVE_FRONT = 4;
 inline int FRESH_KILL_TURNS = 1;
 inline double FRESH_KILL_MEALS = 3.0;
 inline double SEED_VIABILITY = 0.75;  // years a seed that falls where it can't grow stays able to germinate
+inline int PLANT_GESTATION = 10;  // turns a seed lies in the ground before it can sprout
 inline double STARTING_TOLERANCE = 0.1;  // the chance a random starting genome carries each tolerance flag
 inline double HARDINESS = 0.5;  // the share of exposure's extra hunger and damage an animal tolerant of it suffers
 enum Temperature : int { Hot, Medium, Cold, VeryCold };
@@ -303,6 +261,16 @@ struct Bitzkey {
     double meat = 0.0;                  // a corpse's meat left for scavengers
     double rot = 0.0;                   // meat lost to rot each turn
     std::vector<std::pair<int, int>> trail;  // the cells it passed through this turn, for the map
+    struct Young {  // conceived at mating, born at the end of the gestation
+        Dna dna = 0;
+        Mind mind{};
+        std::shared_ptr<Brain> brain;
+        double energy = 0.0;
+        int generation = 0;
+    };
+    std::vector<Young> womb;      // the young it carries
+    std::uintmax_t brain_bytes() const;  // the memory its brain, and those of the young it carries, take
+    std::optional<int> due_turn;  // the turn they are born
     Mind mind{};                        // current temperament, reshaped by experience
     // The last decision, kept until the next one so the brain can learn from how it turned out.
     bool has_last_senses = false;
@@ -328,7 +296,8 @@ struct Bitzkey {
     double feeling(int trait) const { return share(mind[trait]); }
     double herd_instinct() const { return std::min(feeling(Empathy), feeling(Patience)); }
     Profile profile() const;
-    bool can_breed() const { return cooldown == 0 && hunger + breeding_cost <= 100 - BREED_RESERVE; }
+    // Ready, not carrying young, and able to pay for breeding with energy to spare.
+    bool can_breed() const { return cooldown == 0 && womb.empty() && hunger + breeding_cost <= 100 - BREED_RESERVE; }
     bool alive() const { return health > 0 && hunger < 100; }
     void nourish(double food) { hunger = std::max(0.0, hunger - food / stomach); }
     void heal(double amount) { health = std::min(max_health, health + max_health * amount * metabolism); }
@@ -344,6 +313,7 @@ struct Bitzkey {
 };
 
 int litter_size(std::span<const std::pair<int, int>> parents, Species species);
+int gestation(int size);  // turns an animal of this body size carries its young
 
 enum class EndReason { None, Extinct, Full };
 
@@ -413,7 +383,7 @@ public:
     void seek(int target);
     bool rewind();
     int earliest() const { return history_.empty() ? turn_ : history_.front().turn; }  // the oldest turn kept
-    void flush_history();  // wait until every turn handed to the disk is written
+    void close();  // let the history go: the world can't be rewound after
     EndReason end_reason() const;
     bool ended() const { return turn_ == frontier_ && end_reason() != EndReason::None; }
 
@@ -476,15 +446,17 @@ public:
     void defend(Bitzkey& agent, Bitzkey& assailant, bool for_herd = false);
     void struck(Bitzkey& victim, const Bitzkey& striker);
     void exhausted(Bitzkey& agent);
-    void breed(Bitzkey& first, Bitzkey& second, std::vector<Cell> cells);
+    void breed(Bitzkey& first, Bitzkey& second);
+    // The young it carries are born on the free cells nearest it, as many as there are cells and the
+    // population cap allows; the rest are lost. Each starts with its share of the energy its parents gave.
+    void give_birth(Bitzkey& mother);
     void browse(Bitzkey& agent, Bitzkey& plant);
     // A starving grazer, with food scarce about it, tears into a plant beside it, recovering from a
     // bite or not: it eats UPROOT_MEALS times a bite's meal, and the plant loses UPROOT_BITE health,
     // often all it has. An armed plant still strikes back.
     void uproot(Bitzkey& agent, Bitzkey& plant);
-    const std::filesystem::path& history_folder() const { return history_folder_.path(); }
-    std::vector<int> history_turns() const;  // the turns kept on the disk
-    std::uintmax_t history_bytes() const { return history_bytes_; }  // the size of all their files
+    std::vector<int> history_turns() const;  // the turns the history keeps
+    std::uintmax_t history_bytes() const { return history_bytes_; }  // the memory they take, near enough
     // The climate zones from top to bottom, each the rows it covers outside the winters.
     std::vector<std::vector<int>> zones() const;
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
@@ -531,10 +503,16 @@ public:
     bool society(const Bitzkey& observer, const Bitzkey& actor) const;
 
 private:
-    struct SnapshotFile {
+    struct Snapshot {  // the world at a turn, whole
         int turn = 0;
-        std::filesystem::path path;
-        std::uintmax_t bytes = 0;
+        int deaths = 0;
+        int next_identifier = 0;
+        std::vector<Bitzkey> agents;  // their brains shared until they next learn
+        std::vector<int> grass;
+        std::vector<Seed> seeds;
+        PyRandom::State random;
+        Insights::State insights;
+        std::uintmax_t bytes = 0;  // the memory it takes, near enough
     };
 
     std::vector<int> group_sizes(int population);
@@ -550,8 +528,7 @@ private:
                      const std::optional<PartialMind>& mind = std::nullopt, bool native = false,
                      const std::vector<int>& rows = {});
     void record();
-    std::string snapshot() const;  // the world now, as its file holds it
-    void restore(const SnapshotFile& file);
+    void restore(const Snapshot& held);  // as a copy, so the history's stays as it was
     void take_census();
     bool dies_of_age(Bitzkey& agent);
     bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
@@ -605,11 +582,8 @@ private:
     std::vector<double> growth_;       // each row's share of medium, where grass grows
     std::vector<int> grass_rows_;      // the rows where grass grows at all
     std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
-    TemporaryFolder history_folder_;  // made before the first turn is written into it
-    // After the folder, so it finishes writing before the folder is deleted.
-    std::unique_ptr<HistoryWriter> writer_ = std::make_unique<HistoryWriter>();
-    std::deque<SnapshotFile> history_;  // every turn kept, oldest first
-    std::uintmax_t history_bytes_ = 0;  // the size of all their files
+    std::deque<Snapshot> history_;      // every turn kept, oldest first
+    std::uintmax_t history_bytes_ = 0;  // the memory they take, near enough
     int frontier_ = 0;
 };
 

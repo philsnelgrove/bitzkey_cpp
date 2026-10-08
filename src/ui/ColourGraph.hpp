@@ -66,7 +66,7 @@ private:
     friend struct Screens;  // the screenshot tool
     enum class Mode { Replace, Add, Remove, Toggle };
     struct Layout {
-        Rect panel, chart, timeline, save, copy, clear, living, sort;
+        Rect panel, chart, timeline, save, copy, clear, sort;
         std::optional<Rect> map;  // beneath the timeline, at the right, once the run is over
         Rect catalog;             // beneath the timeline, at the right, beside it
     };
