@@ -14,6 +14,8 @@
 #include "core/Exchange.hpp"
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
+#include "core/Catalog.hpp"
+#include "ui/CatalogScreen.hpp"
 #include "ui/Inspector.hpp"
 #include "ui/Look.hpp"
 #include "ui/Platform.hpp"
@@ -28,6 +30,8 @@ constexpr std::array<const char*, 5> SPEED_LABELS = {"1x", "2x", "4x", "8x", "MA
 constexpr Uint32 FRAME_MS = 33;      // about 30 frames a second
 constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent simulating
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
+constexpr double MAP_ZOOM_STEP = 1.25;  // each wheel notch zooms the map in (or out) by this much
+constexpr double MAP_ZOOM_MAX = 12.0;   // the closest the map zooms in, times its whole-map size
 
 std::string format(const char* pattern, auto... values) {
     char buffer[512];
@@ -80,8 +84,11 @@ App::Result App::run() {
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
                 if (key == SDLK_ESCAPE) {
-                    if (show_census_) close_graph();
-                    else ask_to_leave();
+                    if (show_census_) {
+                        if (leave_graph()) return Result::Configure;
+                    } else {
+                        ask_to_leave();
+                    }
                 } else if (key == SDLK_F11) {
                     window_.toggle_fullscreen();
                 } else if (key == SDLK_SPACE) {
@@ -108,8 +115,8 @@ App::Result App::run() {
                 } else if (key == SDLK_b) {
                     save_report();
                 } else if (key == SDLK_g) {
-                    if (show_census_) close_graph();
-                    else show_census_ = true;
+                    if (!show_census_) show_census_ = true;
+                    else if (leave_graph()) return Result::Configure;
                 } else if (key == SDLK_TAB && show_census_) {
                     graph_.switch_part();
                 } else if (key == SDLK_c) {
@@ -121,13 +128,23 @@ App::Result App::run() {
                     toggle_export();
                 } else if (key == SDLK_e) {
                     open_export_dialog();
+                } else if (key == SDLK_k) {
+                    if (show_census_) catalog_picked();
+                    else catalog_selected();
+                } else if (key == SDLK_z && !show_census_) {
+                    map_zoom_ = 1.0;  // the whole map again
+                    map_centre_.reset();
                 }
             } else if (show_insights_ && !show_census_ && scroll_event(event)) {
                 // the insights panel scrolled
+            } else if (!show_census_ && map_event(event)) {
+                // the map zoomed or panned
             } else if (show_census_ && (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP ||
                                         event.type == SDL_MOUSEMOTION || event.type == SDL_MOUSEWHEEL)) {
                 const ColourGraph::Action action = graph_.handle(event);
                 if (action == ColourGraph::Action::Seek) seek(graph_.seek_turn());
+                else if (action == ColourGraph::Action::Map) close_graph();  // at the run's end, to look over the map
+                else if (action == ColourGraph::Action::Catalog) catalog_picked();
                 else if (action != ColourGraph::Action::None) export_graph(action == ColourGraph::Action::Save);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 click(event.button.x, event.button.y);
@@ -192,6 +209,8 @@ void App::seek(int turn) {
 void App::click(int x, int y) {
     if (add_button_ && add_button_->contains(x, y)) {
         toggle_export();
+    } else if (catalog_button_ && catalog_button_->contains(x, y)) {
+        catalog_selected();
     } else if (export_button_.contains(x, y)) {
         open_export_dialog();
     } else {
@@ -213,6 +232,8 @@ bool App::answer(const std::string& choice) {
     if (kind == "leave") return choice == "leave";
     if (choice == "save" || choice == "copy") {
         export_chosen(choice == "save");
+    } else if (choice == "catalog") {
+        catalog_export_list();
     } else if (choice == "clear") {
         const std::size_t count = export_list_.size();
         export_list_.clear();
@@ -231,6 +252,19 @@ void App::leave(Dialog dialog) {
     window_.present();
     SDL_PumpEvents();
     simulation_.reset();
+}
+
+bool App::leave_graph() {
+    if (!simulation_->ended()) {
+        close_graph();
+        return false;
+    }
+    if (!export_list_.empty()) {
+        ask_to_leave();
+        return false;
+    }
+    leave(Dialog("Leaving this simulation", {}, {{"leave", "LEAVE"}}, "leave"));
+    return true;
 }
 
 void App::ask_to_leave() {
@@ -253,9 +287,10 @@ void App::open_export_dialog() {
     std::vector<std::string> lines = {plural(count) + " added to export.",
                                       "The living export as they are now, with what they have learned since."};
     if (gone) lines.push_back(std::to_string(gone) + (gone != 1 ? " have" : " has") + " died; they export as they were when added.");
-    lines.emplace_back("Save them to a file in exports/, or copy them to the clipboard.");
+    lines.emplace_back("Save them to a file in exports/, copy them to the clipboard, or add them to the catalog.");
     open("export", Dialog("Export all selected", lines,
-                          {{"clear", "CLEAR LIST"}, {"cancel", "CANCEL"}, {"copy", "COPY"}, {"save", "SAVE FILE"}}, "cancel"));
+                          {{"clear", "CLEAR LIST"}, {"cancel", "CANCEL"}, {"catalog", "CATALOG"}, {"copy", "COPY"}, {"save", "SAVE FILE"}},
+                          "cancel"));
 }
 
 Bitzkey* App::selected() const {
@@ -299,6 +334,71 @@ std::pair<std::vector<nlohmann::ordered_json>, int> App::chosen_records() const 
         }
     }
     return {records, gone};
+}
+
+void App::add_to_catalog(const std::vector<nlohmann::ordered_json>& entries, const std::string& what, const std::string& skipped) {
+    int added = 0;
+    try {
+        added = catalog::add(entries, catalog_path());
+    } catch (const std::exception& error) {
+        say(std::string("Couldn't add to the catalog: ") + error.what());
+        return;
+    }
+    const int already = static_cast<int>(entries.size()) - added;
+    std::string note = added ? "Added " + what + " to the catalog"
+                             : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(what[0])))) + what.substr(1) +
+                                   " already in the catalog";
+    if (added && already) note += " (" + std::to_string(already) + " already there)";
+    say(note + "." + (skipped.empty() ? "" : " " + skipped));
+}
+
+void App::catalog_selected() {
+    const Bitzkey* agent = selected();
+    if (!agent || !agent->alive()) {
+        say("Select a living Bitzkey first, then add it to the catalog.");
+        return;
+    }
+    char name[16];
+    std::snprintf(name, sizeof name, "#%03d", agent->identifier);
+    add_to_catalog({catalog::entry_for(*agent, simulation_->turn())}, name);
+}
+
+void App::catalog_picked() {
+    if (graph_.selection().empty()) {
+        say("Pick Bitzkeys on the graph first, then add them to the catalog.");
+        return;
+    }
+    std::unordered_map<int, const Bitzkey*> living;
+    for (const Bitzkey* agent : simulation_->living()) living[agent->identifier] = agent;
+    std::vector<nlohmann::ordered_json> entries;
+    for (const int identifier : graph_.selection()) {  // in order of identifier, as the set keeps them
+        const auto found = living.find(identifier);
+        if (found != living.end()) entries.push_back(catalog::entry_for(*found->second, simulation_->turn()));
+    }
+    const int dead = static_cast<int>(graph_.selection().size() - entries.size());
+    const std::string skipped = dead ? std::to_string(dead) + " dead left out: their brains are gone." : "";
+    if (entries.empty()) {
+        say("Only living Bitzkeys can be catalogued, with their brains; " + skipped);
+        return;
+    }
+    add_to_catalog(entries, plural(entries.size()), skipped);
+}
+
+void App::catalog_export_list() {
+    std::unordered_map<int, const Bitzkey*> agents;
+    for (const auto& agent : simulation_->agents()) agents[agent->identifier] = agent.get();
+    std::vector<nlohmann::ordered_json> entries;
+    for (const ExportEntry& entry : export_list_) {
+        const auto found = agents.find(entry.identifier);
+        if (found != agents.end() && found->second->alive() && found->second->dna == entry.dna) {
+            entries.push_back(catalog::entry_for(*found->second, simulation_->turn()));
+        } else {
+            nlohmann::ordered_json saved = entry.saved;
+            saved["catalog"] = {{"identifier", entry.identifier}};
+            entries.push_back(std::move(saved));
+        }
+    }
+    add_to_catalog(entries, plural(entries.size()) + " from the export list");
 }
 
 std::string App::save_export(const std::string& name, const std::string& text) {
@@ -387,7 +487,8 @@ void App::select_at(int x, int y) {
             nearest_distance = distance;
         }
     }
-    if (nearest && board.rect.contains(x, y) &&
+    const bool on_view = map_view(canvas).first.contains(x, y);  // zoomed in, the board reaches under the sidebar
+    if (nearest && on_view && board.rect.contains(x, y) &&
         nearest_distance < std::max<double>(UI(9), std::min(board.cell_width, board.cell_height) * 1.6)) {
         selected_id_ = nearest->identifier;
         graph_.select_only(nearest->identifier);  // the map and the graph share one selection
@@ -438,14 +539,65 @@ double App::corpse_opacity(const Bitzkey& agent) const {
 
 int App::sidebar_width(const Canvas& canvas) const { return std::min(UI(340), std::max(UI(290), canvas.width() / 3)); }
 
-App::Board App::board_geometry(const Canvas& canvas) const {
+std::pair<Rect, double> App::map_view(const Canvas& canvas) const {
     const Rect area{0, UI(62), canvas.width() - sidebar_width(canvas), canvas.height() - UI(140)};
-    const double scale = std::min(static_cast<double>(area.w - UI(42)) / simulation_->width(),
-                                  static_cast<double>(area.h - UI(42)) / simulation_->height());
-    const double board_width = scale * simulation_->width(), board_height = scale * simulation_->height();
-    Rect board{0, 0, static_cast<int>(py_round(board_width)), static_cast<int>(py_round(board_height))};
-    board.center_at(area.centerx(), area.centery());
-    return {board, board_width / simulation_->width(), board_height / simulation_->height()};
+    const Rect view = area.inflate(-UI(42), -UI(42));
+    return {view, std::min(static_cast<double>(view.w) / simulation_->width(), static_cast<double>(view.h) / simulation_->height())};
+}
+
+std::pair<double, double> App::clamped_centre(std::pair<double, double> centre, const Rect& view, double scale) const {
+    const auto clamp = [scale](double middle, int cells, int pixels) {
+        const double half = pixels / 2.0 / scale;  // half the view, in cells
+        return cells <= 2 * half ? cells / 2.0 : std::min(cells - half, std::max(half, middle));
+    };
+    return {clamp(centre.first, simulation_->width(), view.w), clamp(centre.second, simulation_->height(), view.h)};
+}
+
+App::Board App::board_geometry(const Canvas& canvas) const {
+    const auto [view, fit] = map_view(canvas);
+    const double scale = fit * map_zoom_;
+    const auto [centre_x, centre_y] = clamped_centre(
+        map_centre_.value_or(std::pair{simulation_->width() / 2.0, simulation_->height() / 2.0}), view, scale);
+    const Rect board{static_cast<int>(py_round(view.centerx() - centre_x * scale)), static_cast<int>(py_round(view.centery() - centre_y * scale)),
+                     static_cast<int>(py_round(scale * simulation_->width())), static_cast<int>(py_round(scale * simulation_->height()))};
+    return {board, scale, scale};
+}
+
+bool App::map_event(const SDL_Event& event) {
+    Canvas canvas = window_.frame();
+    const auto [view, fit] = map_view(canvas);
+    const std::pair<double, double> middle{simulation_->width() / 2.0, simulation_->height() / 2.0};
+    if (event.type == SDL_MOUSEWHEEL) {
+        int x = 0, y = 0;
+        SDL_GetMouseState(&x, &y);
+        if (!view.contains(x, y)) return false;
+        const Board board = board_geometry(canvas);
+        // The cell under the pointer stays put.
+        const double cell_x = (x - board.rect.x) / board.cell_width, cell_y = (y - board.rect.y) / board.cell_height;
+        map_zoom_ = std::max(1.0, std::min(MAP_ZOOM_MAX, map_zoom_ * std::pow(MAP_ZOOM_STEP, event.wheel.y)));
+        const double scale = fit * map_zoom_;
+        map_centre_ = clamped_centre({cell_x - (x - view.centerx()) / scale, cell_y - (y - view.centery()) / scale}, view, scale);
+        return true;
+    }
+    const bool panning_button = event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP
+                                    ? event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE
+                                    : false;
+    if (event.type == SDL_MOUSEBUTTONDOWN && panning_button && view.contains(event.button.x, event.button.y)) {
+        pan_from_ = std::pair{std::pair{event.button.x, event.button.y}, clamped_centre(map_centre_.value_or(middle), view, fit * map_zoom_)};
+        return true;
+    }
+    if (event.type == SDL_MOUSEBUTTONUP && panning_button && pan_from_) {
+        pan_from_.reset();
+        return true;
+    }
+    if (event.type == SDL_MOUSEMOTION && pan_from_) {
+        const auto [start, centre] = *pan_from_;
+        const double scale = fit * map_zoom_;
+        map_centre_ = clamped_centre({centre.first - (event.motion.x - start.first) / scale,
+                                      centre.second - (event.motion.y - start.second) / scale}, view, scale);
+        return true;
+    }
+    return false;
 }
 
 void App::draw(Canvas& canvas) {
@@ -482,6 +634,10 @@ void App::draw_header(Canvas& canvas) {
 void App::draw_world(Canvas& canvas) {
     const Board board = board_geometry(canvas);
     const Rect& rect = board.rect;
+    const Rect view = map_view(canvas).first.inflate(2, 2);
+    canvas.set_clip(view);  // zoomed in, only part of the map shows
+    // What may show, near enough: anything further out is skipped.
+    const Rect reach = view.inflate(static_cast<int>(2 * board.cell_width) + UI(20), static_cast<int>(2 * board.cell_height) + UI(20));
     for (int y = 0; y < simulation_->height(); ++y) {  // each row in its temperature's colour
         const int top = static_cast<int>(py_round(rect.y + y * board.cell_height));
         const int bottom = static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height));
@@ -491,14 +647,16 @@ void App::draw_world(Canvas& canvas) {
     for (int y = 0; y < simulation_->height(); ++y) {
         for (int x = 0; x < simulation_->width(); ++x) {
             if (simulation_->grass_at(x, y) <= 0) continue;
-            canvas.circle(static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width)),
-                          static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height)), grass_radius, GRASS);
+            const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
+            const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
+            if (reach.contains(px, py)) canvas.circle(px, py, grass_radius, GRASS);
         }
     }
     const int largest = std::max(DOT_RADIUS_LARGEST, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.45)));
     for (const auto& agent : simulation_->agents()) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
+        if (!reach.contains(px, py)) continue;
         const int radius = dot_radius(agent->body[Size], largest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || graph_.selection().contains(agent->identifier)) {
@@ -518,6 +676,7 @@ void App::draw_world(Canvas& canvas) {
         canvas.line(rect.x, py, rect.right(), py, GRID);
     }
     canvas.rect(rect, {80, 99, 85}, 1);
+    canvas.set_clip(std::nullopt);
 }
 
 void App::draw_sidebar(Canvas& canvas) {
@@ -547,6 +706,7 @@ void App::draw_sidebar(Canvas& canvas) {
     }
     canvas.line(x, UI(286), x + width, UI(286), {54, 68, 62});
     add_button_.reset();
+    catalog_button_.reset();
     if (show_insights_) {
         draw_insights(canvas, x, width);
         return;
@@ -564,10 +724,15 @@ void App::draw_sidebar(Canvas& canvas) {
     }
 
     draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y));
-    canvas.text(small, "C  copy as JSON      A  add to / remove from export", {116, 139, 124}, x, UI(719));
+    canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(719));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
                                     [agent](const ExportEntry& entry) { return entry.identifier == agent->identifier; });
-    add_button_ = Rect{x, UI(737), width, UI(28)};
+    const int half = (width - UI(8)) / 2;
+    add_button_ = Rect{x, UI(737), half, UI(28)};
+    catalog_button_ = Rect{x + half + UI(8), UI(737), width - half - UI(8), UI(28)};
+    canvas.rect(*catalog_button_, {44, 57, 52}, 0, UI(5));
+    canvas.text_at(UI.font(Face::Sans, 13, true), "ADD TO CATALOG", {220, 229, 211},
+                   [&](Rect& box) { box.center_at(catalog_button_->centerx(), catalog_button_->centery()); });
     canvas.rect(*add_button_, {44, 57, 52}, 0, UI(5));
     if (chosen) canvas.rect(*add_button_, {238, 183, 110}, 1, UI(5));
     canvas.text_at(UI.font(Face::Sans, 13, true), chosen ? "REMOVE FROM EXPORT" : "ADD TO EXPORT",
@@ -803,8 +968,8 @@ void App::draw_footer(Canvas& canvas) {
         return;
     }
     canvas.text(small,
-                fit("SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   I  insights   B  report   G  graph   E  export   "
-                    "R  restart   F11  window   ESC  menu",
+                fit("SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   "
+                    "G  graph   E  export   R  restart   F11  window   ESC  menu",
                     room),
                 {187, 199, 181}, UI(185), height - UI(36));
 }

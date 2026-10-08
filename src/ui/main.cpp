@@ -9,6 +9,7 @@
 #include <SDL_ttf.h>
 
 #include "core/Rules.hpp"
+#include "core/Simulation.hpp"
 #include "ui/App.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Ui.hpp"
@@ -65,6 +66,7 @@ int main(int argc, char** argv) {
     }
     int status = 0;
     try {
+        remove_stale_histories();  // left behind by a run that ended without closing its world
         Window window(!options.windowed);
         SetupScreen setup(window, options.defaults);
         while (const auto settings = setup.run()) {

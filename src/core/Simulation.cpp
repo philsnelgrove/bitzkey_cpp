@@ -1,7 +1,12 @@
 #include "core/Simulation.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <set>
+#include <type_traits>
 #include <random>
 #include <stdexcept>
 #include <tuple>
@@ -395,69 +400,339 @@ Bitzkey& Simulation::add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> bra
 // ---------------------------------------------------------------------------------------------
 // History
 
-std::pair<int, int> Simulation::history_room() const {
-    // At most DENSE_HISTORY recent snapshots and CHECKPOINTS older ones; fewer when snapshots of the
-    // world are large, so the history fits HISTORY_BUDGET.
-    std::size_t brains = 0;
-    for (const auto& agent : agents_) {
-        if (agent->brain) brains += sizeof(Brain) + agent->brain->bytes();
+namespace {
+
+// Writing a snapshot of the world to a file, and reading it back, field by field, as the machine
+// holds them: a file is only ever read back by the run that wrote it.
+class Writer {
+public:
+    explicit Writer(const std::filesystem::path& path) : out_(path, std::ios::binary | std::ios::trunc) {
+        if (!out_) throw std::runtime_error("Couldn't write the history file " + path.string());
     }
-    const std::size_t size = agents_.size() * sizeof(Bitzkey) + brains + grass_.size() * sizeof(int) + seeds_.size() * sizeof(Seed);
-    const std::size_t most = std::max(MIN_SNAPSHOTS, HISTORY_BUDGET / std::max<std::size_t>(1, size));
-    const int dense = static_cast<int>(std::min<std::size_t>(DENSE_HISTORY, most / 2));
-    return {dense, static_cast<int>(std::min<std::size_t>(CHECKPOINTS, most - static_cast<std::size_t>(dense)))};
+    template <class T>
+    void put(const T& value) {
+        static_assert(std::is_trivially_copyable_v<T>);
+        out_.write(reinterpret_cast<const char*>(&value), sizeof value);
+    }
+    template <class T>
+    void put_all(const std::vector<T>& values) {
+        static_assert(std::is_trivially_copyable_v<T>);
+        put(values.size());
+        out_.write(reinterpret_cast<const char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(T)));
+    }
+    template <class T>
+    void put_maybe(const std::optional<T>& value) {
+        put(value.has_value());
+        if (value) put(*value);
+    }
+    void put_text(std::string_view text) {
+        put(text.size());
+        out_.write(text.data(), static_cast<std::streamsize>(text.size()));
+    }
+    void finish() {
+        out_.flush();
+        if (!out_) throw std::runtime_error("Couldn't finish writing a history file; is the disk full?");
+    }
+
+private:
+    std::ofstream out_;
+};
+
+class Reader {
+public:
+    explicit Reader(const std::filesystem::path& path) : in_(path, std::ios::binary) {
+        if (!in_) throw std::runtime_error("Couldn't read the history file " + path.string());
+    }
+    template <class T>
+    T take() {
+        T value;
+        in_.read(reinterpret_cast<char*>(&value), sizeof value);
+        if (!in_) throw std::runtime_error("A history file ends early.");
+        return value;
+    }
+    template <class T>
+    std::vector<T> take_all() {
+        std::vector<T> values(take<std::size_t>());
+        in_.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(T)));
+        if (!in_) throw std::runtime_error("A history file ends early.");
+        return values;
+    }
+    template <class T>
+    std::optional<T> take_maybe() {
+        if (!take<bool>()) return std::nullopt;
+        return take<T>();
+    }
+    std::string take_text() {
+        std::string text(take<std::size_t>(), '\0');
+        in_.read(text.data(), static_cast<std::streamsize>(text.size()));
+        if (!in_) throw std::runtime_error("A history file ends early.");
+        return text;
+    }
+
+private:
+    std::ifstream in_;
+};
+
+void put_layers(Writer& out, const std::vector<Layer>& layers) {
+    out.put(layers.size());
+    for (const Layer& layer : layers) {
+        out.put(layer.reads);
+        out.put_all(layer.weights);
+        out.put(layer.biases);
+    }
 }
 
-int Simulation::snapshot_spacing(int dense) {
-    int spacing = 1;
-    while (spacing * std::max(1, dense) < DENSE_HISTORY && spacing < MAX_SPACING) spacing *= 2;
-    return spacing;
+std::vector<Layer> take_layers(Reader& in) {
+    std::vector<Layer> layers(in.take<std::size_t>());
+    for (Layer& layer : layers) {
+        layer.reads = in.take<int>();
+        layer.weights = in.take_all<double>();
+        layer.biases = in.take<decltype(layer.biases)>();
+    }
+    return layers;
+}
+
+void put_brain(Writer& out, const Brain& brain) {
+    put_layers(out, brain.layers);
+    out.put(brain.output_weights);
+    out.put(brain.output_biases);
+    out.put(brain.traces.has_value());
+    if (brain.traces) {
+        put_layers(out, brain.traces->layers);
+        out.put(brain.traces->output_weights);
+        out.put(brain.traces->output_biases);
+    }
+}
+
+Brain take_brain(Reader& in) {
+    Brain brain;
+    brain.layers = take_layers(in);
+    brain.output_weights = in.take<Brain::OutputWeights>();
+    brain.output_biases = in.take<decltype(brain.output_biases)>();
+    if (in.take<bool>()) {
+        brain.traces.emplace();
+        brain.traces->layers = take_layers(in);
+        brain.traces->output_weights = in.take<Brain::OutputWeights>();
+        brain.traces->output_biases = in.take<decltype(brain.traces->output_biases)>();
+    }
+    return brain;
+}
+
+void put_bitzkey(Writer& out, const Bitzkey& agent) {
+    out.put(agent.identifier);
+    out.put(agent.dna);
+    out.put(agent.x);
+    out.put(agent.y);
+    out.put(agent.hunger);
+    out.put(agent.health);
+    out.put(agent.age);
+    out.put(agent.cooldown);
+    out.put_text(agent.last_action);
+    out.put(agent.brain != nullptr);
+    if (agent.brain) put_brain(out, *agent.brain);
+    out.put(agent.generation);
+    out.put(agent.children);
+    out.put_maybe(agent.died_turn);
+    out.put_maybe(agent.assailant);
+    out.put(agent.panicked);
+    out.put(agent.rivalry);
+    out.put(agent.own_rivalry);
+    out.put(agent.hunts_grazers);
+    out.put(agent.hunts_omnivores);
+    out.put_maybe(agent.alarm);
+    out.put(agent.seen_success);
+    out.put(agent.seen_failure);
+    out.put_maybe(agent.herd_assailant);
+    out.put(agent.meat);
+    out.put(agent.rot);
+    out.put(agent.mind);
+    out.put(agent.has_last_senses);
+    out.put(agent.last_senses);
+    out.put(agent.last_choice);
+    out.put(agent.last_wellbeing);
+    out.put(agent.last_comfort);
+    out.put(agent.reward);
+    out.put(agent.odds);
+    out.put(agent.odds_offered);
+}
+
+std::unique_ptr<Bitzkey> take_bitzkey(Reader& in) {
+    const int identifier = in.take<int>();
+    const Dna dna = in.take<Dna>();
+    const int x = in.take<int>();
+    const int y = in.take<int>();
+    auto agent = std::make_unique<Bitzkey>(identifier, dna, x, y);  // what the genome fixes, it works out again
+    agent->hunger = in.take<double>();
+    agent->health = in.take<double>();
+    agent->age = in.take<int>();
+    agent->cooldown = in.take<int>();
+    agent->last_action = kept_text(in.take_text());
+    if (in.take<bool>()) agent->brain = std::make_shared<Brain>(take_brain(in));
+    agent->generation = in.take<int>();
+    agent->children = in.take<int>();
+    agent->died_turn = in.take_maybe<int>();
+    agent->assailant = in.take_maybe<int>();
+    agent->panicked = in.take<bool>();
+    agent->rivalry = in.take<double>();
+    agent->own_rivalry = in.take<double>();
+    agent->hunts_grazers = in.take<bool>();
+    agent->hunts_omnivores = in.take<bool>();
+    agent->alarm = in.take_maybe<int>();
+    agent->seen_success = in.take<double>();
+    agent->seen_failure = in.take<double>();
+    agent->herd_assailant = in.take_maybe<int>();
+    agent->meat = in.take<double>();
+    agent->rot = in.take<double>();
+    agent->mind = in.take<Mind>();
+    agent->has_last_senses = in.take<bool>();
+    agent->last_senses = in.take<Senses>();
+    agent->last_choice = in.take<int>();
+    agent->last_wellbeing = in.take<double>();
+    agent->last_comfort = in.take<double>();
+    agent->reward = in.take<double>();
+    agent->odds = in.take<decltype(agent->odds)>();
+    agent->odds_offered = in.take<std::uint32_t>();
+    return agent;
+}
+
+}  // namespace
+
+std::string_view kept_text(std::string_view text) {
+    static std::set<std::string, std::less<>> kept;
+    const auto found = kept.find(text);
+    return found != kept.end() ? *found : *kept.emplace(text).first;
+}
+
+TemporaryFolder::TemporaryFolder() {
+    static std::mt19937_64 names(std::random_device{}());
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    for (int attempt = 0; path_.empty(); ++attempt) {
+        const std::filesystem::path candidate = std::filesystem::temp_directory_path() /
+            (std::string(HISTORY_PREFIX) + std::to_string(stamp) + "-" + std::to_string(names()));
+        if (std::filesystem::create_directory(candidate)) path_ = candidate;
+        else if (attempt > 100) throw std::runtime_error("Couldn't make a folder for the history among the temporary files.");
+    }
+}
+
+TemporaryFolder::~TemporaryFolder() { remove(); }
+
+TemporaryFolder::TemporaryFolder(TemporaryFolder&& other) noexcept : path_(std::exchange(other.path_, {})) {}
+
+TemporaryFolder& TemporaryFolder::operator=(TemporaryFolder&& other) noexcept {
+    if (this != &other) {
+        remove();
+        path_ = std::exchange(other.path_, {});
+    }
+    return *this;
+}
+
+void TemporaryFolder::remove() {
+    if (path_.empty()) return;
+    std::error_code ignored;
+    std::filesystem::remove_all(path_, ignored);
+    path_.clear();
+}
+
+void remove_stale_histories() {
+    std::error_code error;
+    const auto cutoff = std::filesystem::file_time_type::clock::now() - std::chrono::hours(STALE_HISTORY_HOURS);
+    for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::temp_directory_path(error), error)) {
+        const std::string name = entry.path().filename().string();
+        if (!name.starts_with(HISTORY_PREFIX) || !entry.is_directory(error)) continue;
+        if (entry.last_write_time(error) < cutoff && !error) std::filesystem::remove_all(entry.path(), error);
+    }
+}
+
+std::pair<int, int> Simulation::history_room() const {
+    // Enough recent snapshots to cover DENSE_HISTORY turns, and CHECKPOINTS, but fewer when snapshots
+    // of the world are large, so the history fits HISTORY_BUDGET.
+    const std::uintmax_t most = std::max(MIN_SNAPSHOTS, HISTORY_BUDGET / std::max<std::uintmax_t>(1, snapshot_bytes_));
+    const int dense = static_cast<int>(std::min<std::uintmax_t>((DENSE_HISTORY + SNAPSHOT_SPACING - 1) / SNAPSHOT_SPACING, most / 2));
+    return {dense, static_cast<int>(std::min<std::uintmax_t>(CHECKPOINTS, most - static_cast<std::uintmax_t>(dense)))};
+}
+
+std::vector<int> Simulation::history_turns() const {
+    std::vector<int> turns;
+    for (const SnapshotFile& file : history_) turns.push_back(file.turn);
+    return turns;
+}
+
+void Simulation::write_snapshot(const std::filesystem::path& path) const {
+    Writer out(path);
+    out.put(turn_);
+    out.put(deaths_);
+    out.put(next_identifier_);
+    out.put(agents_.size());
+    for (const auto& agent : agents_) put_bitzkey(out, *agent);
+    out.put_all(grass_);
+    out.put_all(seeds_);
+    const PyRandom::State random = random_.getstate();
+    out.put(random.mt);
+    out.put(random.index);
+    out.put_maybe(random.gauss_next);
+    const Insights::State insights = insights_.snapshot();
+    out.put_all(insights.offered);
+    out.put_all(insights.chosen);
+    out.finish();
 }
 
 void Simulation::record() {
-    // Snapshot the newest turn, if it falls on the snapshot spacing, then thin the old ones: turns
-    // before the recent window stay only on the checkpoint spacing, which doubles while there are too
-    // many of them.
-    const auto [dense, checkpoints] = history_room();
-    const int spacing = snapshot_spacing(dense);
+    // Snapshot the newest turn to a file, if it falls on the snapshot spacing, then thin the old ones:
+    // turns before the recent window stay only on the checkpoint spacing, which doubles while there
+    // are too many of them.
     frontier_ = turn_;
-    if (turn_ % spacing) return;  // between snapshots: seeking rebuilds this turn by replaying from the one before
-    Snapshot snapshot{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
-    snapshot.agents.reserve(agents_.size());
-    for (const auto& agent : agents_) snapshot.agents.push_back(*agent);
-    history_.push_back(std::move(snapshot));
-    const int recent = frontier_ - dense * spacing;
-    const auto turn_below = [](const Snapshot& snapshot, int turn) { return snapshot.turn < turn; };
+    if (turn_ % SNAPSHOT_SPACING) return;  // between snapshots: seeking rebuilds this turn by replaying from the one before
+    char name[32];
+    std::snprintf(name, sizeof name, "turn-%08d.snapshot", turn_);
+    const std::filesystem::path path = history_folder_.path() / name;
+    write_snapshot(path);
+    snapshot_bytes_ = std::filesystem::file_size(path);
+    history_.push_back({turn_, path});
+    const auto [dense, checkpoints] = history_room();
+    const int recent = frontier_ - dense * SNAPSHOT_SPACING;
+    const auto turn_below = [](const SnapshotFile& file, int turn) { return file.turn < turn; };
     while (true) {
-        std::erase_if(history_, [this, recent](const Snapshot& snapshot) {
-            return !(snapshot.turn >= recent || snapshot.turn % checkpoint_stride_ == 0);
+        std::erase_if(history_, [this, recent](const SnapshotFile& file) {
+            if (file.turn >= recent || file.turn % checkpoint_stride_ == 0) return false;
+            std::error_code ignored;
+            std::filesystem::remove(file.path, ignored);
+            return true;
         });
         if (std::lower_bound(history_.begin(), history_.end(), recent, turn_below) - history_.begin() <= checkpoints) break;
         checkpoint_stride_ *= 2;
     }
 }
 
-void Simulation::restore(const Snapshot& snapshot) {
-    turn_ = snapshot.turn;
-    deaths_ = snapshot.deaths;
-    next_identifier_ = snapshot.next_identifier;
+void Simulation::restore(const SnapshotFile& file) {
+    Reader in(file.path);
+    turn_ = in.take<int>();
+    deaths_ = in.take<int>();
+    next_identifier_ = in.take<int>();
     for (auto& agent : agents_) departed_.push_back(std::move(agent));
     agents_.clear();
-    for (const Bitzkey& agent : snapshot.agents) agents_.push_back(std::make_unique<Bitzkey>(agent));
-    grass_ = snapshot.grass;
-    seeds_ = snapshot.seeds;
-    random_.setstate(snapshot.random);
-    insights_.restore(snapshot.insights);
+    const std::size_t count = in.take<std::size_t>();
+    for (std::size_t index = 0; index < count; ++index) agents_.push_back(take_bitzkey(in));
+    grass_ = in.take_all<int>();
+    seeds_ = in.take_all<Seed>();
+    PyRandom::State random;
+    random.mt = in.take<decltype(random.mt)>();
+    random.index = in.take<int>();
+    random.gauss_next = in.take_maybe<double>();
+    random_.setstate(random);
+    Insights::State insights;
+    insights.offered = in.take_all<double>();
+    insights.chosen = in.take_all<double>();
+    insights_.restore(insights);
     update_climate();
     index_cells();
 }
 
-std::pair<const Simulation::Snapshot*, int> Simulation::start_for(int target) const {
+std::pair<const Simulation::SnapshotFile*, int> Simulation::start_for(int target) const {
     const auto after = std::upper_bound(history_.begin(), history_.end(), target,
-                                        [](int turn, const Snapshot& snapshot) { return turn < snapshot.turn; });
-    const Snapshot& snapshot = *std::prev(after);
-    if (snapshot.turn <= turn_ && turn_ <= target) return {nullptr, target - turn_};
-    return {&snapshot, target - snapshot.turn};
+                                        [](int turn, const SnapshotFile& file) { return turn < file.turn; });
+    const SnapshotFile& file = *std::prev(after);
+    if (file.turn <= turn_ && turn_ <= target) return {nullptr, target - turn_};
+    return {&file, target - file.turn};
 }
 
 int Simulation::replay_cost(int target) const {

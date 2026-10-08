@@ -3,6 +3,9 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <filesystem>
 #include <map>
 #include <set>
 
@@ -541,8 +544,55 @@ TEST_CASE("a starving grazer with food scarce may uproot a plant beside it") {
     CHECK_FALSE(offered(simulation.sense(omnivore), Uproot));  // grazers only
 }
 
-TEST_CASE("a crowded history spaces its snapshots, never more than sixteen turns apart") {
-    CHECK(Simulation::snapshot_spacing(500) == 1);
-    CHECK(Simulation::snapshot_spacing(100) == 8);  // 100 snapshots, eight turns apart, cover 500 turns
-    CHECK(Simulation::snapshot_spacing(2) == 16);   // as far apart as they may be
+TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, and goes with the world") {
+    const double saved = CLIMATE_DAMAGE;
+    CLIMATE_DAMAGE = 0;  // a world that lasts
+    std::filesystem::path folder;
+    {
+        Simulation simulation(Simulation::Settings{20, 20, 30, 4});
+        folder = simulation.history_folder();
+        const auto state = [&simulation] {
+            std::string text;
+            for (const auto& agent : simulation.agents()) {
+                char line[160];
+                std::snprintf(line, sizeof line, "%d %d %d %.17g %.17g %s|", agent->identifier, agent->x, agent->y, agent->hunger,
+                              agent->health, std::string(agent->last_action).c_str());
+                text += line;
+                if (agent->brain) {
+                    Senses senses{};
+                    senses.fill(0.4);
+                    char value[32];
+                    std::snprintf(value, sizeof value, "%.17g|", agent->brain->values(senses)[3]);
+                    text += value;
+                }
+            }
+            return text + std::to_string(simulation.grass_tufts());
+        };
+        std::vector<std::string> recorded = {state()};
+        for (int turn = 1; turn <= 60; ++turn) {
+            simulation.advance();
+            recorded.push_back(state());
+        }
+        CHECK(simulation.history_turns() == std::vector<int>{0, 16, 32, 48});
+        CHECK(std::distance(std::filesystem::directory_iterator(folder), std::filesystem::directory_iterator()) == 4);
+        CHECK(simulation.history_room() == std::pair{32, 200});  // a small world fits it all: 32 cover 500 turns
+        for (const int target : {59, 3, 37, 60, 21, 47, 48}) {
+            simulation.seek(target);
+            CHECK(simulation.turn() == target);
+            CHECK(state() == recorded[static_cast<std::size_t>(target)]);
+        }
+        Simulation moved = std::move(simulation);  // the folder goes with the world
+        CHECK(std::filesystem::exists(folder));
+    }
+    CHECK_FALSE(std::filesystem::exists(folder));
+    CLIMATE_DAMAGE = saved;
+}
+
+TEST_CASE("a history left behind is cleared away once stale") {
+    const Simulation old(Simulation::Settings{20, 20, 0, 1}), recent(Simulation::Settings{20, 20, 0, 2});
+    std::filesystem::last_write_time(old.history_folder(), std::filesystem::file_time_type::clock::now() -
+                                                               std::chrono::hours(STALE_HISTORY_HOURS + 1));
+    remove_stale_histories();
+    CHECK_FALSE(std::filesystem::exists(old.history_folder()));
+    CHECK(std::filesystem::exists(recent.history_folder()));
 }

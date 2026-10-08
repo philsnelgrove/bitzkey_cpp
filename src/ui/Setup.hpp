@@ -90,7 +90,7 @@ private:
     static constexpr int TEXT_LINES = 5;
 
     struct Layout {
-        Rect card, box, design, paste, load, clear, start, quit, advanced;
+        Rect card, box, catalog, design, paste, load, clear, start, quit, advanced;
         std::vector<Rect> rows;
     };
     Layout layout() const;
@@ -102,6 +102,7 @@ private:
     void tell(const std::string& note);
     void ask_to_quit();
     bool design();    // false if the window was closed from the designer
+    bool catalog();   // false if the window was closed from the catalog
     bool advanced();  // false if the window was closed from the advanced rules
     void paste_clipboard();
     void choose_file();

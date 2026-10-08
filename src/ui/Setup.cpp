@@ -10,6 +10,7 @@
 
 #include "core/PyFormat.hpp"
 #include "ui/Advanced.hpp"
+#include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
 #include "ui/Platform.hpp"
 
@@ -290,6 +291,17 @@ bool SetupScreen::design() {
     return true;
 }
 
+bool SetupScreen::catalog() {
+    // A Bitzkey picked in the catalog joins the bottom of the import text, brain and all.
+    const auto [outcome, entry] = CatalogScreen(window_).run();
+    if (outcome == CatalogScreen::Outcome::Quit) return false;
+    if (entry) {
+        form_.paste(dumps(*entry));
+        tell("Added a Bitzkey from the catalog to the import list, with its trained brain.");
+    }
+    return true;
+}
+
 bool SetupScreen::advanced() {
     const auto [outcome, rules] = AdvancedScreen(window_, rules_).run();
     if (outcome == AdvancedScreen::Outcome::Quit) return false;
@@ -344,6 +356,7 @@ SetupScreen::Layout SetupScreen::layout() const {
     places.load = Rect{0, 0, UI(92), UI(28)}.topright_at(places.clear.x - UI(8), section.y);
     places.paste = Rect{0, 0, UI(70), UI(28)}.topright_at(places.load.x - UI(8), section.y);
     places.design = Rect{0, 0, UI(80), UI(28)}.topright_at(places.paste.x - UI(8), section.y);
+    places.catalog = Rect{0, 0, UI(122), UI(28)}.topright_at(places.design.x - UI(8), section.y);
     places.box = {section.x, section.y + UI(36), section.w, UI(16 * TEXT_LINES + 12)};
     places.start = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
     places.quit = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
@@ -363,6 +376,7 @@ SetupScreen::Click SetupScreen::click(int x, int y) {
     if (places.start.contains(x, y)) return Click::Start;
     if (places.quit.contains(x, y)) return Click::Quit;
     if (places.design.contains(x, y)) return design() ? Click::None : Click::WindowClosed;
+    if (places.catalog.contains(x, y)) return catalog() ? Click::None : Click::WindowClosed;
     if (places.advanced.contains(x, y)) return advanced() ? Click::None : Click::WindowClosed;
     if (places.paste.contains(x, y)) {
         paste_clipboard();
@@ -448,7 +462,8 @@ void SetupScreen::draw_import(Canvas& canvas, const Layout& places) {
     const bool focused = form_.on_import();
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
     canvas.text(UI.font(Face::Sans, 15), "IMPORT BITZKEYS", {232, 236, 219}, box.x, places.paste.y + UI(5));
-    for (const auto& [button, label] : {std::pair{places.design, "DESIGN"}, std::pair{places.paste, "PASTE"},
+    for (const auto& [button, label] : {std::pair{places.catalog, "FROM CATALOG"}, std::pair{places.design, "DESIGN"},
+                                        std::pair{places.paste, "PASTE"},
                                         std::pair{places.load, "LOAD FILE"}, std::pair{places.clear, "CLEAR"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.text_at(UI.font(Face::Sans, 13, true), label, {220, 229, 211},
@@ -461,7 +476,7 @@ void SetupScreen::draw_import(Canvas& canvas, const Layout& places) {
     Color color{187, 199, 181};
     if (form_.import_text.empty() && !focused) {
         lines = {"Paste exported genomes here (CTRL+V), drop a file onto the window,",
-                 "load one, or DESIGN your own. Imported Bitzkeys join the ones", "spawned above."};
+                 "load one, pick one FROM CATALOG, or DESIGN your own. Imported", "Bitzkeys join the ones spawned above."};
         color = {116, 139, 124};
     } else {
         std::size_t start = 0;

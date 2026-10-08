@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -29,14 +30,41 @@ inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
-constexpr int DENSE_HISTORY = 500;
-constexpr int CHECKPOINTS = 200;
-// History keeps to a memory budget: when a snapshot of the world grows large, fewer snapshots are
-// kept, so that all of them fit. The recent ones are then spaced out, every second turn, fourth or
-// more, to still cover DENSE_HISTORY turns; a turn between them is rebuilt by replaying from the one before.
-constexpr std::size_t HISTORY_BUDGET = std::size_t{1} << 30;  // bytes
-constexpr std::size_t MIN_SNAPSHOTS = 4;
-constexpr int MAX_SPACING = 16;  // recent snapshots are never further apart, so stepping back a turn replays at most 15
+// The history is written to disk, not kept in memory: a snapshot of the world every SNAPSHOT_SPACING
+// turns, each a file in a folder of the world's own among the temporary files, deleted with the world.
+// A turn between snapshots is rebuilt by replaying from the one before.
+constexpr int SNAPSHOT_SPACING = 16;
+constexpr int DENSE_HISTORY = 500;  // the latest turns keep every snapshot
+constexpr int CHECKPOINTS = 200;    // older turns are kept as at most this many evenly spaced snapshots
+// The history keeps to a disk budget: when snapshots of the world grow large, fewer are kept, so that
+// all of them fit, though never fewer than MIN_SNAPSHOTS.
+constexpr std::uintmax_t HISTORY_BUDGET = std::uintmax_t{10} << 30;  // bytes
+constexpr std::uintmax_t MIN_SNAPSHOTS = 4;
+constexpr std::string_view HISTORY_PREFIX = "bitzkey-history-";  // the history folders' names start so
+constexpr int STALE_HISTORY_HOURS = 24;  // a history folder left this long by a run that never closed it is cleared away
+
+// Clear away history folders left among the temporary files by runs that never closed them, once they
+// are STALE_HISTORY_HOURS old, so a crash doesn't leave them filling the disk.
+void remove_stale_histories();
+// Text kept for as long as the program runs, for a name read back from a file to be held where the
+// names written into the program are: an animal's last action.
+std::string_view kept_text(std::string_view text);
+
+// A folder of its own among the temporary files, deleted with it. It can be moved, but not copied.
+class TemporaryFolder {
+public:
+    TemporaryFolder();
+    ~TemporaryFolder();
+    TemporaryFolder(TemporaryFolder&& other) noexcept;
+    TemporaryFolder& operator=(TemporaryFolder&& other) noexcept;
+    TemporaryFolder(const TemporaryFolder&) = delete;
+    TemporaryFolder& operator=(const TemporaryFolder&) = delete;
+    const std::filesystem::path& path() const { return path_; }
+
+private:
+    void remove();
+    std::filesystem::path path_;
+};
 inline int CORPSE_FERTILITY = 2;
 inline int CORPSE_TURNS = 30;
 inline double BREED_RESERVE = 10;
@@ -416,8 +444,9 @@ public:
     void uproot(Bitzkey& agent, Bitzkey& plant);
     // How many turns apart recent snapshots are: every turn while DENSE_HISTORY of them fit, otherwise
     // the smallest power of two that spreads those that fit over DENSE_HISTORY turns, up to MAX_SPACING.
-    static int snapshot_spacing(int dense);
     std::pair<int, int> history_room() const;  // recent snapshots kept, and older checkpoints
+    const std::filesystem::path& history_folder() const { return history_folder_.path(); }
+    std::vector<int> history_turns() const;  // the turns with a snapshot on the disk
     // The climate zones from top to bottom, each the rows it covers outside the winters.
     std::vector<std::vector<int>> zones() const;
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
@@ -464,15 +493,9 @@ public:
     bool society(const Bitzkey& observer, const Bitzkey& actor) const;
 
 private:
-    struct Snapshot {
+    struct SnapshotFile {
         int turn = 0;
-        int deaths = 0;
-        int next_identifier = 0;
-        std::vector<Bitzkey> agents;
-        std::vector<int> grass;
-        std::vector<Seed> seeds;
-        PyRandom::State random;
-        Insights::State insights;
+        std::filesystem::path path;
     };
 
     std::vector<int> group_sizes(int population);
@@ -488,8 +511,9 @@ private:
                      const std::optional<PartialMind>& mind = std::nullopt, bool native = false,
                      const std::vector<int>& rows = {});
     void record();
-    void restore(const Snapshot& snapshot);
-    std::pair<const Snapshot*, int> start_for(int target) const;
+    void write_snapshot(const std::filesystem::path& path) const;
+    void restore(const SnapshotFile& file);
+    std::pair<const SnapshotFile*, int> start_for(int target) const;
     void take_census();
     bool dies_of_age(Bitzkey& agent);
     bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
@@ -543,7 +567,9 @@ private:
     std::vector<double> growth_;       // each row's share of medium, where grass grows
     std::vector<int> grass_rows_;      // the rows where grass grows at all
     std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
-    std::vector<Snapshot> history_;
+    TemporaryFolder history_folder_;  // made before the first snapshot is written into it
+    std::vector<SnapshotFile> history_;
+    std::uintmax_t snapshot_bytes_ = 0;  // the size of the latest snapshot written
     int frontier_ = 0;
     int checkpoint_stride_ = 1;
 };

@@ -12,6 +12,7 @@
 
 #include "ui/Advanced.hpp"
 #include "ui/App.hpp"
+#include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Window.hpp"
@@ -74,6 +75,23 @@ struct Screens {
         const double ms = (SDL_GetPerformanceCounter() - start) * 1000.0 / SDL_GetPerformanceFrequency() / 20;
         std::cout << "drawing a frame with " << app.simulation_->living().size() << " alive: " << ms << " ms\n";
         save(canvas, folder / "app-inspector.bmp");
+        app.map_zoom_ = 4.0;  // zoomed in on the north-west of the map
+        app.map_centre_ = std::pair{25.0, 30.0};
+        app.draw(canvas);
+        save(canvas, folder / "app-zoomed.bmp");
+        app.map_zoom_ = 1.0;
+        app.map_centre_.reset();
+        CatalogScreen catalog_screen(window);  // filled here, so the user's own catalog is left alone
+        catalog_screen.entries_.clear();
+        catalog_screen.note_.clear();
+        for (const Bitzkey* agent : app.simulation_->living()) {
+            if (agent->brain && catalog_screen.entries_.size() < 7) {
+                catalog_screen.entries_.push_back(catalog::entry_for(*agent, app.simulation_->turn()));
+            }
+        }
+        catalog_screen.picked_ = 1;
+        catalog_screen.draw(canvas);
+        save(canvas, folder / "catalog.bmp");
         app.show_insights_ = true;
         app.draw(canvas);
         save(canvas, folder / "app-insights.bmp");

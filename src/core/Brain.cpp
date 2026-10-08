@@ -288,13 +288,6 @@ void Brain::learn_traced(const Senses& inputs, int action, double target, double
     for (int row = 0; row < ACTION_COUNT; ++row) output_biases[row] -= step * traces->output_biases[row];
 }
 
-std::size_t Brain::bytes() const {
-    std::size_t count = output_weights.size() * HIDDEN_SIZE + output_biases.size();
-    for (const Layer& layer : layers) count += layer.weights.size() + HIDDEN_SIZE;
-    if (traces) count *= 2;
-    return count * sizeof(double);
-}
-
 nlohmann::ordered_json Brain::to_record() const {
     using json = nlohmann::ordered_json;
     const auto rounded = [](auto begin, auto end) {

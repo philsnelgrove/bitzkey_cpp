@@ -49,6 +49,10 @@ private:
     bool answer(const std::string& choice);  // true when the user leaves the simulation
     void leave(Dialog dialog);
     void ask_to_leave();
+    // Close the graph with G or ESC. Before the run's end, that returns to the map; after it, it leaves
+    // for the configuration panel, asking first only if Bitzkeys wait on the export list. Returns
+    // whether to leave now.
+    bool leave_graph();
     void open_export_dialog();
     Bitzkey* selected() const;
     void toggle_export();
@@ -57,11 +61,27 @@ private:
     void export_graph(bool to_file);
     void select_at(int x, int y);
     int sidebar_width(const Canvas& canvas) const;
+    // Where the map shows, and the scale at which the whole map fits it.
+    std::pair<Rect, double> map_view(const Canvas& canvas) const;
+    // The view's middle, in cells, kept so the map fills the view where it can, or centred where it can't.
+    std::pair<double, double> clamped_centre(std::pair<double, double> centre, const Rect& view, double scale) const;
+    // The whole map's rectangle on screen at the current zoom (larger than the view when zoomed in),
+    // and the size of a cell.
     Board board_geometry(const Canvas& canvas) const;
+    // Zoom the map with the wheel around the pointer, and pan it by dragging with the right or middle
+    // button; the world carries on meanwhile. Returns whether the event was used.
+    bool map_event(const SDL_Event& event);
     void save_report();
     void say(const std::string& message);
     void copy(const std::string& text, const std::string& what);
     void copy_selected();
+    // The catalog: the Bitzkey selected on the map, the living picked on the graph (the dead have
+    // lost their brains), or the export list (the living as they are now, the dead as when added).
+    void add_to_catalog(const std::vector<nlohmann::ordered_json>& entries, const std::string& what,
+                        const std::string& skipped = "");
+    void catalog_selected();
+    void catalog_picked();
+    void catalog_export_list();
     void new_world();
     std::string save_export(const std::string& name, const std::string& text);
     double corpse_opacity(const Bitzkey& agent) const;
@@ -92,12 +112,18 @@ private:
     std::optional<Dialog> dialog_;
     std::string dialog_kind_;
     std::optional<Rect> add_button_;
+    std::optional<Rect> catalog_button_;
     Rect export_button_;
     std::string message_;
     Uint32 message_until_ = 0;
     bool playing_ = true;
     double elapsed_ = 0.0;
     int speed_ = 0;  // index into the turn intervals: 1x, 2x, 4x, 8x, as fast as possible
+    // The map's zoom (1 shows it all) and the cell at the middle of the view, none while it shows
+    // the whole map; while it is dragged, where the drag began and the middle then.
+    double map_zoom_ = 1.0;
+    std::optional<std::pair<double, double>> map_centre_;
+    std::optional<std::pair<std::pair<int, int>, std::pair<double, double>>> pan_from_;
     int insights_scroll_ = 0;          // how far down the insights panel is scrolled
     int insights_height_ = 0;          // how tall it was when last drawn
     std::optional<int> scroll_grip_;   // while the scroll bar is dragged, where on the thumb it was taken

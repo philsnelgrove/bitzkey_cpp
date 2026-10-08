@@ -47,7 +47,8 @@ int sort_value(Dna dna, int sort);  // the inborn trait a sort orders by; 0 for 
 
 class ColourGraph {
 public:
-    enum class Action { None, Copy, Save, Seek };
+    // Map: the run is over, and the map is wanted. Catalog: catalog the Bitzkeys picked.
+    enum class Action { None, Copy, Save, Seek, Map, Catalog };
 
     void switch_part() { dot_ = !dot_; }
     void reset();  // forget the selection and zoom, for a new world
@@ -66,6 +67,8 @@ private:
     enum class Mode { Replace, Add, Remove, Toggle };
     struct Layout {
         Rect panel, chart, timeline, save, copy, clear, living, sort;
+        std::optional<Rect> map;  // beneath the timeline, at the right, once the run is over
+        Rect catalog;             // beneath the timeline, at the right, beside it
     };
     Layout layout() const;
     std::vector<std::pair<int, Rect>> menu_items() const;  // the sort menu's choices
@@ -98,6 +101,7 @@ private:
     int width_ = 0, height_ = 0;
     int mouse_x_ = 0, mouse_y_ = 0;
     int now_ = 0, frontier_ = 0;
+    bool ended_ = false;  // whether the run is over, when last drawn
     std::optional<std::tuple<int, int, Uint16>> press_;  // where a press began, and its modifiers
     std::optional<int> scrub_;                           // the turn under the playhead while dragged
     std::vector<Bar> bars_;

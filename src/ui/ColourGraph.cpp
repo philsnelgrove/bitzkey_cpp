@@ -26,6 +26,15 @@ constexpr int MENU_ROW = 22;           // design pixels per item of the sort men
 constexpr int YEAR_LABEL_SPACING = 56; // design pixels the year labels on the timeline keep apart, at least
 constexpr int FIRST_CLIMATE_SORT = SORT_COUNT - static_cast<int>(CLIMATE_SORTS.size());
 
+// The text, cut short with an ellipsis if it is wider than `width`.
+std::string fit_text(const std::string& text, TTF_Font* font, int width) {
+    if (Canvas::text_width(font, text) <= width) return text;
+    std::string shortened = text;
+    while (!shortened.empty() && Canvas::text_width(font, shortened + "...") > width) shortened.pop_back();
+    while (!shortened.empty() && shortened.back() == ' ') shortened.pop_back();
+    return shortened + "...";
+}
+
 Color colour_of(Dna dna, bool dot) { return to_color(color_from_word(dot ? mind_word(dna) : body_word(dna))); }
 
 Color faded(Color colour, double amount) {
@@ -167,6 +176,12 @@ ColourGraph::Layout ColourGraph::layout() const {
         *button = {right - UI(width), panel.y + UI(18), UI(width), UI(30)};
         right -= UI(width + 8);
     }
+    int bottom_right = panel.right() - UI(24);  // beneath the timeline, at the right
+    if (ended_) {
+        places.map = Rect{bottom_right - UI(140), places.timeline.bottom() + UI(6), UI(140), UI(28)};
+        bottom_right = places.map->x - UI(8);
+    }
+    places.catalog = Rect{bottom_right - UI(150), places.timeline.bottom() + UI(6), UI(150), UI(28)};
     return places;
 }
 
@@ -245,6 +260,8 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
         const int x = event.button.x, y = event.button.y;
         if (places.copy.contains(x, y)) return Action::Copy;
         if (places.save.contains(x, y)) return Action::Save;
+        if (places.map && places.map->contains(x, y)) return Action::Map;
+        if (places.catalog.contains(x, y)) return Action::Catalog;
         if (places.sort.contains(x, y)) {
             menu_open_ = true;
         } else if (places.clear.contains(x, y)) {
@@ -381,6 +398,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     for (const Bitzkey* agent : simulation.living()) alive_.insert(agent->identifier);
     now_ = simulation.turn();
     frontier_ = simulation.frontier();
+    ended_ = simulation.ended();
     const Layout places = layout();
     const Rect &panel = places.panel, &chart = places.chart, &timeline = places.timeline;
     TTF_Font* font = UI.font(Face::Sans, 15);
@@ -391,8 +409,8 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.text(UI.font(Face::Sans, 22, true), std::string("COLOUR GRAPH  /  ") + (dot_ ? "DOT / MIND" : "RING / BODY"),
                 {229, 239, 220}, panel.x + UI(24), panel.y + UI(18));
     canvas.text(small,
-                "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot    C  copy    S  save to exports/    "
-                "G or ESC  close",
+                std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot    C  copy    S  save    K  catalog    "
+                            "G or ESC  ") + (ended_ ? "new world" : "close"),
                 {144, 170, 151}, panel.x + UI(24), panel.y + UI(54));
     for (const auto& [button, name] : {std::pair{places.living, "LIVING ONLY"}, std::pair{places.clear, "CLEAR"},
                                        std::pair{places.copy, "COPY"}, std::pair{places.save, "SAVE"}}) {
@@ -440,7 +458,15 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         canvas.fill_rect(box, {245, 238, 206, 40});
         canvas.rect(box, {245, 238, 206}, 1);
     }
-    canvas.text(font, describe(simulation, hovered), {220, 229, 211}, panel.x + UI(24), timeline.bottom() + UI(10));
+    const int room = places.catalog.x - panel.x - UI(40);
+    canvas.text(font, fit_text(describe(simulation, hovered), font, room), {220, 229, 211}, panel.x + UI(24), timeline.bottom() + UI(10));
+    if (places.map) {
+        canvas.rect(*places.map, {238, 183, 110}, 0, UI(4));
+        canvas.text_at(font, "RETURN TO MAP", {19, 26, 27}, [&](Rect& box) { box.center_at(places.map->centerx(), places.map->centery()); });
+    }
+    canvas.rect(places.catalog, {44, 57, 52}, 0, UI(4));
+    canvas.text_at(font, "ADD TO CATALOG", {220, 229, 211},
+                   [&](Rect& box) { box.center_at(places.catalog.centerx(), places.catalog.centery()); });
     canvas.text(small,
                 "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
                 "Zoom: wheel, SHIFT+wheel pans",

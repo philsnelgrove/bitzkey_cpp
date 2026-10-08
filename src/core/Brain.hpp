@@ -162,7 +162,6 @@ public:
     // clipped error times its eligibility, so the choices before this one share in it.
     void learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount);
 
-    std::size_t bytes() const;  // the memory its weights and eligibility traces take
     nlohmann::ordered_json to_record() const;
     // Weights are matched to senses and actions by name; a brain saved with a single hidden
     // layer loads one layer deep, and one saved with fewer neurons in each layer is widened with idle
