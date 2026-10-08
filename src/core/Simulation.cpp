@@ -89,11 +89,18 @@ const std::vector<Offset>& nearby_offsets(int radius) {
 
 // Setting off in a direction, from north to west: the step in x and y, and what it then says it did.
 // The top and bottom of the map are barriers; east and west wrap round.
+// Setting off in a direction, from GoNorth to WalkWest: the step in x and y, whether it is a walk of a
+// single cell (else it goes as far as its speed allows), and what it then says it did. The top and
+// bottom of the map are barriers; east and west wrap round.
 struct Heading {
     int dx, dy;
+    bool walk;
     std::string_view went;
 };
-constexpr std::array<Heading, 4> HEADINGS = {{{0, -1, "went north"}, {0, 1, "went south"}, {1, 0, "went east"}, {-1, 0, "went west"}}};
+constexpr std::array<Heading, 8> HEADINGS = {{{0, -1, false, "went north"}, {0, 1, false, "went south"},
+                                              {1, 0, false, "went east"}, {-1, 0, false, "went west"},
+                                              {0, -1, true, "walked north"}, {0, 1, true, "walked south"},
+                                              {1, 0, true, "walked east"}, {-1, 0, true, "walked west"}}};
 bool travelled(std::string_view action) {
     return std::any_of(HEADINGS.begin(), HEADINGS.end(), [action](const Heading& heading) { return heading.went == action; });
 }
@@ -847,6 +854,9 @@ void Simulation::take_turn(bool replay) {
     ++turn_;
     update_climate();
     index_cells();
+    for (const auto& agent : agents_) {  // a body some cost starved, its death not yet recorded: recorded now
+        if (!agent->died_turn && !agent->alive()) die(*agent, agent->hunger >= 100 ? "starved" : "killed");
+    }
     std::vector<Bitzkey*> order = living();
     plants_ = static_cast<int>(std::count_if(order.begin(), order.end(),
                                              [](const Bitzkey* agent) { return agent->species == Species::Plant; }));
@@ -963,6 +973,7 @@ void Simulation::seed_plant(Bitzkey& plant) {
     plant.hunger += SEED_COST;
     plant.children += 1;
     plant.last_action = "seeded";
+    if (!plant.alive()) die(plant, "seeded to death");  // it spent the last of its food on the seed
     if (std::abs(climate_[static_cast<std::size_t>(cell.y)] - decode_climate(dna).temperature) >= 0.5) {  // too hot or cold: the seed waits
         seeds_.push_back({cell.x, cell.y, dna, plant.generation + 1, turn_});
         return;
@@ -1212,7 +1223,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
     }
 
     std::array<bool, ACTION_COUNT> available{};
-    available[Rest] = available[GoEast] = available[GoWest] = true;
+    available[Rest] = available[GoEast] = available[GoWest] = available[WalkEast] = available[WalkWest] = true;
     available[Eat] = s.grass_here;
     available[Forage] = s.grass.has_value();
     available[Browse] = s.flora != nullptr;
@@ -1242,8 +1253,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent) {
         // Starving, with food scarce: it may tear into a plant beside it.
         available[Uproot] = s.uprootable && food_supply(agent) < FOOD_NEEDED;
     }
-    available[GoNorth] = agent.y > 0;
-    available[GoSouth] = agent.y < height_ - 1;
+    available[GoNorth] = available[WalkNorth] = agent.y > 0;
+    available[GoSouth] = available[WalkSouth] = agent.y < height_ - 1;
     for (int action = 0; action < ACTION_COUNT; ++action) {
         if (available[action]) sensed.options.push_back(action);
     }
@@ -1412,9 +1423,22 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
         case GoNorth:
         case GoSouth:
         case GoEast:
-        case GoWest: {
+        case GoWest:
+        case WalkNorth:
+        case WalkSouth:
+        case WalkEast:
+        case WalkWest: {
             const Heading& heading = HEADINGS[static_cast<std::size_t>(action - GoNorth)];
-            move(agent, py_mod(agent.x + heading.dx * agent.steps, width_), within(agent.y + heading.dy * agent.steps));
+            const int cells = heading.walk ? 1 : agent.steps;
+            const int y = within(agent.y + heading.dy * cells);
+            const int moved = heading.dy ? std::abs(y - agent.y) : cells;  // north and south stop at the map's edge
+            move(agent, py_mod(agent.x + heading.dx * cells, width_), y);
+            if (heading.walk) {
+                agent.hunger = std::max(0.0, agent.hunger - agent.burn * WALK_REST);
+            } else {
+                agent.hunger += agent.burn * GO_EFFORT * std::max(0, moved - 1);
+                exhausted(agent);
+            }
             agent.reward += CURIOSITY_JOY * agent.feeling(Curiosity);
             agent.last_action = heading.went;
             break;
@@ -1555,8 +1579,8 @@ void Simulation::attack(Bitzkey& agent, Bitzkey& victim) {
 }
 
 void Simulation::exhausted(Bitzkey& agent) {
-    // A blow's effort can leave the striker starved: it dies there, rather than lingering as a body
-    // whose death was never recorded.
+    // A blow's effort, or a long way gone, can leave an animal starved: it dies there, rather than
+    // lingering as a body whose death was never recorded.
     if (!agent.alive() && !agent.died_turn) die(agent, "exhausted");
 }
 

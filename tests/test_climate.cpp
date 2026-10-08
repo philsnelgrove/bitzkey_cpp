@@ -20,6 +20,9 @@ Simulation world_at(int turn, int size = 100) {
     return simulation;
 }
 
+// The most a turn's go_ can cost an animal beyond its burn: a quarter of it for each cell past the first.
+double most_gone(const Bitzkey& agent) { return agent.burn * GO_EFFORT * std::max(0, agent.steps - 1); }
+
 std::vector<double> rows_on(int turn) {
     std::vector<double> rows;
     for (int y = 0; y < 100; ++y) rows.push_back(temperature_at(y, 100, turn));
@@ -157,9 +160,10 @@ TEST_CASE("a hardy animal suffers half the extra hunger and damage") {
     Bitzkey& hardy = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Hot}, {"cold_tolerance", 1}}), 40, 10);
     simulation.add_agent(encode_dna(Species::Predator), 90, 90);
     simulation.take_turn();
-    // With nothing to eat, resting gives back at most half a turn's burn and a little health.
-    CHECK((tender.hunger >= 1.5 * tender.burn - 1e-9 && tender.hunger <= 2 * tender.burn + 1e-9));
-    CHECK((hardy.hunger >= 1.0 * hardy.burn - 1e-9 && hardy.hunger <= 1.5 * hardy.burn + 1e-9));
+    // With nothing to eat, resting or a walk gives back at most half a turn's burn and a little health;
+    // going far costs up to a little more.
+    CHECK((tender.hunger >= 1.5 * tender.burn - 1e-9 && tender.hunger <= 2 * tender.burn + most_gone(tender) + 1e-9));
+    CHECK((hardy.hunger >= 1.0 * hardy.burn - 1e-9 && hardy.hunger <= 1.5 * hardy.burn + most_gone(hardy) + 1e-9));
     CHECK((tender.health < 0.83 * tender.max_health && hardy.health >= 0.9 * hardy.max_health - 1e-9 &&
            hardy.health < 0.93 * hardy.max_health));
 }
@@ -172,7 +176,7 @@ TEST_CASE("a step from home doubles an animal's food, and two steps also hurt") 
     simulation.add_agent(encode_dna(Species::Predator), 90, 90);
     simulation.take_turn();
     // With nothing to eat, resting gives back at most half a turn's burn.
-    CHECK(at_home.hunger <= at_home.burn + 1e-9);
+    CHECK(at_home.hunger <= at_home.burn + most_gone(at_home) + 1e-9);
     CHECK(one_away.hunger >= 1.5 * one_away.burn - 1e-9);
     CHECK(two_away.hunger >= 1.5 * two_away.burn - 1e-9);
     CHECK(at_home.health == at_home.max_health);  // a tenth of its health a step from home, resting at most a little back
@@ -324,6 +328,34 @@ TEST_CASE("an animal can head north or south, but not off the map") {
     simulation.act(bottom, GoSouth, sensed.situation);
     CHECK(bottom.y == 99);  // stopped by the edge
     CHECK_FALSE(offered(simulation.sense(bottom), GoSouth));
+}
+
+TEST_CASE("a walk moves one cell for half a turn's food, and going further costs more") {
+    Simulation simulation = world_at(0);
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 7}, {"curiosity", 7}}), 50, 50);  // six cells a step
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    for (const int walk : {WalkNorth, WalkSouth, WalkEast, WalkWest}) {
+        CHECK(std::find(sensed.options.begin(), sensed.options.end(), walk) != sensed.options.end());
+    }
+    grazer.hunger = 50;
+    simulation.act(grazer, WalkNorth, sensed.situation);
+    CHECK((grazer.x == 50 && grazer.y == 49 && grazer.last_action == "walked north"));
+    CHECK(grazer.hunger == doctest::Approx(50 - grazer.burn * WALK_REST));  // saves half the turn's burn, as resting does
+    CHECK(grazer.reward == doctest::Approx(CURIOSITY_JOY));                 // walking explores too
+    grazer.hunger = 50;
+    simulation.act(grazer, GoSouth, sensed.situation);
+    CHECK(grazer.y == 55);
+    CHECK(grazer.hunger == doctest::Approx(50 + grazer.burn * GO_EFFORT * 5));  // a quarter of a turn's burn for each cell past one
+    simulation.act(grazer, WalkWest, sensed.situation);
+    CHECK((grazer.x == 49 && grazer.last_action == "walked west"));
+    Bitzkey& edge = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 7}}), 50, 97);
+    edge.hunger = 50;
+    sensed = simulation.sense(edge);
+    simulation.act(edge, GoSouth, sensed.situation);
+    CHECK(edge.y == 99);
+    CHECK(edge.hunger == doctest::Approx(50 + edge.burn * GO_EFFORT * 1));  // only the two cells it could go
+    sensed = simulation.sense(edge);
+    CHECK(std::find(sensed.options.begin(), sensed.options.end(), WalkSouth) == sensed.options.end());
 }
 
 TEST_CASE("an animal can always head east or west round the map, and enjoys setting off") {

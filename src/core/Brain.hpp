@@ -60,11 +60,11 @@ enum Sense : int {
     SenseMind,             // then its current temperament, each trait 0..7 scaled to 0..1
 };
 enum Action : int { Eat, Forage, Browse, Uproot, Scavenge, Feast, Rest, Court, Breed, Hunt, Attack, Defend, Flee, Herd,
-                    GoNorth, GoSouth, GoEast, GoWest };
-constexpr int ACTION_COUNT = 18;
+                    GoNorth, GoSouth, GoEast, GoWest, WalkNorth, WalkSouth, WalkEast, WalkWest };
+constexpr int ACTION_COUNT = 22;
 constexpr std::array<std::string_view, ACTION_COUNT> ACTIONS = {
     "eat", "forage", "browse", "uproot", "scavenge", "feast", "rest", "court", "breed", "hunt", "attack", "defend",
-    "flee", "herd", "go_north", "go_south", "go_east", "go_west"};
+    "flee", "herd", "go_north", "go_south", "go_east", "go_west", "walk_north", "walk_south", "walk_east", "walk_west"};
 constexpr int SenseInborn = SenseMind + MIND_TRAIT_COUNT;  // then its dot's traits, as born, 0..1
 constexpr int SenseBody = SenseInborn + MIND_TRAIT_COUNT;  // then its ring's traits, 0..1 (species 0 plant to 1 predator)
 constexpr int SenseHomeTemperature = SenseBody + BODY_TRAIT_COUNT;  // then its climate genes: home 0 hot to 1 very cold,

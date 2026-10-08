@@ -44,6 +44,8 @@ std::vector<Rule> make_rules() {
         {"STOMACH.1", "Bodies", "Stomach, largest", "food the largest body holds, relative to the middle", 0.1, 5.0, 0.1, false, &STOMACH[1]},
         {"SIZE_IN_MIGHT", "Bodies", "Size in might", "share of strength and toughness that comes from body size", 0.0, 1.0, 0.05, false, &SIZE_IN_MIGHT},
         {"GRAZER_SPEED", "Bodies", "Grazer speed", "grazers move this many times as far a step, rounded half up", 0.5, 4.0, 0.25, false, &GRAZER_SPEED},
+        {"WALK_REST", "Bodies", "Walk rest", "share of the turn's burn a one-cell walk saves, as resting does", 0.0, 1.0, 0.05, false, &WALK_REST},
+        {"GO_EFFORT", "Bodies", "Go effort", "share of a turn's burn each cell a go_ moves beyond the first costs", 0.0, 2.0, 0.05, false, &GO_EFFORT},
         {"BREED_RESERVE", "Breeding", "Breeding reserve", "hunger a parent must still have spare after paying to breed", 0, 100, 5, true, &BREED_RESERVE},
         {"MATE_RING_DIFFERENCE", "Breeding", "Mate ring difference", "most a partner's ring colour may differ, at no tolerance", 0.0, 1.0, 0.01, false, &MATE_RING_DIFFERENCE},
         {"MATE_DOT_DIFFERENCE", "Breeding", "Mate dot difference", "most a partner's dot colour may differ, at no tolerance", 0.0, 1.0, 0.01, false, &MATE_DOT_DIFFERENCE},

@@ -108,7 +108,9 @@ Brain Brain::random(PyRandom& rng, int depth) {
         for (double& weight : row) weight = rng.uniform(-OUTPUT_SPREAD, OUTPUT_SPREAD);
     }
     for (double& bias : brain.output_biases) bias = rng.uniform(-0.2, 0.2);
-    for (const int heading : {GoNorth, GoSouth, GoEast, GoWest}) brain.output_biases[heading] -= HEADING_RELUCTANCE;
+    for (const int heading : {GoNorth, GoSouth, GoEast, GoWest, WalkNorth, WalkSouth, WalkEast, WalkWest}) {
+        brain.output_biases[heading] -= HEADING_RELUCTANCE;
+    }
     return brain;
 }
 

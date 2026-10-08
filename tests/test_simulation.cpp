@@ -621,6 +621,60 @@ TEST_CASE("the turns since the latest disk snapshot are held in memory and reach
     CLIMATE_DAMAGE = saved;
 }
 
+TEST_CASE("no body is left without a recorded death, even when moving, striking and seeding starve") {
+    const double go = GO_EFFORT, strike = STRIKE_EFFORT;
+    const double seed_cost = SEED_COST, seed_hunger = SEED_HUNGER;
+    for (const bool harsh : {false, true}) {
+        if (harsh) {
+            GO_EFFORT = 2.0;
+            STRIKE_EFFORT = 2.0;
+            SEED_COST = 100;
+            SEED_HUNGER = 100;
+        }
+        for (const std::uint64_t seed : {1, 2, 3}) {
+            Simulation simulation(Simulation::Settings{40, 40, 120, seed});
+            for (int turn = 0; turn < 120 && !simulation.ended(); ++turn) {
+                simulation.advance();
+                for (const auto& agent : simulation.agents()) {
+                    CAPTURE(seed);
+                    CAPTURE(simulation.turn());
+                    CHECK((agent->alive() || agent->died_turn.has_value()));
+                }
+            }
+        }
+    }
+    GO_EFFORT = go;
+    STRIKE_EFFORT = strike;
+    SEED_COST = seed_cost;
+    SEED_HUNGER = seed_hunger;
+}
+
+TEST_CASE("starving is recorded and its body handled however it comes") {
+    Simulation simulation(Simulation::Settings{30, 30, 0, 3});
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"intellect", 7}, {"empathy", 7}}), 10, 10);
+    Bitzkey& herd_mate = simulation.add_agent(grazer.dna, 11, 10);
+    simulation.index_cells();
+    simulation.think(grazer);  // a decision to learn from
+    grazer.hunger = 100.5;      // starved by something that recorded nothing
+    const int deaths = simulation.deaths();
+    simulation.advance();
+    CHECK((grazer.last_action == "starved" && grazer.died_turn == 1 && simulation.deaths() == deaths + 1));
+    CHECK(grazer.meat == 0);  // a starved body leaves nothing to eat
+    CHECK(grazer.brain == nullptr);
+    CHECK(herd_mate.seen_failure > 0);  // its herd saw it fail
+
+    const double seed_cost = SEED_COST;
+    SEED_COST = 100;
+    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"fertility", 7}}), 20, 20);
+    simulation.index_cells();
+    for (int attempt = 0; attempt < 400 && plant.alive(); ++attempt) {
+        plant.hunger = 30;
+        simulation.seed_plant(plant);
+    }
+    SEED_COST = seed_cost;
+    CHECK((plant.last_action == "seeded to death" && plant.died_turn == simulation.turn()));
+}
+
 TEST_CASE("a history left behind is cleared away once stale") {
     const Simulation old(Simulation::Settings{20, 20, 0, 1}), recent(Simulation::Settings{20, 20, 0, 2});
     std::filesystem::last_write_time(old.history_folder(), std::filesystem::file_time_type::clock::now() -

@@ -30,7 +30,7 @@ TEST_CASE("a new brain is reluctant to set off in any direction") {
     const Brain eager = Brain::random(second);
     HEADING_RELUCTANCE = saved;
     for (int action = 0; action < ACTION_COUNT; ++action) {
-        const bool heading = action == GoNorth || action == GoSouth || action == GoEast || action == GoWest;
+        const bool heading = action >= GoNorth && action <= WalkWest;
         CHECK(reluctant.output_biases[action] == doctest::Approx(eager.output_biases[action] - (heading ? saved : 0.0)));
     }
 }

@@ -87,6 +87,10 @@ inline double BREED_JOY = 1.0;
 inline double FIGHT_JOY = 0.5;
 inline double COMPANY_JOY = 0.1;
 inline double CURIOSITY_JOY = 0.15;
+// Moving costs food. A walk, a single cell, saves this share of the turn's burn, as resting does; going as
+// far as its speed allows costs this share of a turn's burn more for each cell beyond the first.
+inline double WALK_REST = 0.5;
+inline double GO_EFFORT = 0.25;
 inline double FEAR_DREAD = 0.3;
 inline double UNEASE = 0.1;
 inline double CLIMATE_UNEASE = 0.5;  // discomfort two or more steps from home, half that one step; less for the hardy
