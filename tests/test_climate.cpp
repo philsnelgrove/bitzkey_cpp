@@ -71,24 +71,28 @@ TEST_CASE("each hemisphere and the equator are a step colder in its winter") {
     CHECK(rows_on(510) == rows_on(150));  // the next year repeats
 }
 
-TEST_CASE("a winter washes in from its edge in a wave, and ebbs back the way it came") {
-    // The north's winter covers rows 0-59 in 30 bands of two; its wave takes half a season, 45 turns,
-    // and has a front four bands wide. 27 turns in, the front has come 0.6 of 34 bands.
+TEST_CASE("every zone's winter washes in at once in a wave, and ebbs back the way it came") {
+    // The north's winter covers the arctic (rows 0-19), the temperate zone (20-39) and the equator
+    // (40-59), each 10 bands of two with a wave of its own, all setting off together. A wave takes half
+    // a season, 45 turns, and has a front four bands wide. 27 turns in, each front has come 0.6 of 14 bands.
     CHECK((season_progress(90) == 0.0 && season_progress(135) == 1.0 && season_progress(117) == doctest::Approx(0.6)));
-    CHECK((wave_band(0, 100, 1) == std::pair{0, 30} && wave_band(37, 100, 1) == std::pair{18, 30} &&
-           wave_band(59, 100, 1) == std::pair{29, 30}));
+    // each zone's wave sets off at once: the arctic, the temperate zone and the equator each its own
+    CHECK((wave_band(0, 100, 1) == std::pair{0, 10} && wave_band(37, 100, 1) == std::pair{8, 10} &&
+           wave_band(59, 100, 1) == std::pair{9, 10}));
     const double hot = Hot, medium = Medium, cold = Cold, very_cold = VeryCold;
-    for (int y = 0; y < 34; ++y) CHECK(temperature_at(y, 100, 117) == (y < 20 ? very_cold : cold));  // winter has come
-    for (const auto& [row, turned] : std::vector<std::pair<int, double>>{{34, 0.85}, {36, 0.6}, {38, 0.35}, {40, 0.1}}) {
-        // the front: a staircase, a band at a time
-        CHECK(temperature_at(row, 100, 117) == doctest::Approx(temperature_at(row + 1, 100, 117)));
-        CHECK(temperature_at(row, 100, 117) == doctest::Approx(season_temperature(row, 100, 0) + turned));
+    const std::array<double, 10> turned = {1, 1, 1, 1, 1, 0.85, 0.6, 0.35, 0.1, 0};
+    for (const int start : {0, 20, 40}) {  // in every zone alike: winter come behind the front, a staircase, not yet ahead
+        for (int band = 0; band < 10; ++band) {
+            for (const int row : {start + 2 * band, start + 2 * band + 1}) {
+                CHECK(temperature_at(row, 100, 117) ==
+                      doctest::Approx(season_temperature(row, 100, 0) + turned[static_cast<std::size_t>(band)]));
+            }
+        }
     }
-    for (int y = 42; y < 60; ++y) CHECK(temperature_at(y, 100, 117) == hot);  // ahead of it, not yet
     for (int y = 60; y < 100; ++y) CHECK(temperature_at(y, 100, 117) == (y < 80 ? medium : cold));  // the south: no change
 
     CHECK((temperature_at(59, 100, 207) == hot && temperature_at(0, 100, 207) == very_cold));  // ebbing back from the equator
-    CHECK(temperature_at(24, 100, 207) == doctest::Approx(medium + 0.15));
+    CHECK(temperature_at(24, 100, 207) == doctest::Approx(cold - 0.35));  // the temperate zone's eighth band from the equator
     CHECK((temperature_at(99, 100, 297) == very_cold && temperature_at(40, 100, 297) == hot));  // the south's, up from the bottom
     CHECK((temperature_at(99, 100, 387) == very_cold && temperature_at(41, 100, 387) == hot));  // and ebbing back down to it
     CHECK(temperature_at(70, 100, 0) == medium);  // the world's first season is settled
@@ -99,36 +103,36 @@ TEST_CASE("a winter washes in from its edge in a wave, and ebbs back the way it 
 }
 
 TEST_CASE("while the weather turns, its effects turn with it") {
-    Simulation simulation = world_at(116);  // at turn 117, next, the wave's front has turned row 36 0.6 of the way to cold
-    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}}), 50, 36);
+    Simulation simulation = world_at(116);  // at turn 117, next, the temperate zone's front has turned row 32 0.6 of the way to cold
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}}), 50, 32);
     simulation.add_agent(encode_dna(Species::Predator), 90, 90);
     simulation.take_turn();
     // 0.6 of a step's harm, with at most a little health given back by resting.
     CHECK((grazer.health >= 0.94 * grazer.max_health - 1e-9 && grazer.health < 0.98 * grazer.max_health));
     CHECK(grazer.hunger >= 1.1 * grazer.burn - 1e-9);  // 0.6 of the extra food, less at most half a turn's burn resting
-    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Medium}}), 60, 36);
+    Bitzkey& plant = simulation.add_agent(encode_dna(Species::Plant, {{"temperature", Medium}}), 60, 32);
     CHECK(simulation.plant_yield(plant) == doctest::Approx(0.4));
 }
 
 TEST_CASE("grass grows and dies back by how medium a turning row is") {
-    Simulation simulation = world_at(117);  // rows 36 and 37 are 0.6 of the way to cold; the south is medium
+    Simulation simulation = world_at(117);  // rows 32 and 33 are 0.6 of the way to cold; the south is medium
     simulation.sow(20000);
     double turning = 0, south = 0;
     for (int x = 0; x < 100; ++x) {
-        for (const int y : {36, 37}) turning += simulation.grass_at(x, y);
+        for (const int y : {32, 33}) turning += simulation.grass_at(x, y);
         for (const int y : {70, 71}) south += simulation.grass_at(x, y);
     }
     CHECK(turning / south == doctest::Approx(0.4).epsilon(0.2));
-    CHECK(simulation.growth(36) == doctest::Approx(0.4));
+    CHECK(simulation.growth(32) == doctest::Approx(0.4));
     Simulation wave = world_at(116);
     const double regrowth = wave.grass_regrowth();
     wave.set_grass_regrowth(0);
-    for (int x = 0; x < 100; ++x) wave.grass_cell(x, 36) = wave.grass_cell(x, 70) = 3;
-    wave.take_turn();  // turn 117: the cells whose turn it is to die back, x of 3, 23, 43, 63 and 83 in row 36
+    for (int x = 0; x < 100; ++x) wave.grass_cell(x, 32) = wave.grass_cell(x, 70) = 3;
+    wave.take_turn();  // turn 117: the cells whose turn it is to die back, x of 3, 23, 43, 63 and 83 in row 32
     wave.set_grass_regrowth(regrowth);
     for (int x = 0; x < 100; ++x) {
-        const bool due = (x + 36 * 100 + 117) % GRASS_DIEBACK == 0 && dieback_threshold(x, 36) < 0.6;
-        CHECK(wave.grass_at(x, 36) == (due ? 2 : 3));
+        const bool due = (x + 32 * 100 + 117) % GRASS_DIEBACK == 0 && dieback_threshold(x, 32) < 0.6;
+        CHECK(wave.grass_at(x, 32) == (due ? 2 : 3));
         CHECK(wave.grass_at(x, 70) == 3);
     }
 }
@@ -286,12 +290,12 @@ TEST_CASE("an animal senses how far it is from home and how close home weather i
 }
 
 TEST_CASE("an animal sees the wave coming as a staircase of warmth") {
-    Simulation simulation = world_at(117);  // the north's winter front at rows 34 to 41
-    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}, {"sight", 7}}), 50, 36);  // sees 9 rows
+    Simulation simulation = world_at(117);  // the temperate zone's winter front at rows 30 to 37
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"temperature", Medium}, {"sight", 7}}), 50, 32);  // sees 9 rows
     const Simulation::Sensed sensed = simulation.sense(grazer);
     CHECK(sensed.senses[SenseWarmthNorth] == doctest::Approx(-0.5));  // cold behind it,
     CHECK(sensed.senses[SenseWarmth] == doctest::Approx(-0.3));       // part way here,
-    CHECK(sensed.senses[SenseWarmthSouth] == doctest::Approx(0.5));   // hot ahead
+    CHECK(sensed.senses[SenseWarmthSouth] == doctest::Approx(0.0));   // the equator's turned mild
     CHECK(sensed.senses[SenseClimateDiscomfort] == doctest::Approx(0.3));
 }
 

@@ -166,8 +166,9 @@ inline double CLIMATE_HUNGER = 2.0;   // an animal a step or more from home, or 
 inline double CLIMATE_DAMAGE = 0.1;   // for each step from home, a Bitzkey loses this share of its full health a turn; plants from two
 inline double PLANT_CLIMATE_YIELD = 0.0;  // a plant out of its temperature gives this share of its food
 inline int GRASS_DIEBACK = 20;     // where it isn't medium, a cell's grass loses a tuft every this many turns
-// The weather turns in a wave. A winter washes in from its hemisphere's edge to the equator, and as it
-// ends ebbs back the way it came, over this share of each season. The wave moves in bands of WAVE_BAND
+// The weather turns in waves, one in each climate zone, all setting off together as the season turns,
+// so no zone waits on another. In each, a winter washes in from the side toward its hemisphere's edge
+// toward the equator, and as it ends ebbs back the way it came, over this share of each season. The wave moves in bands of WAVE_BAND
 // rows; at its front, WAVE_FRONT bands stand part way between the old weather and the new, in even
 // steps, so the change comes as a staircase. The climate's effects move with it.
 inline double SEASON_TURNING = 0.5;
@@ -192,10 +193,11 @@ int zone_temperature(int y, int height);       // a row's temperature outside th
 // south and the equator in the fourth.
 bool in_winter(int y, int height, int quarter);
 int season_temperature(int y, int height, int quarter);  // a row's settled temperature in a quarter of the year
-// As the weather turns into a quarter of the year, which band of the wave a row is in, counted in the
-// order the wave reaches them, and how many bands the wave crosses. A winter washes in from its
-// hemisphere's edge toward the equator (the second and fourth quarters), and ebbs back from the
-// equator toward the edge (the third and first).
+// As the weather turns into a quarter of the year, which band of its zone's wave a row is in, counted
+// in the order the wave reaches them, and how many bands the wave crosses. Every zone's wave sets off
+// at once. A winter washes in from the side toward its hemisphere's edge toward the equator (the
+// second and fourth quarters), and ebbs back the other way (the third and first).
+std::pair<int, int> zone_rows(int y, int height);  // the first and last rows of a row's climate zone
 std::pair<int, int> wave_band(int y, int height, int quarter);
 // How far the season's wave has come: 0 as a season begins, 1 once SEASON_TURNING of it has passed.
 // The world's first season starts settled.

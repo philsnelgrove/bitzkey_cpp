@@ -165,14 +165,18 @@ int season_temperature(int y, int height, int quarter) {
     return zone_temperature(y, height) + (in_winter(y, height, quarter) ? 1 : 0);
 }
 
+std::pair<int, int> zone_rows(int y, int height) {
+    const int zone = zone_temperature(y, height);
+    int first = y, last = y;
+    while (first > 0 && zone_temperature(first - 1, height) == zone) --first;
+    while (last < height - 1 && zone_temperature(last + 1, height) == zone) ++last;
+    return {first, last};
+}
+
 std::pair<int, int> wave_band(int y, int height, int quarter) {
+    // Every zone's wave sets off at once, crossing its own zone.
     const bool north = quarter == 1 || quarter == 2;
-    int first = -1, last = -1;
-    for (int row = 0; row < height; ++row) {
-        if (!in_winter(row, height, north ? 1 : 3)) continue;
-        if (first < 0) first = row;
-        last = row;
-    }
+    const auto [first, last] = zone_rows(y, height);
     const bool inward = quarter == 1 || quarter == 3;
     const int offset = north == inward ? y - first : last - y;
     return {offset / WAVE_BAND, (last - first) / WAVE_BAND + 1};
