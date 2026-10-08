@@ -109,7 +109,7 @@ them in the same format as this Python loop, so the two lists can be compared li
 ```
 
 Both versions share every rule, including food-aware breeding, prey switching, light competition
-between plants, the rewind history written to disk every 16 turns within 10 GB with the turns since held in memory, the catalog, map zoom and movement trails (see the Python README). Seeds 1, 2 (with a population cap, custom mutation rates, sparse grass and a 60 x 50 world) and
+between plants, the rewind history with every turn written to disk on a thread of its own within 25 GB, the catalog, map zoom and movement trails (see the Python README). Seeds 1, 2 (with a population cap, custom mutation rates, sparse grass and a 60 x 50 world) and
 7 have been checked identical over 150 to 300 turns. Seed 7 has also been checked identical over 300 turns with ten
 advanced rules changed, among them a territory, a diet, an experience, the seed reach and the brain's temperature.
 With seasons and climate, seeds 7 and 2 (as above) and seed 7 with all six climate rules changed have been checked

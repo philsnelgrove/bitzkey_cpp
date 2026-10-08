@@ -411,21 +411,19 @@ namespace {
 
 // Writing a snapshot of the world to a file, and reading it back, field by field, as the machine
 // holds them: a file is only ever read back by the run that wrote it.
-class Writer {
+class Writer {  // into memory, to be written to its file on the history's own thread
 public:
-    explicit Writer(const std::filesystem::path& path) : out_(path, std::ios::binary | std::ios::trunc) {
-        if (!out_) throw std::runtime_error("Couldn't write the history file " + path.string());
-    }
+    explicit Writer(std::string& out) : out_(out) {}
     template <class T>
     void put(const T& value) {
         static_assert(std::is_trivially_copyable_v<T>);
-        out_.write(reinterpret_cast<const char*>(&value), sizeof value);
+        out_.append(reinterpret_cast<const char*>(&value), sizeof value);
     }
     template <class T>
     void put_all(const std::vector<T>& values) {
         static_assert(std::is_trivially_copyable_v<T>);
         put(values.size());
-        out_.write(reinterpret_cast<const char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(T)));
+        out_.append(reinterpret_cast<const char*>(values.data()), values.size() * sizeof(T));
     }
     template <class T>
     void put_maybe(const std::optional<T>& value) {
@@ -434,15 +432,11 @@ public:
     }
     void put_text(std::string_view text) {
         put(text.size());
-        out_.write(text.data(), static_cast<std::streamsize>(text.size()));
-    }
-    void finish() {
-        out_.flush();
-        if (!out_) throw std::runtime_error("Couldn't finish writing a history file; is the disk full?");
+        out_.append(text);
     }
 
 private:
-    std::ofstream out_;
+    std::string& out_;
 };
 
 class Reader {
@@ -561,6 +555,11 @@ void put_bitzkey(Writer& out, const Bitzkey& agent) {
     out.put(agent.reward);
     out.put(agent.odds);
     out.put(agent.odds_offered);
+    out.put(agent.trail.size());
+    for (const auto& [x, y] : agent.trail) {
+        out.put(x);
+        out.put(y);
+    }
 }
 
 std::unique_ptr<Bitzkey> take_bitzkey(Reader& in) {
@@ -599,6 +598,11 @@ std::unique_ptr<Bitzkey> take_bitzkey(Reader& in) {
     agent->reward = in.take<double>();
     agent->odds = in.take<decltype(agent->odds)>();
     agent->odds_offered = in.take<std::uint32_t>();
+    agent->trail.resize(in.take<std::size_t>());
+    for (auto& [cell_x, cell_y] : agent->trail) {
+        cell_x = in.take<int>();
+        cell_y = in.take<int>();
+    }
     return agent;
 }
 
@@ -650,19 +654,75 @@ void remove_stale_histories() {
     }
 }
 
-std::pair<int, int> Simulation::history_room() const {
-    // Enough recent snapshots to cover DENSE_HISTORY turns, and CHECKPOINTS, but fewer when snapshots
-    // of the world are large, so the history fits HISTORY_BUDGET.
-    const std::uintmax_t most = std::max(MIN_SNAPSHOTS, HISTORY_BUDGET / std::max<std::uintmax_t>(1, snapshot_bytes_));
-    const int dense = static_cast<int>(std::min<std::uintmax_t>((DENSE_HISTORY + SNAPSHOT_SPACING - 1) / SNAPSHOT_SPACING, most / 2));
-    return {dense, static_cast<int>(std::min<std::uintmax_t>(CHECKPOINTS, most - static_cast<std::uintmax_t>(dense)))};
+HistoryWriter::HistoryWriter() : thread_([this] { run(); }) {}
+
+HistoryWriter::~HistoryWriter() {
+    {
+        std::lock_guard lock(mutex_);
+        stopping_ = true;
+    }
+    changed_.notify_all();
+    thread_.join();
 }
 
-std::vector<int> Simulation::memory_turns() const {
-    std::vector<int> turns;
-    for (const Snapshot& held : recent_) turns.push_back(held.turn);
-    return turns;
+void HistoryWriter::run() {
+    std::unique_lock lock(mutex_);
+    while (true) {
+        changed_.wait(lock, [this] { return stopping_ || !jobs_.empty(); });
+        if (jobs_.empty()) return;  // stopping, with everything done
+        Job job = std::move(jobs_.front());
+        jobs_.pop_front();
+        busy_ = true;
+        const bool failed = failure_ != nullptr;
+        lock.unlock();
+        std::exception_ptr failure;
+        if (!failed) {
+            try {
+                if (job.data) {
+                    std::ofstream out(job.path, std::ios::binary | std::ios::trunc);
+                    out.write(job.data->data(), static_cast<std::streamsize>(job.data->size()));
+                    out.flush();
+                    if (!out) throw std::runtime_error("Couldn't write the history file " + job.path.string() + "; is the disk full?");
+                } else {
+                    std::error_code ignored;
+                    std::filesystem::remove(job.path, ignored);
+                }
+            } catch (...) {
+                failure = std::current_exception();
+            }
+        }
+        lock.lock();
+        if (failure) failure_ = failure;
+        busy_ = false;
+        changed_.notify_all();
+    }
 }
+
+void HistoryWriter::throw_failure() {
+    if (failure_) std::rethrow_exception(failure_);
+}
+
+void HistoryWriter::write(std::filesystem::path path, std::string data) {
+    std::unique_lock lock(mutex_);
+    throw_failure();
+    changed_.wait(lock, [this] { return jobs_.size() < HISTORY_QUEUE; });
+    jobs_.push_back({std::move(path), std::move(data)});
+    changed_.notify_all();
+}
+
+void HistoryWriter::remove(std::filesystem::path path) {
+    std::lock_guard lock(mutex_);
+    jobs_.push_back({std::move(path), std::nullopt});
+    changed_.notify_all();
+}
+
+void HistoryWriter::wait() {
+    std::unique_lock lock(mutex_);
+    changed_.wait(lock, [this] { return jobs_.empty() && !busy_; });
+    throw_failure();
+}
+
+void Simulation::flush_history() { writer_->wait(); }
 
 std::vector<int> Simulation::history_turns() const {
     std::vector<int> turns;
@@ -670,8 +730,9 @@ std::vector<int> Simulation::history_turns() const {
     return turns;
 }
 
-void Simulation::write_snapshot(const std::filesystem::path& path) const {
-    Writer out(path);
+std::string Simulation::snapshot() const {
+    std::string data;
+    Writer out(data);
     out.put(turn_);
     out.put(deaths_);
     out.put(next_identifier_);
@@ -686,44 +747,28 @@ void Simulation::write_snapshot(const std::filesystem::path& path) const {
     const Insights::State insights = insights_.snapshot();
     out.put_all(insights.offered);
     out.put_all(insights.chosen);
-    out.finish();
+    return data;
 }
 
 void Simulation::record() {
-    // Snapshot the newest turn to a file, if it falls on the snapshot spacing, then thin the old ones:
-    // turns before the recent window stay only on the checkpoint spacing, which doubles while there
-    // are too many of them.
+    // Hand the newest turn to the disk, then delete the oldest while the history is over its budget.
     frontier_ = turn_;
-    if (turn_ % SNAPSHOT_SPACING) {  // between snapshots on the disk: a whole copy in memory
-        Snapshot held{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
-        held.agents.reserve(agents_.size());
-        for (const auto& agent : agents_) held.agents.push_back(*agent);
-        recent_.push_back(std::move(held));
-        return;
-    }
-    recent_.clear();  // the disk now covers them
+    std::string data = snapshot();
     char name[32];
     std::snprintf(name, sizeof name, "turn-%08d.snapshot", turn_);
     const std::filesystem::path path = history_folder_.path() / name;
-    write_snapshot(path);
-    snapshot_bytes_ = std::filesystem::file_size(path);
-    history_.push_back({turn_, path});
-    const auto [dense, checkpoints] = history_room();
-    const int recent = frontier_ - dense * SNAPSHOT_SPACING;
-    const auto turn_below = [](const SnapshotFile& file, int turn) { return file.turn < turn; };
-    while (true) {
-        std::erase_if(history_, [this, recent](const SnapshotFile& file) {
-            if (file.turn >= recent || file.turn % checkpoint_stride_ == 0) return false;
-            std::error_code ignored;
-            std::filesystem::remove(file.path, ignored);
-            return true;
-        });
-        if (std::lower_bound(history_.begin(), history_.end(), recent, turn_below) - history_.begin() <= checkpoints) break;
-        checkpoint_stride_ *= 2;
+    history_.push_back({turn_, path, data.size()});
+    history_bytes_ += data.size();
+    writer_->write(path, std::move(data));
+    while (history_bytes_ > HISTORY_BUDGET && history_.size() > 1) {
+        history_bytes_ -= history_.front().bytes;
+        writer_->remove(history_.front().path);
+        history_.pop_front();
     }
 }
 
 void Simulation::restore(const SnapshotFile& file) {
+    flush_history();  // its file written
     Reader in(file.path);
     turn_ = in.take<int>();
     deaths_ = in.take<int>();
@@ -747,46 +792,13 @@ void Simulation::restore(const SnapshotFile& file) {
     index_cells();
 }
 
-void Simulation::restore(const Snapshot& held) {
-    turn_ = held.turn;
-    deaths_ = held.deaths;
-    next_identifier_ = held.next_identifier;
-    for (auto& agent : agents_) departed_.push_back(std::move(agent));
-    agents_.clear();
-    for (const Bitzkey& agent : held.agents) agents_.push_back(std::make_unique<Bitzkey>(agent));
-    grass_ = held.grass;
-    seeds_ = held.seeds;
-    random_.setstate(held.random);
-    insights_.restore(held.insights);
-    update_climate();
-    index_cells();
-}
-
-Simulation::Start Simulation::start_for(int target) const {
-    for (const Snapshot& held : recent_) {  // none to replay for a turn held in memory
-        if (held.turn == target) return turn_ == target ? Start{} : Start{nullptr, &held, 0};
-    }
-    const auto after = std::upper_bound(history_.begin(), history_.end(), target,
-                                        [](int turn, const SnapshotFile& file) { return turn < file.turn; });
-    const SnapshotFile& file = *std::prev(after);
-    if (file.turn <= turn_ && turn_ <= target) return {nullptr, nullptr, target - turn_};
-    return {&file, nullptr, target - file.turn};
-}
-
-int Simulation::replay_cost(int target) const {
-    return start_for(std::max(0, std::min(frontier_, target))).cost;
-}
-
 void Simulation::seek(int target) {
-    target = std::max(0, std::min(frontier_, target));
-    const Start start = start_for(target);
-    if (start.file) restore(*start.file);
-    else if (start.held) restore(*start.held);
-    while (turn_ < target) take_turn(true);
+    target = std::max(earliest(), std::min(frontier_, target));
+    if (target != turn_) restore(history_[static_cast<std::size_t>(target - earliest())]);
 }
 
 bool Simulation::rewind() {
-    if (turn_ == 0) return false;
+    if (turn_ <= earliest()) return false;
     seek(turn_ - 1);
     return true;
 }
@@ -850,7 +862,7 @@ void Simulation::update_climate() {
     }
 }
 
-void Simulation::take_turn(bool replay) {
+void Simulation::take_turn() {
     ++turn_;
     update_climate();
     index_cells();
@@ -923,7 +935,7 @@ void Simulation::take_turn(bool replay) {
     }
     std::erase_if(agents_, [](const std::unique_ptr<Bitzkey>& agent) { return !agent; });
     insights_.decay();
-    if (!replay) take_census();
+    take_census();
 }
 
 void Simulation::take_census() {

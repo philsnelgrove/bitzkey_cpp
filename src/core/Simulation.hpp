@@ -2,12 +2,18 @@
 // Turn-based Bitzkey world and its deterministic history.
 
 #include <array>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
+#include <exception>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -30,18 +36,14 @@ inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
-// The history is written to disk: a snapshot of the world every SNAPSHOT_SPACING turns, each a file in a
-// folder of the world's own among the temporary files, deleted with the world. The turns since the
-// latest of them are each kept whole in memory as well, so the newest are reached at once, until the
-// next snapshot is written and they are let go. An older turn between snapshots is rebuilt by
-// replaying from the one before.
-constexpr int SNAPSHOT_SPACING = 16;
-constexpr int DENSE_HISTORY = 500;  // the latest turns keep every snapshot
-constexpr int CHECKPOINTS = 200;    // older turns are kept as at most this many evenly spaced snapshots
-// The history keeps to a disk budget: when snapshots of the world grow large, fewer are kept, so that
-// all of them fit, though never fewer than MIN_SNAPSHOTS.
-constexpr std::uintmax_t HISTORY_BUDGET = std::uintmax_t{10} << 30;  // bytes
-constexpr std::uintmax_t MIN_SNAPSHOTS = 4;
+// The history is kept on disk, not in memory: every turn, whole, as a file in a folder of the world's own
+// among the temporary files, deleted with the world. The files are written on a thread of their own
+// while the world carries on, so no turn waits for the disk; at most HISTORY_QUEUE turns wait to be
+// written before the world waits for them. Any turn kept is reached at once, with nothing to replay.
+// The history keeps to a disk budget: once its files fill HISTORY_BUDGET, the oldest turns are
+// deleted, so it reaches back only as far as the budget allows; the newest turn is always kept.
+inline std::uintmax_t HISTORY_BUDGET = std::uintmax_t{25} << 30;  // bytes
+constexpr std::size_t HISTORY_QUEUE = 8;
 constexpr std::string_view HISTORY_PREFIX = "bitzkey-history-";  // the history folders' names start so
 constexpr int STALE_HISTORY_HOURS = 24;  // a history folder left this long by a run that never closed it is cleared away
 
@@ -66,6 +68,35 @@ public:
 private:
     void remove();
     std::filesystem::path path_;
+};
+
+// Writes the history's files on a thread of its own, in the order given, so the world needn't wait for
+// the disk; a file is deleted the same way, after it is written. A failure, such as a full disk, is
+// thrown the next time the world hands over a file or waits for them.
+class HistoryWriter {
+public:
+    HistoryWriter();
+    ~HistoryWriter();  // once everything handed over is done
+    HistoryWriter(const HistoryWriter&) = delete;
+    HistoryWriter& operator=(const HistoryWriter&) = delete;
+    void write(std::filesystem::path path, std::string data);  // waits while HISTORY_QUEUE are waiting
+    void remove(std::filesystem::path path);
+    void wait();  // until every file handed over is written (or deleted)
+
+private:
+    struct Job {
+        std::filesystem::path path;
+        std::optional<std::string> data;  // none to delete it
+    };
+    void run();
+    void throw_failure();  // with the lock held
+    std::mutex mutex_;
+    std::condition_variable changed_;
+    std::deque<Job> jobs_;
+    bool busy_ = false;
+    bool stopping_ = false;
+    std::exception_ptr failure_;
+    std::thread thread_;  // last, so it starts once the rest is ready
 };
 inline int CORPSE_FERTILITY = 2;
 inline int CORPSE_TURNS = 30;
@@ -375,17 +406,19 @@ public:
     const std::vector<int>& grass_rows() const { return grass_rows_; }  // the rows where grass grows at all
     void set_grass_regrowth(double tufts) { grass_regrowth_ = tufts; }
 
-    // Step one turn: replaying the recorded run, or simulating a new turn, unless it has ended.
+    // Step one turn: on through the recorded run, or simulating a new turn, unless it has ended.
     void advance();
-    // Move the world to any turn already simulated; replaying repeats the recorded run exactly.
+    // Move the world to any turn the history keeps, from the earliest to the latest simulated, by
+    // bringing it back from its file.
     void seek(int target);
     bool rewind();
-    int replay_cost(int target) const;
+    int earliest() const { return history_.empty() ? turn_ : history_.front().turn; }  // the oldest turn kept
+    void flush_history();  // wait until every turn handed to the disk is written
     EndReason end_reason() const;
     bool ended() const { return turn_ == frontier_ && end_reason() != EndReason::None; }
 
     // The rest is public so tests can drive single steps, as the Python tests do.
-    void take_turn(bool replay = false);
+    void take_turn();
     Bitzkey& add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> brain = nullptr,
                        const std::optional<PartialMind>& mind = std::nullopt);
     void index_cells();
@@ -449,12 +482,9 @@ public:
     // bite or not: it eats UPROOT_MEALS times a bite's meal, and the plant loses UPROOT_BITE health,
     // often all it has. An armed plant still strikes back.
     void uproot(Bitzkey& agent, Bitzkey& plant);
-    // How many turns apart recent snapshots are: every turn while DENSE_HISTORY of them fit, otherwise
-    // the smallest power of two that spreads those that fit over DENSE_HISTORY turns, up to MAX_SPACING.
-    std::pair<int, int> history_room() const;  // recent snapshots kept, and older checkpoints
     const std::filesystem::path& history_folder() const { return history_folder_.path(); }
-    std::vector<int> history_turns() const;  // the turns with a snapshot on the disk
-    std::vector<int> memory_turns() const;   // the turns since the latest of them, held whole in memory
+    std::vector<int> history_turns() const;  // the turns kept on the disk
+    std::uintmax_t history_bytes() const { return history_bytes_; }  // the size of all their files
     // The climate zones from top to bottom, each the rows it covers outside the winters.
     std::vector<std::vector<int>> zones() const;
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
@@ -504,23 +534,7 @@ private:
     struct SnapshotFile {
         int turn = 0;
         std::filesystem::path path;
-    };
-    struct Snapshot {  // a turn held whole in memory
-        int turn = 0;
-        int deaths = 0;
-        int next_identifier = 0;
-        std::vector<Bitzkey> agents;  // their brains shared until they next learn
-        std::vector<int> grass;
-        std::vector<Seed> seeds;
-        PyRandom::State random;
-        Insights::State insights;
-    };
-    // Where seeking a turn starts: a snapshot on the disk or held in memory to restore, or neither to
-    // carry on from the present; and how many turns must then be replayed.
-    struct Start {
-        const SnapshotFile* file = nullptr;
-        const Snapshot* held = nullptr;
-        int cost = 0;
+        std::uintmax_t bytes = 0;
     };
 
     std::vector<int> group_sizes(int population);
@@ -536,10 +550,8 @@ private:
                      const std::optional<PartialMind>& mind = std::nullopt, bool native = false,
                      const std::vector<int>& rows = {});
     void record();
-    void write_snapshot(const std::filesystem::path& path) const;
+    std::string snapshot() const;  // the world now, as its file holds it
     void restore(const SnapshotFile& file);
-    void restore(const Snapshot& held);  // as a copy, so it stays as it was
-    Start start_for(int target) const;
     void take_census();
     bool dies_of_age(Bitzkey& agent);
     bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
@@ -593,12 +605,12 @@ private:
     std::vector<double> growth_;       // each row's share of medium, where grass grows
     std::vector<int> grass_rows_;      // the rows where grass grows at all
     std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
-    TemporaryFolder history_folder_;  // made before the first snapshot is written into it
-    std::vector<SnapshotFile> history_;
-    std::vector<Snapshot> recent_;  // each turn since the latest snapshot on the disk
-    std::uintmax_t snapshot_bytes_ = 0;  // the size of the latest snapshot written
+    TemporaryFolder history_folder_;  // made before the first turn is written into it
+    // After the folder, so it finishes writing before the folder is deleted.
+    std::unique_ptr<HistoryWriter> writer_ = std::make_unique<HistoryWriter>();
+    std::deque<SnapshotFile> history_;  // every turn kept, oldest first
+    std::uintmax_t history_bytes_ = 0;  // the size of all their files
     int frontier_ = 0;
-    int checkpoint_stride_ = 1;
 };
 
 }  // namespace bitzkey

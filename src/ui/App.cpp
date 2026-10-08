@@ -195,16 +195,14 @@ void App::finish() {
 }
 
 void App::seek(int turn) {
-    // Pause and move the world to a turn already simulated. A long replay says so first.
+    // Pause and move the world to a turn already simulated, as far back as the history reaches.
     playing_ = false;
-    if (simulation_->replay_cost(turn) > 30) {
-        say(format("Replaying to turn %d...", turn));
-        Canvas canvas = window_.frame();
-        draw(canvas);
-        window_.present();
-    }
     simulation_->seek(turn);
-    say(format("Moved to turn %d.", turn));
+    if (turn < simulation_->turn()) {
+        say(format("The history reaches back only to turn %d; moved there.", simulation_->turn()));
+    } else {
+        say(format("Moved to turn %d.", simulation_->turn()));
+    }
 }
 
 void App::click(int x, int y) {
@@ -966,7 +964,9 @@ void App::draw_footer(Canvas& canvas) {
     TTF_Font* small = UI.font(Face::Sans, 12);
     const int height = canvas.height();
     canvas.fill_rect({0, height - UI(52), canvas.width(), UI(52)}, {27, 37, 37});
-    canvas.text(small, format("HISTORY  %d/%d", simulation_->turn(), simulation_->frontier()), {158, 181, 160}, UI(22), height - UI(36));
+    std::string history = format("HISTORY  %d/%d", simulation_->turn(), simulation_->frontier());
+    if (simulation_->earliest()) history += format("  FROM %d", simulation_->earliest());  // the oldest turns no longer fit the disk budget
+    canvas.text(small, history, {158, 181, 160}, UI(22), height - UI(36));
     TTF_Font* button_font = UI.font(Face::Sans, 13, true);
     const std::string label = format("EXPORT ALL SELECTED (%zu)", export_list_.size());
     const bool any = !export_list_.empty();

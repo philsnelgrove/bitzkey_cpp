@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <map>
+#include <numeric>
 #include <set>
 
 #include "core/PyFormat.hpp"
@@ -544,7 +545,15 @@ TEST_CASE("a starving grazer with food scarce may uproot a plant beside it") {
     CHECK_FALSE(offered(simulation.sense(omnivore), Uproot));  // grazers only
 }
 
-TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, and goes with the world") {
+namespace {
+
+std::size_t files_in(const std::filesystem::path& folder) {
+    return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator(folder), std::filesystem::directory_iterator()));
+}
+
+}  // namespace
+
+TEST_CASE("every turn is on disk, reached at once exactly, and goes with the world") {
     const double saved = CLIMATE_DAMAGE;
     CLIMATE_DAMAGE = 0;  // a world that lasts
     std::filesystem::path folder;
@@ -555,8 +564,8 @@ TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, a
             std::string text;
             for (const auto& agent : simulation.agents()) {
                 char line[160];
-                std::snprintf(line, sizeof line, "%d %d %d %.17g %.17g %s|", agent->identifier, agent->x, agent->y, agent->hunger,
-                              agent->health, std::string(agent->last_action).c_str());
+                std::snprintf(line, sizeof line, "%d %d %d %.17g %.17g %s %zu|", agent->identifier, agent->x, agent->y, agent->hunger,
+                              agent->health, std::string(agent->last_action).c_str(), agent->trail.size());
                 text += line;
                 if (agent->brain) {
                     Senses senses{};
@@ -573,14 +582,22 @@ TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, a
             simulation.advance();
             recorded.push_back(state());
         }
-        CHECK(simulation.history_turns() == std::vector<int>{0, 16, 32, 48});
-        CHECK(std::distance(std::filesystem::directory_iterator(folder), std::filesystem::directory_iterator()) == 4);
-        CHECK(simulation.history_room() == std::pair{32, 200});  // a small world fits it all: 32 cover 500 turns
-        for (const int target : {59, 3, 37, 60, 21, 47, 48}) {
+        simulation.flush_history();
+        std::vector<int> every(61);
+        std::iota(every.begin(), every.end(), 0);
+        CHECK(simulation.history_turns() == every);
+        CHECK(files_in(folder) == 61);  // every turn a file
+        for (const int target : {37, 3, 0, 59, 60, 17, 18, 60}) {  // every one at once, with no replaying
             simulation.seek(target);
             CHECK(simulation.turn() == target);
             CHECK(state() == recorded[static_cast<std::size_t>(target)]);
         }
+        simulation.seek(57);
+        simulation.advance();  // stepping on through the recorded run brings back each turn
+        CHECK(state() == recorded[58]);
+        simulation.seek(60);
+        simulation.advance();  // and from the latest, the world carries on
+        CHECK(simulation.frontier() == 61);
         Simulation moved = std::move(simulation);  // the folder goes with the world
         CHECK(std::filesystem::exists(folder));
     }
@@ -588,37 +605,38 @@ TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, a
     CLIMATE_DAMAGE = saved;
 }
 
-TEST_CASE("the turns since the latest disk snapshot are held in memory and reached at once") {
+TEST_CASE("the history keeps within its disk budget by letting the oldest turns go") {
     const double saved = CLIMATE_DAMAGE;
+    const std::uintmax_t budget = HISTORY_BUDGET;
     CLIMATE_DAMAGE = 0;  // a world that lasts
     Simulation simulation(Simulation::Settings{20, 20, 30, 4});
-    const auto state = [&simulation] {
-        std::string text;
-        for (const auto& agent : simulation.agents()) {
-            char line[128];
-            std::snprintf(line, sizeof line, "%d %d %d %.17g %.17g|", agent->identifier, agent->x, agent->y, agent->hunger, agent->health);
-            text += line;
-        }
-        return text;
-    };
-    std::vector<std::string> recorded = {state()};
-    for (int turn = 1; turn <= 20; ++turn) {
-        simulation.advance();
-        recorded.push_back(state());
-    }
-    CHECK(simulation.memory_turns() == std::vector<int>{17, 18, 19, 20});  // 16 is on the disk
-    for (const int target : {18, 20, 17, 19, 18}) {  // every one at once, with no replaying
-        CHECK(simulation.replay_cost(target) == 0);
-        simulation.seek(target);
-        CHECK(state() == recorded[static_cast<std::size_t>(target)]);
-    }
-    simulation.seek(5);  // older turns still replay from the disk
-    CHECK(state() == recorded[5]);
-    simulation.seek(20);
-    for (int turn = 0; turn < 12; ++turn) simulation.advance();
-    CHECK(simulation.memory_turns().empty());  // turn 32's snapshot on the disk let them go
-    CHECK(simulation.history_turns() == std::vector<int>{0, 16, 32});
+    HISTORY_BUDGET = 10 * simulation.history_bytes();  // about ten turns' worth
+    for (int turn = 0; turn < 40; ++turn) simulation.advance();
+    simulation.flush_history();
+    const std::vector<int> turns = simulation.history_turns();
+    CHECK(simulation.earliest() > 0);
+    CHECK(turns.front() == simulation.earliest());
+    CHECK(turns.back() == 40);
+    CHECK(turns.size() == static_cast<std::size_t>(41 - simulation.earliest()));  // the newest, every one
+    CHECK(simulation.history_bytes() <= HISTORY_BUDGET);
+    CHECK(files_in(simulation.history_folder()) == turns.size());  // the oldest deleted
+    simulation.seek(0);  // as far back as it reaches
+    CHECK(simulation.turn() == simulation.earliest());
+    CHECK_FALSE(simulation.rewind());
+    HISTORY_BUDGET = 1;  // far too little: only the newest is kept
+    simulation.seek(40);
+    simulation.advance();
+    CHECK(simulation.history_turns() == std::vector<int>{41});
+    HISTORY_BUDGET = budget;
     CLIMATE_DAMAGE = saved;
+}
+
+TEST_CASE("a history the disk can't take is reported") {
+    Simulation simulation(Simulation::Settings{20, 20, 10, 4});
+    simulation.flush_history();
+    std::filesystem::remove_all(simulation.history_folder());  // nowhere to write
+    simulation.advance();
+    CHECK_THROWS(simulation.flush_history());
 }
 
 TEST_CASE("no body is left without a recorded death, even when moving, striking and seeding starve") {
@@ -693,7 +711,8 @@ TEST_CASE("starving is recorded and its body handled however it comes") {
 }
 
 TEST_CASE("a history left behind is cleared away once stale") {
-    const Simulation old(Simulation::Settings{20, 20, 0, 1}), recent(Simulation::Settings{20, 20, 0, 2});
+    Simulation old(Simulation::Settings{20, 20, 0, 1}), recent(Simulation::Settings{20, 20, 0, 2});
+    old.flush_history();  // its first turn written, before the folder is made to look old
     std::filesystem::last_write_time(old.history_folder(), std::filesystem::file_time_type::clock::now() -
                                                                std::chrono::hours(STALE_HISTORY_HOURS + 1));
     remove_stale_histories();
