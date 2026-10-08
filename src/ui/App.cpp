@@ -24,6 +24,31 @@ namespace bitzkey::ui {
 
 namespace {
 
+// The exemplars beside the map, five a side: the living animal that most stands out in each way, what it
+// is judged by and what its card says. Ties go to the oldest, then the first born.
+struct ExemplarRule {
+    const char* title;
+    double (*judged)(const Bitzkey&);
+    std::string (*said)(const Bitzkey&);
+};
+const std::array<ExemplarRule, 10> EXEMPLARS = {{
+    {"SMARTEST", [](const Bitzkey& a) { return double(a.inborn[Intellect]); }, [](const Bitzkey& a) { return "intellect " + std::to_string(a.inborn[Intellect]); }},
+    {"LARGEST", [](const Bitzkey& a) { return double(a.body[Size]); }, [](const Bitzkey& a) { return "size " + std::to_string(a.body[Size]); }},
+    {"OLDEST", [](const Bitzkey& a) { return double(a.age); }, [](const Bitzkey& a) { return "age " + std::to_string(a.age); }},
+    {"MOST CHILDREN", [](const Bitzkey& a) { return double(a.children); }, [](const Bitzkey& a) { return std::to_string(a.children) + " children"; }},
+    {"LATEST GENERATION", [](const Bitzkey& a) { return double(a.generation); }, [](const Bitzkey& a) { return "generation " + std::to_string(a.generation); }},
+    {"STRONGEST", [](const Bitzkey& a) { return double(a.body[Strength]); }, [](const Bitzkey& a) { return "strength " + std::to_string(a.body[Strength]); }},
+    {"FASTEST", [](const Bitzkey& a) { return double(a.body[Speed]); }, [](const Bitzkey& a) { return "speed " + std::to_string(a.body[Speed]); }},
+    {"BEST ARMOURED", [](const Bitzkey& a) { return double(a.body[Armour]); }, [](const Bitzkey& a) { return "armour " + std::to_string(a.body[Armour]); }},
+    {"MOST FERTILE", [](const Bitzkey& a) { return double(a.body[Fertility]); }, [](const Bitzkey& a) { return "fertility " + std::to_string(a.body[Fertility]); }},
+    {"BEST FED", [](const Bitzkey& a) { return -a.hunger; }, [](const Bitzkey& a) { return "hunger " + std::to_string(static_cast<int>(a.hunger)) + "%"; }},
+}};
+constexpr int EXEMPLAR_WIDTH = 170;  // each column of exemplars, in design pixels
+
+}  // namespace
+
+namespace {
+
 // Seconds between turns at each speed; 0 runs as many turns as fit in a frame.
 constexpr std::array<double, 5> TURN_INTERVALS = {0.24, 0.12, 0.06, 0.03, 0.0};
 constexpr std::array<const char*, 5> SPEED_LABELS = {"1x", "2x", "4x", "8x", "MAX"};
@@ -146,6 +171,9 @@ App::Result App::run() {
                 if (action == ColourGraph::Action::Seek) seek(graph_.seek_turn());
                 else if (action == ColourGraph::Action::Map) close_graph();  // at the run's end, to look over the map
                 else if (action == ColourGraph::Action::Catalog) catalog_picked();
+                else if (action == ColourGraph::Action::Renew) {
+                    if (renew()) return Result::Renew;
+                }
                 else if (action != ColourGraph::Action::None) export_graph(action == ColourGraph::Action::Save);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 click(event.button.x, event.button.y);
@@ -212,6 +240,10 @@ void App::click(int x, int y) {
         catalog_selected();
     } else if (export_button_.contains(x, y)) {
         open_export_dialog();
+    } else if (const auto card = std::find_if(exemplar_cards_.begin(), exemplar_cards_.end(),
+                                              [&](const auto& entry) { return entry.first.contains(x, y); });
+               card != exemplar_cards_.end()) {
+        select(card->second);
     } else {
         select_at(x, y);
     }
@@ -489,9 +521,93 @@ void App::select_at(int x, int y) {
     const bool on_view = map_view(canvas).first.contains(x, y);  // zoomed in, the board reaches under the sidebar
     if (nearest && on_view && board.rect.contains(x, y) &&
         nearest_distance < std::max<double>(UI(9), std::min(board.cell_width, board.cell_height) * 1.6)) {
-        selected_id_ = nearest->identifier;
-        graph_.select_only(nearest->identifier);  // the map and the graph share one selection
-        show_insights_ = false;                   // selecting shows the inspector
+        select(nearest->identifier);
+    }
+}
+
+void App::select(int identifier) {
+    selected_id_ = identifier;
+    graph_.select_only(identifier);  // the map and the graph share one selection
+    show_insights_ = false;          // selecting shows the inspector
+}
+
+bool App::renew() {
+    std::vector<const Bitzkey*> chosen;
+    for (const Bitzkey* agent : simulation_->living()) {
+        if (graph_.selection().contains(agent->identifier)) chosen.push_back(agent);
+    }
+    std::sort(chosen.begin(), chosen.end(), [](const Bitzkey* a, const Bitzkey* b) { return a->identifier < b->identifier; });
+    if (chosen.empty()) {
+        say("Pick living Bitzkeys on the graph first, then start a new world with them.");
+        return false;
+    }
+    renewal_ = export_bitzkeys(chosen);
+    copy(renewal_, plural(chosen.size()));
+    leave(Dialog("Starting a new world", {}, {{"leave", "LEAVE"}}, "leave"));
+    return true;
+}
+
+std::vector<App::Exemplar> App::exemplars() const {
+    std::vector<const Bitzkey*> animals;
+    for (const Bitzkey* agent : simulation_->living()) {
+        if (agent->species != Species::Plant) animals.push_back(agent);
+    }
+    std::vector<Exemplar> found;
+    for (const ExemplarRule& rule : EXEMPLARS) {
+        const Bitzkey* best = nullptr;
+        for (const Bitzkey* agent : animals) {
+            if (!best || std::tuple{rule.judged(*agent), agent->age, -agent->identifier} >
+                             std::tuple{rule.judged(*best), best->age, -best->identifier}) {
+                best = agent;
+            }
+        }
+        found.push_back({rule.title, best, best ? rule.said(*best) : "none alive"});
+    }
+    return found;
+}
+
+Rect App::board_area(const Canvas& canvas) const {
+    return {0, UI(62), canvas.width() - sidebar_width(canvas), canvas.height() - UI(140)};
+}
+
+std::pair<Rect, Rect> App::exemplar_columns(const Canvas& canvas) const {
+    const Rect area = board_area(canvas);
+    const int width = UI(EXEMPLAR_WIDTH);
+    return {Rect{area.x + UI(16), area.y + UI(21), width, area.h - UI(42)},
+            Rect{area.right() - UI(16) - width, area.y + UI(21), width, area.h - UI(42)}};
+}
+
+void App::draw_exemplars(Canvas& canvas) {
+    // Five cards a side, evenly spaced, each the living animal that stands out in its way; a click selects it.
+    exemplar_cards_.clear();
+    const std::vector<Exemplar> found = exemplars();
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    const int gap = UI(8);
+    const auto [left, right] = exemplar_columns(canvas);
+    for (int side = 0; side < 2; ++side) {
+        const Rect& column = side ? right : left;
+        const int height = (column.h - 4 * gap) / 5;
+        for (int index = 0; index < 5; ++index) {
+            const Exemplar& exemplar = found[static_cast<std::size_t>(side * 5 + index)];
+            const Rect card{column.x, column.y + index * (height + gap), column.w, height};
+            const bool chosen = exemplar.agent && selected_id_ && exemplar.agent->identifier == *selected_id_;
+            canvas.rect(card, {27, 37, 37}, 0, UI(5));
+            canvas.rect(card, chosen ? Color{238, 183, 110} : Color{54, 68, 62}, 1, UI(5));  // the selected one lit
+            canvas.text(small, exemplar.title, {157, 177, 159}, card.x + UI(10), card.y + UI(8));
+            if (!exemplar.agent) {
+                canvas.text(small, exemplar.said, {116, 139, 124}, card.x + UI(10), card.y + UI(28));
+                continue;
+            }
+            const int radius = std::max(1, std::min(UI(16), height / 5));
+            const int px = card.x + UI(10) + radius + RING_WIDTH, py = card.y + (height + UI(20)) / 2;
+            draw_bitzkey(canvas, exemplar.agent->dna, px, py, radius);
+            const int x = px + radius + UI(12);
+            canvas.text(small, format("#%03d  %s", exemplar.agent->identifier,
+                                      std::string(SPECIES[static_cast<std::size_t>(exemplar.agent->species)]).c_str()),
+                        {231, 236, 222}, x, py - UI(16));
+            canvas.text(small, exemplar.said, {149, 170, 150}, x, py + UI(2));
+            exemplar_cards_.push_back({card, exemplar.agent->identifier});
+        }
     }
 }
 
@@ -539,8 +655,7 @@ double App::corpse_opacity(const Bitzkey& agent) const {
 int App::sidebar_width(const Canvas& canvas) const { return std::min(UI(340), std::max(UI(290), canvas.width() / 3)); }
 
 std::pair<Rect, double> App::map_view(const Canvas& canvas) const {
-    const Rect area{0, UI(62), canvas.width() - sidebar_width(canvas), canvas.height() - UI(140)};
-    const Rect view = area.inflate(-UI(42), -UI(42));
+    const Rect view = board_area(canvas).inflate(-UI(42) - 2 * UI(EXEMPLAR_WIDTH + 16), -UI(42));  // between the exemplars
     return {view, std::min(static_cast<double>(view.w) / simulation_->width(), static_cast<double>(view.h) / simulation_->height())};
 }
 
@@ -603,6 +718,7 @@ void App::draw(Canvas& canvas) {
     canvas.fill({19, 26, 27});
     draw_header(canvas);
     draw_world(canvas);
+    draw_exemplars(canvas);
     draw_sidebar(canvas);
     draw_footer(canvas);
     if (show_census_) {

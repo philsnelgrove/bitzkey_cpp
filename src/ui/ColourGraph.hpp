@@ -48,7 +48,7 @@ int sort_value(Dna dna, int sort);  // the inborn trait a sort orders by; 0 for 
 class ColourGraph {
 public:
     // Map: the run is over, and the map is wanted. Catalog: catalog the Bitzkeys picked.
-    enum class Action { None, Copy, Save, Seek, Map, Catalog };
+    enum class Action { None, Copy, Save, Seek, Map, Catalog, Renew };
 
     void switch_part() { dot_ = !dot_; }
     void reset();  // forget the selection and zoom, for a new world
@@ -69,6 +69,7 @@ private:
         Rect panel, chart, timeline, save, copy, clear, sort;
         std::optional<Rect> map;  // beneath the timeline, at the right, once the run is over
         Rect catalog;             // beneath the timeline, at the right, beside it
+        Rect renew;               // and beside that: a new world with the Bitzkeys picked
     };
     Layout layout() const;
     std::vector<std::pair<int, Rect>> menu_items() const;  // the sort menu's choices

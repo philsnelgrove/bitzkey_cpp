@@ -69,10 +69,14 @@ int main(int argc, char** argv) {
         remove_stale_histories();  // left behind by a run that ended without closing its world
         Window window(!options.windowed);
         SetupScreen setup(window, options.defaults);
-        while (const auto settings = setup.run()) {
+        std::optional<Simulation::Settings> settings = setup.run();
+        while (settings) {
             rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts
             App app(window, *settings);
-            if (app.run() == App::Result::Quit) break;
+            const App::Result result = app.run();
+            if (result == App::Result::Quit) break;
+            // A new world with the Bitzkeys picked on the graph starts at once; otherwise, back to the panel.
+            settings = result == App::Result::Renew ? setup.start_with(app.renewal()) : setup.run();
         }
     } catch (const std::exception& error) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Bitzkey", error.what(), nullptr);

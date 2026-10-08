@@ -21,11 +21,13 @@ struct Screens;
 
 class App {
 public:
-    enum class Result { Quit, Configure };
+    enum class Result { Quit, Configure, Renew };
 
     App(Window& window, Simulation::Settings settings);
-    // Run until the window closes or the user leaves for the configuration panel.
+    // Run until the window closes or the user leaves for the configuration panel, or for a new world
+    // with the Bitzkeys picked on the graph (Renew), which renewal() then holds.
     Result run();
+    const std::string& renewal() const { return renewal_; }
 
 private:
     friend struct Screens;  // the screenshot tool
@@ -60,6 +62,19 @@ private:
     void export_chosen(bool to_file);
     void export_graph(bool to_file);
     void select_at(int x, int y);
+    void select(int identifier);  // on the map and the graph alike
+    // Copy the living Bitzkeys picked on the graph to the clipboard and leave, to start a new world with
+    // them alone imported. Returns whether it left.
+    bool renew();
+    struct Exemplar {
+        const char* title;
+        const Bitzkey* agent;  // the living animal that stands out so, if any
+        std::string said;      // what its card says
+    };
+    std::vector<Exemplar> exemplars() const;
+    std::pair<Rect, Rect> exemplar_columns(const Canvas& canvas) const;  // either side of the map
+    Rect board_area(const Canvas& canvas) const;  // left of the sidebar, between the header and the footer
+    void draw_exemplars(Canvas& canvas);
     int sidebar_width(const Canvas& canvas) const;
     // Where the map shows, and the scale at which the whole map fits it.
     std::pair<Rect, double> map_view(const Canvas& canvas) const;
@@ -113,6 +128,8 @@ private:
     std::string dialog_kind_;
     std::optional<Rect> add_button_;
     std::optional<Rect> catalog_button_;
+    std::vector<std::pair<Rect, int>> exemplar_cards_;  // each card beside the map, and whom it shows
+    std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
     std::string message_;
     Uint32 message_until_ = 0;

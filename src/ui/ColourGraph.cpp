@@ -182,6 +182,7 @@ ColourGraph::Layout ColourGraph::layout() const {
         bottom_right = places.map->x - UI(8);
     }
     places.catalog = Rect{bottom_right - UI(150), places.timeline.bottom() + UI(6), UI(150), UI(28)};
+    places.renew = Rect{places.catalog.x - UI(8) - UI(310), places.timeline.bottom() + UI(6), UI(310), UI(28)};
     return places;
 }
 
@@ -262,6 +263,7 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
         if (places.save.contains(x, y)) return Action::Save;
         if (places.map && places.map->contains(x, y)) return Action::Map;
         if (places.catalog.contains(x, y)) return Action::Catalog;
+        if (places.renew.contains(x, y)) return Action::Renew;
         if (places.sort.contains(x, y)) {
             menu_open_ = true;
         } else if (places.clear.contains(x, y)) {
@@ -466,7 +468,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         canvas.fill_rect(box, {245, 238, 206, 40});
         canvas.rect(box, {245, 238, 206}, 1);
     }
-    const int room = places.catalog.x - panel.x - UI(40);
+    const int room = places.renew.x - panel.x - UI(40);
     canvas.text(font, fit_text(describe(simulation, hovered), font, room), {220, 229, 211}, panel.x + UI(24), timeline.bottom() + UI(10));
     if (places.map) {
         canvas.rect(*places.map, {238, 183, 110}, 0, UI(4));
@@ -475,6 +477,9 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.rect(places.catalog, {44, 57, 52}, 0, UI(4));
     canvas.text_at(font, "ADD TO CATALOG", {220, 229, 211},
                    [&](Rect& box) { box.center_at(places.catalog.centerx(), places.catalog.centery()); });
+    canvas.rect(places.renew, {44, 57, 52}, 0, UI(4));
+    canvas.text_at(font, "START A NEW WORLD WITH THE SELECTED", {220, 229, 211},
+                   [&](Rect& box) { box.center_at(places.renew.centerx(), places.renew.centery()); });
     canvas.text(small,
                 "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
                 "Zoom: wheel, SHIFT+wheel pans",

@@ -80,6 +80,9 @@ public:
     // The chosen settings, or none if the user quit. Running it again, after a simulation, starts
     // from the same values.
     std::optional<Simulation::Settings> run();
+    // Start a new world at once, with the settings as they were and these Bitzkeys alone in the import
+    // box, as if pasted there; if they can't be read, wait on the panel as usual.
+    std::optional<Simulation::Settings> start_with(const std::string& text);
     // The advanced rules changed from their defaults, for the worlds started from here.
     const rules::Values& rules() const { return rules_; }
 

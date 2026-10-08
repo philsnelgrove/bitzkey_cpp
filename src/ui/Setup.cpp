@@ -202,6 +202,13 @@ std::string import_summary(const std::vector<Imported>& bitzkeys) {
 
 SetupScreen::SetupScreen(Window& window, const Defaults& defaults) : window_(window), form_(defaults) {}
 
+std::optional<Simulation::Settings> SetupScreen::start_with(const std::string& text) {
+    form_.clear_import();
+    form_.paste(text);
+    if (form_.can_start()) return form_.values();
+    return run();
+}
+
 std::optional<Simulation::Settings> SetupScreen::run() {
     while (true) {
         const Uint32 frame_start = SDL_GetTicks();
