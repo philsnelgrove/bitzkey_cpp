@@ -855,6 +855,7 @@ void Simulation::take_turn(bool replay) {
     update_climate();
     index_cells();
     for (const auto& agent : agents_) {  // a body some cost starved, its death not yet recorded: recorded now
+        agent->trail.clear();             // last turn's way is forgotten
         if (!agent->died_turn && !agent->alive()) die(*agent, agent->hunger >= 100 ? "starved" : "killed");
     }
     std::vector<Bitzkey*> order = living();
@@ -1772,6 +1773,16 @@ Simulation::Seen Simulation::look_around(const Bitzkey& agent, int sight) const 
 }
 
 void Simulation::move(Bitzkey& agent, int x, int y) {
+    // Each cell left behind on the way, the shorter way round east or west; a move goes straight or
+    // diagonally, so every cell on the way is a whole one.
+    int dx = x - agent.x;
+    const int dy = y - agent.y;
+    if (dx > width_ / 2) dx -= width_;
+    else if (dx < -(width_ / 2)) dx += width_;
+    const int cells = std::max(std::abs(dx), std::abs(dy));
+    for (int step = 0; step < cells; ++step) {
+        agent.trail.emplace_back(py_mod(agent.x + dx * step / cells, width_), agent.y + dy * step / cells);
+    }
     if (in_bounds(agent.x, agent.y)) {
         auto& from = cell_at(agent.x, agent.y);
         const auto found = std::find(from.begin(), from.end(), &agent);

@@ -38,13 +38,19 @@ std::vector<std::pair<int, int>> outline_offsets(int width) {
     return {offsets.begin(), offsets.end()};
 }
 
+Surface bitzkey_layer(Dna dna, int radius, int ring_width, bool alive) {
+    const int reach = radius + ring_width + 1;
+    Surface layer = make_surface(2 * reach + 1, 2 * reach + 1);
+    Canvas faint(layer.get());
+    draw_bitzkey(faint, dna, reach, reach, radius, ring_width, alive);
+    return layer;
+}
+
 void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_width, bool alive, double opacity) {
     if (opacity <= 0) return;
     if (opacity < 1) {
-        const int reach = radius + ring_width + 1;
-        Surface layer = make_surface(2 * reach + 1, 2 * reach + 1);
-        Canvas faint(layer.get());
-        draw_bitzkey(faint, dna, reach, reach, radius, ring_width, alive);
+        const Surface layer = bitzkey_layer(dna, radius, ring_width, alive);
+        const int reach = layer->w / 2;
         canvas.blit(layer.get(), x - reach, y - reach, static_cast<std::uint8_t>(py_round(255 * opacity)));
         return;
     }

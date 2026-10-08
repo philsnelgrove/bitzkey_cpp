@@ -649,6 +649,23 @@ TEST_CASE("no body is left without a recorded death, even when moving, striking 
     SEED_HUNGER = seed_hunger;
 }
 
+TEST_CASE("a move leaves a trail of the cells it passed through that lasts the turn") {
+    Simulation simulation(Simulation::Settings{30, 30, 0, 3});
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"speed", 7}}), 27, 10);  // six cells a step
+    simulation.index_cells();
+    Simulation::Sensed sensed = simulation.sense(grazer);
+    simulation.act(grazer, GoEast, sensed.situation);  // across the edge, east and west wrapping round
+    CHECK(grazer.x == 3);
+    CHECK(grazer.trail == std::vector<std::pair<int, int>>{{27, 10}, {28, 10}, {29, 10}, {0, 10}, {1, 10}, {2, 10}});
+    sensed = simulation.sense(grazer);
+    simulation.act(grazer, WalkSouth, sensed.situation);
+    CHECK(grazer.trail.back() == std::pair{3, 10});
+    const Bitzkey copied = grazer;
+    simulation.advance();  // a new turn forgets the last one's way
+    CHECK(std::find(grazer.trail.begin(), grazer.trail.end(), std::pair{27, 10}) == grazer.trail.end());
+    CHECK(copied.trail.front() == std::pair{27, 10});  // though a copy, as history holds, keeps its own
+}
+
 TEST_CASE("starving is recorded and its body handled however it comes") {
     Simulation simulation(Simulation::Settings{30, 30, 0, 3});
     Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer, {{"intellect", 7}, {"empathy", 7}}), 10, 10);

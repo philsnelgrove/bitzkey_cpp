@@ -49,4 +49,7 @@ std::vector<std::pair<int, int>> outline_offsets(int width);
 void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_width = RING_WIDTH,
                   bool alive = true, double opacity = 1.0);
 
+// A Bitzkey drawn alone, centred on a clear square, to be blitted as faintly as wanted.
+Surface bitzkey_layer(Dna dna, int radius, int ring_width = RING_WIDTH, bool alive = true);
+
 }  // namespace bitzkey::ui

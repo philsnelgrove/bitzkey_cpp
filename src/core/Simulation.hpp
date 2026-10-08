@@ -271,6 +271,7 @@ struct Bitzkey {
     std::optional<int> herd_assailant;  // what struck a herd-mate close by, from alongside it
     double meat = 0.0;                  // a corpse's meat left for scavengers
     double rot = 0.0;                   // meat lost to rot each turn
+    std::vector<std::pair<int, int>> trail;  // the cells it passed through this turn, for the map
     Mind mind{};                        // current temperament, reshaped by experience
     // The last decision, kept until the next one so the brain can learn from how it turned out.
     bool has_last_senses = false;

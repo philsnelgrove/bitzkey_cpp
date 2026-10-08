@@ -32,6 +32,7 @@ constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
 constexpr double MAP_ZOOM_STEP = 1.25;  // each wheel notch zooms the map in (or out) by this much
 constexpr double MAP_ZOOM_MAX = 12.0;   // the closest the map zooms in, times its whole-map size
+constexpr double TRAIL_OPACITY = 0.5;   // how faintly a Bitzkey shows on each cell it passed through this turn
 
 std::string format(const char* pattern, auto... values) {
     char buffer[512];
@@ -653,6 +654,17 @@ void App::draw_world(Canvas& canvas) {
         }
     }
     const int largest = std::max(DOT_RADIUS_LARGEST, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.45)));
+    for (const auto& agent : simulation_->agents()) {  // the way each came this turn, faint, beneath them all
+        Surface layer;
+        for (const auto& [x, y] : agent->trail) {
+            const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
+            const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
+            if ((x == agent->x && y == agent->y) || !reach.contains(px, py)) continue;
+            if (!layer) layer = bitzkey_layer(agent->dna, dot_radius(agent->body[Size], largest), RING_WIDTH, agent->alive());
+            const int half = layer->w / 2;
+            canvas.blit(layer.get(), px - half, py - half, static_cast<std::uint8_t>(py_round(255 * TRAIL_OPACITY)));
+        }
+    }
     for (const auto& agent : simulation_->agents()) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
