@@ -30,9 +30,11 @@ inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
 constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
 inline int SPAWN_SPREAD = 2;
-// The history is written to disk, not kept in memory: a snapshot of the world every SNAPSHOT_SPACING
-// turns, each a file in a folder of the world's own among the temporary files, deleted with the world.
-// A turn between snapshots is rebuilt by replaying from the one before.
+// The history is written to disk: a snapshot of the world every SNAPSHOT_SPACING turns, each a file in a
+// folder of the world's own among the temporary files, deleted with the world. The turns since the
+// latest of them are each kept whole in memory as well, so the newest are reached at once, until the
+// next snapshot is written and they are let go. An older turn between snapshots is rebuilt by
+// replaying from the one before.
 constexpr int SNAPSHOT_SPACING = 16;
 constexpr int DENSE_HISTORY = 500;  // the latest turns keep every snapshot
 constexpr int CHECKPOINTS = 200;    // older turns are kept as at most this many evenly spaced snapshots
@@ -447,6 +449,7 @@ public:
     std::pair<int, int> history_room() const;  // recent snapshots kept, and older checkpoints
     const std::filesystem::path& history_folder() const { return history_folder_.path(); }
     std::vector<int> history_turns() const;  // the turns with a snapshot on the disk
+    std::vector<int> memory_turns() const;   // the turns since the latest of them, held whole in memory
     // The climate zones from top to bottom, each the rows it covers outside the winters.
     std::vector<std::vector<int>> zones() const;
     void scavenge(Bitzkey& agent, Bitzkey& corpse);
@@ -497,6 +500,23 @@ private:
         int turn = 0;
         std::filesystem::path path;
     };
+    struct Snapshot {  // a turn held whole in memory
+        int turn = 0;
+        int deaths = 0;
+        int next_identifier = 0;
+        std::vector<Bitzkey> agents;  // their brains shared until they next learn
+        std::vector<int> grass;
+        std::vector<Seed> seeds;
+        PyRandom::State random;
+        Insights::State insights;
+    };
+    // Where seeking a turn starts: a snapshot on the disk or held in memory to restore, or neither to
+    // carry on from the present; and how many turns must then be replayed.
+    struct Start {
+        const SnapshotFile* file = nullptr;
+        const Snapshot* held = nullptr;
+        int cost = 0;
+    };
 
     std::vector<int> group_sizes(int population);
     // `native` groups have random starting genomes: each carries a tolerance flag only with
@@ -513,7 +533,8 @@ private:
     void record();
     void write_snapshot(const std::filesystem::path& path) const;
     void restore(const SnapshotFile& file);
-    std::pair<const SnapshotFile*, int> start_for(int target) const;
+    void restore(const Snapshot& held);  // as a copy, so it stays as it was
+    Start start_for(int target) const;
     void take_census();
     bool dies_of_age(Bitzkey& agent);
     bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
@@ -569,6 +590,7 @@ private:
     std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
     TemporaryFolder history_folder_;  // made before the first snapshot is written into it
     std::vector<SnapshotFile> history_;
+    std::vector<Snapshot> recent_;  // each turn since the latest snapshot on the disk
     std::uintmax_t snapshot_bytes_ = 0;  // the size of the latest snapshot written
     int frontier_ = 0;
     int checkpoint_stride_ = 1;

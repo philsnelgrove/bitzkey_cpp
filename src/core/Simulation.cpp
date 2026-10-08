@@ -651,6 +651,12 @@ std::pair<int, int> Simulation::history_room() const {
     return {dense, static_cast<int>(std::min<std::uintmax_t>(CHECKPOINTS, most - static_cast<std::uintmax_t>(dense)))};
 }
 
+std::vector<int> Simulation::memory_turns() const {
+    std::vector<int> turns;
+    for (const Snapshot& held : recent_) turns.push_back(held.turn);
+    return turns;
+}
+
 std::vector<int> Simulation::history_turns() const {
     std::vector<int> turns;
     for (const SnapshotFile& file : history_) turns.push_back(file.turn);
@@ -681,7 +687,14 @@ void Simulation::record() {
     // turns before the recent window stay only on the checkpoint spacing, which doubles while there
     // are too many of them.
     frontier_ = turn_;
-    if (turn_ % SNAPSHOT_SPACING) return;  // between snapshots: seeking rebuilds this turn by replaying from the one before
+    if (turn_ % SNAPSHOT_SPACING) {  // between snapshots on the disk: a whole copy in memory
+        Snapshot held{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
+        held.agents.reserve(agents_.size());
+        for (const auto& agent : agents_) held.agents.push_back(*agent);
+        recent_.push_back(std::move(held));
+        return;
+    }
+    recent_.clear();  // the disk now covers them
     char name[32];
     std::snprintf(name, sizeof name, "turn-%08d.snapshot", turn_);
     const std::filesystem::path path = history_folder_.path() / name;
@@ -727,23 +740,41 @@ void Simulation::restore(const SnapshotFile& file) {
     index_cells();
 }
 
-std::pair<const Simulation::SnapshotFile*, int> Simulation::start_for(int target) const {
+void Simulation::restore(const Snapshot& held) {
+    turn_ = held.turn;
+    deaths_ = held.deaths;
+    next_identifier_ = held.next_identifier;
+    for (auto& agent : agents_) departed_.push_back(std::move(agent));
+    agents_.clear();
+    for (const Bitzkey& agent : held.agents) agents_.push_back(std::make_unique<Bitzkey>(agent));
+    grass_ = held.grass;
+    seeds_ = held.seeds;
+    random_.setstate(held.random);
+    insights_.restore(held.insights);
+    update_climate();
+    index_cells();
+}
+
+Simulation::Start Simulation::start_for(int target) const {
+    for (const Snapshot& held : recent_) {  // none to replay for a turn held in memory
+        if (held.turn == target) return turn_ == target ? Start{} : Start{nullptr, &held, 0};
+    }
     const auto after = std::upper_bound(history_.begin(), history_.end(), target,
                                         [](int turn, const SnapshotFile& file) { return turn < file.turn; });
     const SnapshotFile& file = *std::prev(after);
-    if (file.turn <= turn_ && turn_ <= target) return {nullptr, target - turn_};
-    return {&file, target - file.turn};
+    if (file.turn <= turn_ && turn_ <= target) return {nullptr, nullptr, target - turn_};
+    return {&file, nullptr, target - file.turn};
 }
 
 int Simulation::replay_cost(int target) const {
-    return start_for(std::max(0, std::min(frontier_, target))).second;
+    return start_for(std::max(0, std::min(frontier_, target))).cost;
 }
 
 void Simulation::seek(int target) {
     target = std::max(0, std::min(frontier_, target));
-    const auto [snapshot, cost] = start_for(target);
-    (void)cost;
-    if (snapshot) restore(*snapshot);
+    const Start start = start_for(target);
+    if (start.file) restore(*start.file);
+    else if (start.held) restore(*start.held);
     while (turn_ < target) take_turn(true);
 }
 

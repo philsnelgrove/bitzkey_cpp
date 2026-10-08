@@ -588,6 +588,39 @@ TEST_CASE("the history is on disk every 16 turns, rebuilds every turn exactly, a
     CLIMATE_DAMAGE = saved;
 }
 
+TEST_CASE("the turns since the latest disk snapshot are held in memory and reached at once") {
+    const double saved = CLIMATE_DAMAGE;
+    CLIMATE_DAMAGE = 0;  // a world that lasts
+    Simulation simulation(Simulation::Settings{20, 20, 30, 4});
+    const auto state = [&simulation] {
+        std::string text;
+        for (const auto& agent : simulation.agents()) {
+            char line[128];
+            std::snprintf(line, sizeof line, "%d %d %d %.17g %.17g|", agent->identifier, agent->x, agent->y, agent->hunger, agent->health);
+            text += line;
+        }
+        return text;
+    };
+    std::vector<std::string> recorded = {state()};
+    for (int turn = 1; turn <= 20; ++turn) {
+        simulation.advance();
+        recorded.push_back(state());
+    }
+    CHECK(simulation.memory_turns() == std::vector<int>{17, 18, 19, 20});  // 16 is on the disk
+    for (const int target : {18, 20, 17, 19, 18}) {  // every one at once, with no replaying
+        CHECK(simulation.replay_cost(target) == 0);
+        simulation.seek(target);
+        CHECK(state() == recorded[static_cast<std::size_t>(target)]);
+    }
+    simulation.seek(5);  // older turns still replay from the disk
+    CHECK(state() == recorded[5]);
+    simulation.seek(20);
+    for (int turn = 0; turn < 12; ++turn) simulation.advance();
+    CHECK(simulation.memory_turns().empty());  // turn 32's snapshot on the disk let them go
+    CHECK(simulation.history_turns() == std::vector<int>{0, 16, 32});
+    CLIMATE_DAMAGE = saved;
+}
+
 TEST_CASE("a history left behind is cleared away once stale") {
     const Simulation old(Simulation::Settings{20, 20, 0, 1}), recent(Simulation::Settings{20, 20, 0, 2});
     std::filesystem::last_write_time(old.history_folder(), std::filesystem::file_time_type::clock::now() -
