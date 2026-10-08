@@ -24,25 +24,102 @@ namespace bitzkey::ui {
 
 namespace {
 
-// The exemplars beside the map, five a side: the living animal that most stands out in each way, what it
-// is judged by and what its card says. Ties go to the oldest, then the first born.
-struct ExemplarRule {
+// What an exemplar card can show: the living animal that stands out most by a statistic, highest, or
+// lowest where `lowest`. A Mind statistic is an inborn temperament trait, a Body one a body trait, Home
+// its home temperature, and a State one what it is now.
+enum class StatKind { Mind, Body, Home, State };
+enum StateStat { Age, Children, Generation, Hunger, Health, Lifespan, Burn, Stomach, Depth, Herd, Changed };
+struct ExemplarStat {
     const char* title;
-    double (*judged)(const Bitzkey&);
-    std::string (*said)(const Bitzkey&);
+    StatKind kind;
+    int index;  // the trait, or the StateStat
+    bool lowest;
 };
-const std::array<ExemplarRule, 10> EXEMPLARS = {{
-    {"SMARTEST", [](const Bitzkey& a) { return double(a.inborn[Intellect]); }, [](const Bitzkey& a) { return "intellect " + std::to_string(a.inborn[Intellect]); }},
-    {"LARGEST", [](const Bitzkey& a) { return double(a.body[Size]); }, [](const Bitzkey& a) { return "size " + std::to_string(a.body[Size]); }},
-    {"OLDEST", [](const Bitzkey& a) { return double(a.age); }, [](const Bitzkey& a) { return "age " + std::to_string(a.age); }},
-    {"MOST CHILDREN", [](const Bitzkey& a) { return double(a.children); }, [](const Bitzkey& a) { return std::to_string(a.children) + " children"; }},
-    {"LATEST GENERATION", [](const Bitzkey& a) { return double(a.generation); }, [](const Bitzkey& a) { return "generation " + std::to_string(a.generation); }},
-    {"STRONGEST", [](const Bitzkey& a) { return double(a.body[Strength]); }, [](const Bitzkey& a) { return "strength " + std::to_string(a.body[Strength]); }},
-    {"FASTEST", [](const Bitzkey& a) { return double(a.body[Speed]); }, [](const Bitzkey& a) { return "speed " + std::to_string(a.body[Speed]); }},
-    {"BEST ARMOURED", [](const Bitzkey& a) { return double(a.body[Armour]); }, [](const Bitzkey& a) { return "armour " + std::to_string(a.body[Armour]); }},
-    {"MOST FERTILE", [](const Bitzkey& a) { return double(a.body[Fertility]); }, [](const Bitzkey& a) { return "fertility " + std::to_string(a.body[Fertility]); }},
-    {"BEST FED", [](const Bitzkey& a) { return -a.hunger; }, [](const Bitzkey& a) { return "hunger " + std::to_string(static_cast<int>(a.hunger)) + "%"; }},
+constexpr std::array<ExemplarStat, 43> EXEMPLAR_STATS = {{
+    {"SMARTEST", StatKind::Mind, Intellect, false}, {"MOST AGGRESSIVE", StatKind::Mind, Aggression, false},
+    {"MOST AMOROUS", StatKind::Mind, Libido, false}, {"MOST SOCIABLE", StatKind::Mind, Sociability, false},
+    {"MOST CURIOUS", StatKind::Mind, Curiosity, false}, {"MOST FEARFUL", StatKind::Mind, Fear, false},
+    {"GREATEST APPETITE", StatKind::Mind, Appetite, false}, {"MOST PATIENT", StatKind::Mind, Patience, false},
+    {"MOST EMPATHETIC", StatKind::Mind, Empathy, false}, {"MOST TOLERANT", StatKind::Mind, Tolerance, false},
+    {"SIMPLEST", StatKind::Mind, Intellect, true}, {"GENTLEST", StatKind::Mind, Aggression, true},
+    {"BRAVEST", StatKind::Mind, Fear, true}, {"MOST SOLITARY", StatKind::Mind, Sociability, true},
+    {"LARGEST", StatKind::Body, Size, false}, {"SMALLEST", StatKind::Body, Size, true},
+    {"STRONGEST", StatKind::Body, Strength, false}, {"BEST ARMOURED", StatKind::Body, Armour, false},
+    {"BEST ARMED", StatKind::Body, Weapons, false}, {"FASTEST", StatKind::Body, Speed, false},
+    {"SLOWEST", StatKind::Body, Speed, true}, {"SHARPEST-EYED", StatKind::Body, Sight, false},
+    {"MOST FERTILE", StatKind::Body, Fertility, false}, {"BIGGEST LITTERS", StatKind::Body, Litter, false},
+    {"BEST SCAVENGER", StatKind::Body, Carrion, false},
+    {"HOTTEST HOME", StatKind::Home, 0, true}, {"COLDEST HOME", StatKind::Home, 0, false},
+    {"OLDEST", StatKind::State, Age, false}, {"YOUNGEST", StatKind::State, Age, true},
+    {"MOST CHILDREN", StatKind::State, Children, false}, {"LATEST GENERATION", StatKind::State, Generation, false},
+    {"BEST FED", StatKind::State, Hunger, true}, {"HUNGRIEST", StatKind::State, Hunger, false},
+    {"HEALTHIEST", StatKind::State, Health, false}, {"MOST WOUNDED", StatKind::State, Health, true},
+    {"LONGEST LIFESPAN", StatKind::State, Lifespan, false}, {"SHORTEST LIFESPAN", StatKind::State, Lifespan, true},
+    {"FASTEST METABOLISM", StatKind::State, Burn, false}, {"SLOWEST METABOLISM", StatKind::State, Burn, true},
+    {"BIGGEST STOMACH", StatKind::State, Stomach, false}, {"DEEPEST BRAIN", StatKind::State, Depth, false},
+    {"MOST HERD-MINDED", StatKind::State, Herd, false}, {"MOST CHANGED BY EXPERIENCE", StatKind::State, Changed, false},
 }};
+// The statistic each card shows, left column then right, top to bottom; changed from a card's title,
+// and kept for the rest of the session.
+std::array<int, 10> exemplar_choices = {0, 14, 27, 29, 30, 16, 19, 17, 22, 31};
+constexpr std::array<const char*, 4> HOMES = {"hot", "medium", "cold", "very cold"};
+constexpr int MENU_ROW = 20, MENU_COLUMN = 200;  // an exemplar menu's rows and columns, in design pixels
+
+double exemplar_value(const Bitzkey& agent, const ExemplarStat& stat) {
+    switch (stat.kind) {
+        case StatKind::Mind: return agent.inborn[stat.index];
+        case StatKind::Body: return agent.body[stat.index];
+        case StatKind::Home: return decode_climate(agent.dna).temperature;
+        case StatKind::State: break;
+    }
+    switch (stat.index) {
+        case Age: return agent.age;
+        case Children: return agent.children;
+        case Generation: return agent.generation;
+        case Hunger: return agent.hunger;
+        case Health: return agent.health / agent.max_health;
+        case Lifespan: return agent.lifespan;
+        case Burn: return agent.burn;
+        case Stomach: return agent.stomach;
+        case Depth: return agent.brain ? agent.brain->depth() : 0;
+        case Herd: return agent.herd_instinct();
+        default: {  // how far experience has moved its temperament from what it was born with
+            std::vector<double> shifts;
+            for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) shifts.push_back(std::abs(agent.mind[trait] - agent.inborn[trait]));
+            return py_sum(shifts);
+        }
+    }
+}
+
+std::string decimals(const char* pattern, double value) {
+    char text[48];
+    std::snprintf(text, sizeof text, pattern, value);
+    return text;
+}
+
+std::string exemplar_text(const Bitzkey& agent, const ExemplarStat& stat) {
+    const double value = exemplar_value(agent, stat);
+    const int whole = static_cast<int>(value);
+    switch (stat.kind) {
+        case StatKind::Mind: return std::string(MIND_TRAITS[static_cast<std::size_t>(stat.index)]) + " " + std::to_string(whole);
+        case StatKind::Body: return std::string(BODY_TRAITS[static_cast<std::size_t>(stat.index)]) + " " + std::to_string(whole);
+        case StatKind::Home: return std::string("home ") + HOMES[static_cast<std::size_t>(whole)];
+        case StatKind::State: break;
+    }
+    switch (stat.index) {
+        case Age: return "age " + std::to_string(whole);
+        case Children: return std::to_string(whole) + " children";
+        case Generation: return "generation " + std::to_string(whole);
+        case Hunger: return "hunger " + std::to_string(whole) + "%";
+        case Health: return "health " + std::to_string(static_cast<int>(value * 100)) + "%";
+        case Lifespan: return "lifespan " + std::to_string(whole) + " turns";
+        case Burn: return decimals("burn %.2f", value);
+        case Stomach: return decimals("stomach %.2f", value);
+        case Depth: return "brain " + std::to_string(whole) + " deep";
+        case Herd: return decimals("herd instinct %.2f", value);
+        default: return decimals("changed %.1f", value);
+    }
+}
 constexpr int EXEMPLAR_WIDTH = 170;  // each column of exemplars, in design pixels
 
 }  // namespace
@@ -109,7 +186,9 @@ App::Result App::run() {
                 }
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
-                if (key == SDLK_ESCAPE) {
+                if (key == SDLK_ESCAPE && exemplar_menu_) {
+                    exemplar_menu_.reset();  // just closes the menu
+                } else if (key == SDLK_ESCAPE) {
                     if (show_census_) {
                         if (leave_graph()) return Result::Configure;
                     } else {
@@ -234,6 +313,19 @@ void App::seek(int turn) {
 }
 
 void App::click(int x, int y) {
+    if (exemplar_menu_) {  // a click picks a statistic or closes the menu
+        for (const auto& [item, stat] : menu_items_) {
+            if (item.contains(x, y)) exemplar_choices[static_cast<std::size_t>(*exemplar_menu_)] = stat;
+        }
+        exemplar_menu_.reset();
+        return;
+    }
+    for (std::size_t slot = 0; slot < exemplar_titles_.size(); ++slot) {
+        if (exemplar_titles_[slot].contains(x, y)) {
+            exemplar_menu_ = static_cast<int>(slot);
+            return;
+        }
+    }
     if (add_button_ && add_button_->contains(x, y)) {
         toggle_export();
     } else if (catalog_button_ && catalog_button_->contains(x, y)) {
@@ -553,15 +645,17 @@ std::vector<App::Exemplar> App::exemplars() const {
         if (agent->species != Species::Plant) animals.push_back(agent);
     }
     std::vector<Exemplar> found;
-    for (const ExemplarRule& rule : EXEMPLARS) {
+    for (const int choice : exemplar_choices) {  // ties go to the oldest, then the first born
+        const ExemplarStat& stat = EXEMPLAR_STATS[static_cast<std::size_t>(choice)];
+        const double sign = stat.lowest ? -1 : 1;
         const Bitzkey* best = nullptr;
         for (const Bitzkey* agent : animals) {
-            if (!best || std::tuple{rule.judged(*agent), agent->age, -agent->identifier} >
-                             std::tuple{rule.judged(*best), best->age, -best->identifier}) {
+            if (!best || std::tuple{sign * exemplar_value(*agent, stat), agent->age, -agent->identifier} >
+                             std::tuple{sign * exemplar_value(*best, stat), best->age, -best->identifier}) {
                 best = agent;
             }
         }
-        found.push_back({rule.title, best, best ? rule.said(*best) : "none alive"});
+        found.push_back({stat.title, best, best ? exemplar_text(*best, stat) : "none alive"});
     }
     return found;
 }
@@ -577,9 +671,39 @@ std::pair<Rect, Rect> App::exemplar_columns(const Canvas& canvas) const {
             Rect{area.right() - UI(16) - width, area.y + UI(21), width, area.h - UI(42)}};
 }
 
+void App::draw_exemplar_menu(Canvas& canvas) {
+    // The open card's statistics, beneath its title, in as many columns as the screen needs.
+    menu_items_.clear();
+    if (!exemplar_menu_ || *exemplar_menu_ >= static_cast<int>(exemplar_titles_.size())) return;
+    const Rect& heading = exemplar_titles_[static_cast<std::size_t>(*exemplar_menu_)];
+    const int row = UI(MENU_ROW), column = UI(MENU_COLUMN), count = static_cast<int>(EXEMPLAR_STATS.size());
+    const int top = heading.bottom() + UI(2);
+    int rows = std::max(1, std::min(count, (canvas.height() - top - UI(12)) / row));
+    const int columns = (count + rows - 1) / rows;
+    rows = (count + columns - 1) / columns;  // as even as the columns allow
+    const int width = columns * column + UI(8);
+    int left = *exemplar_menu_ < 5 ? heading.x : heading.right() - width;  // toward the map
+    left = std::max(UI(4), std::min(canvas.width() - width - UI(4), left));
+    const Rect panel{left, top, width, rows * row + UI(8)};
+    canvas.rect(panel, {27, 37, 37}, 0, UI(5));
+    canvas.rect(panel, {131, 205, 143}, 1, UI(5));
+    int mouse_x = 0, mouse_y = 0;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    const int current = exemplar_choices[static_cast<std::size_t>(*exemplar_menu_)];
+    for (int stat = 0; stat < count; ++stat) {
+        const Rect item{panel.x + UI(4) + stat / rows * column, panel.y + UI(4) + stat % rows * row, column, row};
+        if (item.contains(mouse_x, mouse_y)) canvas.rect(item, {44, 57, 52}, 0, UI(3));
+        canvas.text(small, EXEMPLAR_STATS[static_cast<std::size_t>(stat)].title,
+                    stat == current ? Color{131, 205, 143} : Color{220, 229, 211}, item.x + UI(6), item.y + UI(2));
+        menu_items_.push_back({item, stat});
+    }
+}
+
 void App::draw_exemplars(Canvas& canvas) {
     // Five cards a side, evenly spaced, each the living animal that stands out in its way; a click selects it.
     exemplar_cards_.clear();
+    exemplar_titles_.clear();
     const std::vector<Exemplar> found = exemplars();
     TTF_Font* small = UI.font(Face::Sans, 12);
     const int gap = UI(8);
@@ -593,7 +717,13 @@ void App::draw_exemplars(Canvas& canvas) {
             const bool chosen = exemplar.agent && selected_id_ && exemplar.agent->identifier == *selected_id_;
             canvas.rect(card, {27, 37, 37}, 0, UI(5));
             canvas.rect(card, chosen ? Color{238, 183, 110} : Color{54, 68, 62}, 1, UI(5));  // the selected one lit
-            canvas.text(small, exemplar.title, {157, 177, 159}, card.x + UI(10), card.y + UI(8));
+            const Rect heading{card.x + UI(5), card.y + UI(5), card.w - UI(10), UI(22)};  // a menu of statistics
+            canvas.rect(heading, {44, 57, 52}, 0, UI(4));
+            if (exemplar_menu_ == static_cast<int>(exemplar_titles_.size())) canvas.rect(heading, {131, 205, 143}, 1, UI(4));
+            canvas.text(small, fit(exemplar.title, heading.w - UI(26)), {220, 229, 211}, heading.x + UI(5), heading.y + UI(3));
+            const int tx = heading.right() - UI(10), ty = heading.centery();
+            canvas.polygon({{tx - UI(4), ty - UI(2)}, {tx + UI(4), ty - UI(2)}, {tx, ty + UI(3)}}, {220, 229, 211});
+            exemplar_titles_.push_back(heading);
             if (!exemplar.agent) {
                 canvas.text(small, exemplar.said, {116, 139, 124}, card.x + UI(10), card.y + UI(28));
                 continue;
@@ -721,6 +851,7 @@ void App::draw(Canvas& canvas) {
     draw_exemplars(canvas);
     draw_sidebar(canvas);
     draw_footer(canvas);
+    draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
     if (show_census_) {
         const std::optional<std::string> note =
             SDL_GetTicks() < message_until_ ? std::optional<std::string>(message_) : std::nullopt;

@@ -75,6 +75,7 @@ private:
     std::pair<Rect, Rect> exemplar_columns(const Canvas& canvas) const;  // either side of the map
     Rect board_area(const Canvas& canvas) const;  // left of the sidebar, between the header and the footer
     void draw_exemplars(Canvas& canvas);
+    void draw_exemplar_menu(Canvas& canvas);  // the open card's statistics, beneath its title
     int sidebar_width(const Canvas& canvas) const;
     // Where the map shows, and the scale at which the whole map fits it.
     std::pair<Rect, double> map_view(const Canvas& canvas) const;
@@ -129,6 +130,9 @@ private:
     std::optional<Rect> add_button_;
     std::optional<Rect> catalog_button_;
     std::vector<std::pair<Rect, int>> exemplar_cards_;  // each card beside the map, and whom it shows
+    std::vector<Rect> exemplar_titles_;                 // each card's title, a menu of statistics, card by card
+    std::optional<int> exemplar_menu_;                  // the card whose menu is open
+    std::vector<std::pair<Rect, int>> menu_items_;      // the open menu's choices, and which statistic each is
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
     std::string message_;

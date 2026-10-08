@@ -75,6 +75,10 @@ struct Screens {
         const double ms = (SDL_GetPerformanceCounter() - start) * 1000.0 / SDL_GetPerformanceFrequency() / 20;
         std::cout << "drawing a frame with " << app.simulation_->living().size() << " alive: " << ms << " ms\n";
         save(canvas, folder / "app-inspector.bmp");
+        app.exemplar_menu_ = 6;  // the right column's second card, its menu of statistics open
+        app.draw(canvas);
+        save(canvas, folder / "app-exemplar-menu.bmp");
+        app.exemplar_menu_.reset();
         app.map_zoom_ = 4.0;  // zoomed in on the north-west of the map
         app.map_centre_ = std::pair{25.0, 30.0};
         app.draw(canvas);
