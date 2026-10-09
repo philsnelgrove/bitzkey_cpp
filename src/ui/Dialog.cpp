@@ -14,7 +14,12 @@ void Dialog::start(const std::string& choice, const std::string& label, const st
 
 Dialog::Layout Dialog::layout(int width, int height) const {
     Layout result;
-    result.panel = Rect{0, 0, UI(560), UI(150 + 24 * static_cast<int>(lines.size()))}.center_at(width / 2, height / 2);
+    // As wide as its widest line or its row of buttons need, within the window.
+    int row = -UI(10), widest = Canvas::text_width(UI.font(Face::Sans, 22, true), title);
+    for (const auto& [choice, label] : buttons) row += std::max(UI(110), Canvas::text_width(UI.font(Face::Sans, 13, true), label) + UI(32)) + UI(10);
+    for (const std::string& line : lines) widest = std::max(widest, Canvas::text_width(UI.font(Face::Sans, 15), line));
+    const int panel_width = std::min(width - UI(40), std::max(UI(560), std::max(row, widest) + UI(48)));
+    result.panel = Rect{0, 0, panel_width, UI(150 + 24 * static_cast<int>(lines.size()))}.center_at(width / 2, height / 2);
     int right = result.panel.right() - UI(24);
     for (auto it = buttons.rbegin(); it != buttons.rend(); ++it) {
         const int button_width = std::max(UI(110), Canvas::text_width(UI.font(Face::Sans, 13, true), it->second) + UI(32));
