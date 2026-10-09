@@ -25,13 +25,14 @@ CatalogScreen::CatalogScreen(Window& window) : window_(window) {
     }
 }
 
-std::pair<CatalogScreen::Outcome, std::optional<catalog::Entry>> CatalogScreen::run() {
+std::pair<CatalogScreen::Outcome, std::vector<catalog::Entry>> CatalogScreen::run() {
+    if (!entries_.empty() && chosen_.empty()) chosen_ = {0};
     while (true) {
         const Uint32 frame_start = SDL_GetTicks();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             window_.handle(event);
-            if (event.type == SDL_QUIT) return {Outcome::Quit, std::nullopt};
+            if (event.type == SDL_QUIT) return {Outcome::Quit, {}};
             if (dialog_) {
                 if (const auto choice = dialog_->handle(event, window_.width(), window_.height())) {
                     dialog_.reset();
@@ -39,19 +40,24 @@ std::pair<CatalogScreen::Outcome, std::optional<catalog::Entry>> CatalogScreen::
                 }
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
-                if (key == SDLK_ESCAPE) return {Outcome::Close, std::nullopt};
-                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !entries_.empty()) {
-                    return {Outcome::Import, entries_[static_cast<std::size_t>(picked_)]};
-                }
+                const Uint16 mods = event.key.keysym.mod;
+                if (key == SDLK_ESCAPE) return {Outcome::Close, {}};
+                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !chosen_.empty()) return {Outcome::Import, chosen_entries()};
                 if (key == SDLK_F11) window_.toggle_fullscreen();
-                else if (key == SDLK_UP || key == SDLK_DOWN) pick(picked_ + (key == SDLK_DOWN ? 1 : -1));
-                else if (key == SDLK_DELETE && !entries_.empty()) ask_to_remove();
+                else if ((key == SDLK_UP || key == SDLK_DOWN) && !entries_.empty()) {
+                    const int moved = std::max(0, std::min(static_cast<int>(entries_.size()) - 1, picked_ + (key == SDLK_DOWN ? 1 : -1)));
+                    choose(moved, static_cast<Uint16>(mods & KMOD_SHIFT));
+                } else if (key == SDLK_a && (mods & KMOD_CTRL)) {
+                    for (int index = 0; index < static_cast<int>(entries_.size()); ++index) chosen_.insert(index);
+                } else if (key == SDLK_DELETE && !chosen_.empty()) {
+                    ask_to_remove();
+                }
             } else if (event.type == SDL_MOUSEWHEEL) {
                 scroll_to(scroll_ - event.wheel.y);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 if (const auto outcome = click(event.button.x, event.button.y)) {
-                    if (*outcome == Outcome::Import) return {Outcome::Import, entries_[static_cast<std::size_t>(picked_)]};
-                    return {*outcome, std::nullopt};
+                    if (*outcome == Outcome::Import) return {Outcome::Import, chosen_entries()};
+                    return {*outcome, {}};
                 }
             }
         }
@@ -72,7 +78,7 @@ CatalogScreen::Layout CatalogScreen::layout() const {
     places.details = {card.right() - UI(24) - UI(330), card.y + UI(96), UI(330), card.h - UI(170)};
     places.list = {card.x + UI(24), card.y + UI(96), places.details.x - card.x - UI(48), card.h - UI(170)};
     places.close = Rect{0, 0, UI(120), UI(36)}.bottomright_at(card.right() - UI(24), card.bottom() - UI(18));
-    places.import = Rect{0, 0, UI(160), UI(36)}.bottomright_at(places.close.x - UI(10), places.close.bottom());
+    places.import = Rect{0, 0, UI(180), UI(36)}.bottomright_at(places.close.x - UI(10), places.close.bottom());
     places.remove = Rect{0, 0, UI(110), UI(36)}.bottomleft_at(card.x + UI(24), card.bottom() - UI(18));
     return places;
 }
@@ -95,23 +101,53 @@ void CatalogScreen::pick(int index) {
     else if (picked_ >= scroll_ + rows_shown()) scroll_to(picked_ - rows_shown() + 1);
 }
 
+void CatalogScreen::choose(int index, Uint16 mods) {
+    if (mods & KMOD_SHIFT) {
+        std::set<int> run;
+        for (int at = std::min(anchor_, index); at <= std::max(anchor_, index); ++at) run.insert(at);
+        if (mods & KMOD_CTRL) chosen_.insert(run.begin(), run.end());
+        else chosen_ = run;
+    } else if (mods & KMOD_CTRL) {
+        if (!chosen_.erase(index)) chosen_.insert(index);
+        anchor_ = index;
+    } else {
+        chosen_ = {index};
+        anchor_ = index;
+    }
+    pick(index);
+}
+
+std::vector<catalog::Entry> CatalogScreen::chosen_entries() const {
+    std::vector<catalog::Entry> found;
+    for (const int index : chosen_) found.push_back(entries_[static_cast<std::size_t>(index)]);
+    return found;
+}
+
 void CatalogScreen::ask_to_remove() {
+    const std::size_t count = chosen_.size();
     dialog_.emplace("Remove from the catalog?",
-                    std::vector<std::string>{catalog::describe(entries_[static_cast<std::size_t>(picked_)]),
-                                             "It will be gone from the catalog for good."},
+                    std::vector<std::string>{count == 1 ? catalog::describe(entries_[static_cast<std::size_t>(*chosen_.begin())])
+                                                        : std::to_string(count) + " Bitzkeys",
+                                             count == 1 ? "It will be gone from the catalog for good."
+                                                        : "They will be gone from the catalog for good."},
                     std::vector<std::pair<std::string, std::string>>{{"keep", "KEEP"}, {"remove", "REMOVE"}}, "keep");
 }
 
 void CatalogScreen::remove() {
     try {
-        catalog::remove(static_cast<std::size_t>(picked_), catalog_path());
+        for (auto index = chosen_.rbegin(); index != chosen_.rend(); ++index) {  // the last first, so the rest keep their places
+            catalog::remove(static_cast<std::size_t>(*index), catalog_path());
+        }
         entries_ = catalog::load(catalog_path());
-        note_ = "Removed from the catalog.";
+        note_ = chosen_.size() > 1 ? "Removed " + std::to_string(chosen_.size()) + " from the catalog." : "Removed from the catalog.";
     } catch (const std::exception& error) {
         note_ = error.what();
     }
     inspected_.clear();
     pick(std::min(picked_, static_cast<int>(entries_.size()) - 1));
+    chosen_.clear();
+    if (!entries_.empty()) chosen_.insert(picked_);
+    anchor_ = picked_;
     scroll_to(scroll_);
 }
 
@@ -124,15 +160,15 @@ const Bitzkey& CatalogScreen::inspect(int index) {
 std::optional<CatalogScreen::Outcome> CatalogScreen::click(int x, int y) {
     const Layout places = layout();
     if (places.close.contains(x, y)) return Outcome::Close;
-    if (places.import.contains(x, y) && !entries_.empty()) return Outcome::Import;
-    if (places.remove.contains(x, y) && !entries_.empty()) {
+    if (places.import.contains(x, y) && !chosen_.empty()) return Outcome::Import;
+    if (places.remove.contains(x, y) && !chosen_.empty()) {
         ask_to_remove();
         return std::nullopt;
     }
     if (places.list.contains(x, y)) {
         const int last = std::min(static_cast<int>(entries_.size()), scroll_ + rows_shown());
         for (int index = scroll_; index < last; ++index) {
-            if (row(index).contains(x, y)) picked_ = index;
+            if (row(index).contains(x, y)) choose(index, static_cast<Uint16>(SDL_GetModState()));
         }
     }
     return std::nullopt;
@@ -148,7 +184,7 @@ void CatalogScreen::draw(Canvas& canvas) {
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(UI.font(Face::Sans, 22, true), "BITZKEY CATALOG", {229, 239, 220}, card.x + UI(24), card.y + UI(22));
     canvas.text(small, "NEW WORLD  /  YOUR FAVOURITES", {144, 170, 151}, card.x + UI(48) + title, card.y + UI(31));
-    canvas.text(font, "Each one kept as it was when catalogued, its trained brain and all. Pick one to import.", {157, 177, 159},
+    canvas.text(font, "Each one kept as it was when catalogued, its trained brain and all. Choose those to import.", {157, 177, 159},
                 card.x + UI(24), card.y + UI(60));
 
     canvas.rect(list, {22, 30, 30}, 0, UI(6));
@@ -161,10 +197,8 @@ void CatalogScreen::draw(Canvas& canvas) {
     const int last = std::min(static_cast<int>(entries_.size()), scroll_ + rows_shown());
     for (int index = scroll_; index < last; ++index) {
         const Rect place = row(index);
-        if (index == picked_) {
-            canvas.rect(place, {44, 57, 52}, 0, UI(4));
-            canvas.rect(place, {131, 205, 143}, 1, UI(4));
-        }
+        if (chosen_.contains(index)) canvas.rect(place, {44, 57, 52}, 0, UI(4));
+        if (index == picked_) canvas.rect(place, {131, 205, 143}, 1, UI(4));  // the one shown beside the list
         const Bitzkey& agent = inspect(index);
         draw_bitzkey(canvas, agent.dna, place.x + UI(20), place.centery(), dot_radius(agent.body[Size]));
         canvas.text(font, catalog::describe(entries_[static_cast<std::size_t>(index)]), {220, 229, 211}, place.x + UI(42),
@@ -186,14 +220,15 @@ void CatalogScreen::draw(Canvas& canvas) {
         draw_details(canvas, agent, inside_x, [&](int offset) { return details.y + UI(150 + offset); }, inside_w);
     }
 
-    for (const auto& [button, label, lit] : {std::tuple{places.remove, "REMOVE", false}, std::tuple{places.import, "ADD TO IMPORT", true},
-                                            std::tuple{places.close, "CLOSE", false}}) {
-        const bool active = lit && !entries_.empty();
+    const std::string adding = chosen_.size() <= 1 ? "ADD TO IMPORT" : "ADD " + std::to_string(chosen_.size()) + " TO IMPORT";
+    for (const auto& [button, label, lit] : {std::tuple{places.remove, std::string("REMOVE"), false}, std::tuple{places.import, adding, true},
+                                            std::tuple{places.close, std::string("CLOSE"), false}}) {
+        const bool active = lit && !chosen_.empty();
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
         canvas.text_at(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211},
                        [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
     }
-    const std::string hint = !note_.empty() ? note_ : "UP/DOWN  choose    ENTER  add to import    DELETE  remove    ESC  close";
+    const std::string hint = !note_.empty() ? note_ : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
     canvas.text(small, hint, !note_.empty() ? Color{238, 183, 110} : Color{116, 139, 124}, places.remove.right() + UI(16),
                 places.remove.centery() - UI(8));
     if (dialog_) dialog_->draw(canvas);

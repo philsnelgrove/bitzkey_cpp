@@ -299,12 +299,14 @@ bool SetupScreen::design() {
 }
 
 bool SetupScreen::catalog() {
-    // A Bitzkey picked in the catalog joins the bottom of the import text, brain and all.
-    const auto [outcome, entry] = CatalogScreen(window_).run();
+    // The Bitzkeys chosen in the catalog join the bottom of the import text, brains and all.
+    const auto [outcome, entries] = CatalogScreen(window_).run();
     if (outcome == CatalogScreen::Outcome::Quit) return false;
-    if (entry) {
-        form_.paste(dumps(*entry));
-        tell("Added a Bitzkey from the catalog to the import list, with its trained brain.");
+    if (!entries.empty()) {
+        form_.paste(format_records(entries));
+        tell(entries.size() == 1 ? std::string("Added a Bitzkey from the catalog to the import list, with its trained brain.")
+                                 : "Added " + std::to_string(entries.size()) +
+                                       " Bitzkeys from the catalog to the import list, with their trained brains.");
     }
     return true;
 }

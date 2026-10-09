@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <map>
+#include <set>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,8 +25,10 @@ public:
     enum class Outcome { Import, Close, Quit };
 
     explicit CatalogScreen(Window& window);
-    // A Bitzkey picked to import, or none when closed or the window closes.
-    std::pair<Outcome, std::optional<catalog::Entry>> run();
+    // The Bitzkeys chosen to import, in catalog order, or none when closed or the window closes. They
+    // are chosen as in Windows: a click chooses one, CTRL+click adds one or takes it out, SHIFT+click
+    // chooses all from the last one clicked to this one (CTRL+SHIFT adds them), and CTRL+A all.
+    std::pair<Outcome, std::vector<catalog::Entry>> run();
 
 private:
     friend struct Screens;  // the screenshot tool
@@ -37,6 +40,8 @@ private:
     int rows_shown() const;
     void scroll_to(int first);
     void pick(int index);
+    void choose(int index, Uint16 mods);  // as in Windows, by the modifier keys held
+    std::vector<catalog::Entry> chosen_entries() const;
     void ask_to_remove();
     void remove();
     const Bitzkey& inspect(int index);
@@ -46,7 +51,9 @@ private:
     Window& window_;
     std::vector<catalog::Entry> entries_;
     std::string note_;
-    int picked_ = 0;  // the entry shown beside the list
+    int picked_ = 0;  // the entry shown beside the list, the last one clicked or moved to
+    int anchor_ = 0;  // where a SHIFT+click's run of entries starts
+    std::set<int> chosen_;  // the entries to import or remove
     int scroll_ = 0;  // the first entry the list shows
     std::optional<Dialog> dialog_;
     std::map<int, Bitzkey> inspected_;
