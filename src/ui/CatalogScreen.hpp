@@ -1,7 +1,8 @@
 #pragma once
 // The catalog of favourite Bitzkeys: each one listed, and the one picked shown large beside its
 // inspector panel, as it was when catalogued, trained brain and all. Opened from the configuration
-// panel; picking one adds it to the import list.
+// panel, picking one adds it to the import list; opened from a running world to browse, it only shows
+// them (and can remove them).
 
 #include <filesystem>
 #include <map>
@@ -24,7 +25,7 @@ class CatalogScreen {
 public:
     enum class Outcome { Import, Close, Quit };
 
-    explicit CatalogScreen(Window& window);
+    explicit CatalogScreen(Window& window, bool browsing = false);
     // The Bitzkeys chosen to import, in catalog order, or none when closed or the window closes. They
     // are chosen as in Windows: a click chooses one, CTRL+click adds one or takes it out, SHIFT+click
     // chooses all from the last one clicked to this one (CTRL+SHIFT adds them), and CTRL+A all.
@@ -49,6 +50,7 @@ private:
     void draw(Canvas& canvas);
 
     Window& window_;
+    bool browsing_ = false;  // only to look through: nothing is imported
     std::vector<catalog::Entry> entries_;
     std::string note_;
     int picked_ = 0;  // the entry shown beside the list, the last one clicked or moved to

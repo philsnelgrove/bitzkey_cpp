@@ -101,6 +101,7 @@ private:
                         const std::string& skipped = "");
     void catalog_selected();
     void catalog_picked();
+    void browse_catalog();  // look through the catalog, importing and exporting nothing
     void catalog_export_list();
     void new_world();
     std::string save_export(const std::string& name, const std::string& text);
@@ -140,6 +141,7 @@ private:
     std::vector<std::pair<Rect, int>> menu_items_;      // the open menu's choices, and which statistic each is
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
+    Rect open_button_;  // the catalog, to look through
     std::string message_;
     Uint32 message_until_ = 0;
     bool playing_ = true;

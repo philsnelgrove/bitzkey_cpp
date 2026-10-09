@@ -17,7 +17,7 @@ constexpr int PREVIEW_ZOOM = 9;   // the large picture is the in-world look, thi
 
 std::filesystem::path catalog_path() { return data_dir() / "catalog.json"; }
 
-CatalogScreen::CatalogScreen(Window& window) : window_(window) {
+CatalogScreen::CatalogScreen(Window& window, bool browsing) : window_(window), browsing_(browsing) {
     try {
         entries_ = catalog::load(catalog_path());
     } catch (const std::exception& error) {
@@ -42,7 +42,7 @@ std::pair<CatalogScreen::Outcome, std::vector<catalog::Entry>> CatalogScreen::ru
                 const SDL_Keycode key = event.key.keysym.sym;
                 const Uint16 mods = event.key.keysym.mod;
                 if (key == SDLK_ESCAPE) return {Outcome::Close, {}};
-                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !chosen_.empty()) return {Outcome::Import, chosen_entries()};
+                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !chosen_.empty() && !browsing_) return {Outcome::Import, chosen_entries()};
                 if (key == SDLK_F11) window_.toggle_fullscreen();
                 else if ((key == SDLK_UP || key == SDLK_DOWN) && !entries_.empty()) {
                     const int moved = std::max(0, std::min(static_cast<int>(entries_.size()) - 1, picked_ + (key == SDLK_DOWN ? 1 : -1)));
@@ -160,7 +160,7 @@ const Bitzkey& CatalogScreen::inspect(int index) {
 std::optional<CatalogScreen::Outcome> CatalogScreen::click(int x, int y) {
     const Layout places = layout();
     if (places.close.contains(x, y)) return Outcome::Close;
-    if (places.import.contains(x, y) && !chosen_.empty()) return Outcome::Import;
+    if (places.import.contains(x, y) && !chosen_.empty() && !browsing_) return Outcome::Import;
     if (places.remove.contains(x, y) && !chosen_.empty()) {
         ask_to_remove();
         return std::nullopt;
@@ -183,9 +183,12 @@ void CatalogScreen::draw(Canvas& canvas) {
     canvas.rect(card, {27, 37, 37}, 0, UI(8));
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(UI.font(Face::Sans, 22, true), "BITZKEY CATALOG", {229, 239, 220}, card.x + UI(24), card.y + UI(22));
-    canvas.text(small, "NEW WORLD  /  YOUR FAVOURITES", {144, 170, 151}, card.x + UI(48) + title, card.y + UI(31));
-    canvas.text(font, "Each one kept as it was when catalogued, its trained brain and all. Choose those to import.", {157, 177, 159},
-                card.x + UI(24), card.y + UI(60));
+    canvas.text(small, browsing_ ? "YOUR FAVOURITES" : "NEW WORLD  /  YOUR FAVOURITES", {144, 170, 151}, card.x + UI(48) + title,
+                card.y + UI(31));
+    canvas.text(font,
+                browsing_ ? "Each one kept as it was when catalogued, its trained brain and all."
+                          : "Each one kept as it was when catalogued, its trained brain and all. Choose those to import.",
+                {157, 177, 159}, card.x + UI(24), card.y + UI(60));
 
     canvas.rect(list, {22, 30, 30}, 0, UI(6));
     if (entries_.empty()) {
@@ -223,12 +226,15 @@ void CatalogScreen::draw(Canvas& canvas) {
     const std::string adding = chosen_.size() <= 1 ? "ADD TO IMPORT" : "ADD " + std::to_string(chosen_.size()) + " TO IMPORT";
     for (const auto& [button, label, lit] : {std::tuple{places.remove, std::string("REMOVE"), false}, std::tuple{places.import, adding, true},
                                             std::tuple{places.close, std::string("CLOSE"), false}}) {
+        if (lit && browsing_) continue;  // nothing to import
         const bool active = lit && !chosen_.empty();
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
         canvas.text_at(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211},
                        [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
     }
-    const std::string hint = !note_.empty() ? note_ : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
+    const std::string hint = !note_.empty() ? note_
+                             : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    DELETE  remove    ESC  close"
+                                            : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
     canvas.text(small, hint, !note_.empty() ? Color{238, 183, 110} : Color{116, 139, 124}, places.remove.right() + UI(16),
                 places.remove.centery() - UI(8));
     if (dialog_) dialog_->draw(canvas);
