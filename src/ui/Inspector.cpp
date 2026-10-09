@@ -81,7 +81,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     canvas.text(mono, format("RING / BODY  %08X", body_word(agent.dna)), {211, 219, 201}, x, at(47));
 
     const int body_x = x + std::min(UI(168), width / 2 + UI(18));
-    canvas.text(small, known ? "MIND      born   now" : "MIND      born", {149, 170, 150}, x, at(74));
+    canvas.text(mono_small, known ? "MIND      born   now" : "MIND      born", {149, 170, 150}, x, at(74));
     canvas.text(small, "BODY", {149, 170, 150}, body_x, at(74));
     for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) {
         const int born = agent.inborn[trait];
