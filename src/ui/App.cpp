@@ -1221,16 +1221,17 @@ void App::draw_footer(Canvas& canvas) {
     canvas.rect(export_button_, any ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(6));
     canvas.text_at(button_font, label, any ? Color{19, 26, 27} : Color{220, 229, 211},
                    [&](Rect& box) { box.center_at(export_button_.centerx(), export_button_.centery()); });
-    const int room = export_button_.x - UI(185) - UI(16);
+    const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
+    const int room = export_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
-        canvas.text(small, fit(message_, room), {238, 183, 110}, UI(185), height - UI(36));
+        canvas.text(small, fit(message_, room), {238, 183, 110}, left, height - UI(36));
         return;
     }
     canvas.text(small,
                 fit("SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   "
                     "G  graph   E  export   R  restart   F11  window   ESC  menu",
                     room),
-                {187, 199, 181}, UI(185), height - UI(36));
+                {187, 199, 181}, left, height - UI(36));
 }
 
 }  // namespace bitzkey::ui
