@@ -1,7 +1,9 @@
 // Run a Bitzkey world without a window: for benchmarks, long experiments, exports, and checking
 // the C++ simulation against the Python one turn by turn (--trace).
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -37,6 +39,8 @@ void usage() {
         "  --turns N                   turns to run (default 400)\n"
         "  --report-every N            print a population line every N turns (default 100)\n"
         "  --trace FILE                write one line per turn, for comparing with the Python version\n"
+        "  --diagnose FILE             write how the predators fare, a line a turn, saved as it goes, and a summary\n"
+        "                              beside it (FILE.summary.txt)\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
         "  --brain-report FILE         write the brain report at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
@@ -73,13 +77,132 @@ std::string trace_line(const Simulation& world) {
     return line.str();
 }
 
+// A turn-by-turn look at how the predators fare, for finding out why they thrive or don't: written one
+// line a turn, tab-separated, each line saved as it is written so a run can be stopped at any time.
+class Diagnosis {
+public:
+    explicit Diagnosis(const std::string& path) : file_(path) {
+        file_ << "turn\tplants\tgrazers\tomnivores\tpredators\tpredators_born"
+                 "\tpredators_died\tby_predator\tby_omnivore\tby_grazer\tby_plant\tkilled_other\tstarved\tfroze\toverheated"
+                 "\told_age\texhausted\tdied_other"
+                 "\tgrazers_killed_by_predators\tomnivores_killed_by_predators\tgrazers_died\tomnivores_died"
+                 "\tpredator_hunger\tpredator_health\tpredator_age\tpredator_generation\tin_primal_fear\tpredator_actions\n";
+        file_.flush();
+    }
+
+    // Before a turn: who exists, so the turn's births can be told.
+    void before(const Simulation& world) { first_new_ = world.next_identifier(); }
+
+    void after(const Simulation& world) {
+        const int turn = world.turn();
+        int counts[4] = {0, 0, 0, 0};
+        int born = 0, primal = 0;
+        double hunger = 0, health = 0, age = 0, generation = 0;
+        std::map<std::string, int> actions;
+        const auto alive = world.living();
+        for (const Bitzkey* agent : alive) {
+            counts[static_cast<int>(agent->species)] += 1;
+            if (agent->species != Species::Predator) continue;
+            born += agent->identifier >= first_new_;
+            primal += agent->primal_fear;
+            hunger += agent->hunger;
+            health += agent->health / agent->max_health;
+            age += agent->age;
+            generation += agent->generation;
+            actions[std::string(agent->last_action)] += 1;
+        }
+        // Deaths this turn: how each predator died and, for a killing, who most likely struck the blow (a
+        // living animal beside it that attacked or struck back this turn, a predator first); and the
+        // grazers and omnivores the predators killed.
+        std::map<std::string, int> died;
+        int predators_died = 0, grazers_by_predators = 0, omnivores_by_predators = 0, grazers_died = 0, omnivores_died = 0;
+        for (const auto& agent : world.agents()) {
+            if (!agent->died_turn || *agent->died_turn != turn || agent->species == Species::Plant) continue;
+            const std::string cause(agent->last_action);
+            std::string killer;
+            if (cause == "killed") killer = killed_by(world, *agent);
+            if (agent->species == Species::Predator) {
+                ++predators_died;
+                if (cause == "killed") died["by_" + killer] += 1;
+                else died[cause] += 1;
+            } else if (agent->species == Species::Grazer) {
+                ++grazers_died;
+                grazers_by_predators += killer == "predator";
+            } else {
+                ++omnivores_died;
+                omnivores_by_predators += killer == "predator";
+            }
+        }
+        const int predators = counts[3];
+        const auto mean = [predators](double total) { return predators ? total / predators : 0.0; };
+        const auto of = [&died](const char* key) {
+            const auto found = died.find(key);
+            return found == died.end() ? 0 : found->second;
+        };
+        const int known = of("by_predator") + of("by_omnivore") + of("by_grazer") + of("by_plant") + of("by_unknown") + of("starved") +
+                          of("froze") + of("overheated") + of("old age") + of("exhausted");
+        std::ostringstream actions_text;
+        std::vector<std::pair<int, std::string>> ranked;
+        for (const auto& [name, count] : actions) ranked.emplace_back(-count, name);
+        std::sort(ranked.begin(), ranked.end());
+        for (const auto& [count, name] : ranked) actions_text << (actions_text.tellp() > 0 ? "," : "") << name << '=' << -count;
+        char numbers[256];
+        std::snprintf(numbers, sizeof numbers, "%.1f\t%.2f\t%.0f\t%.1f", mean(hunger), mean(health), mean(age), mean(generation));
+        file_ << turn << '\t' << counts[0] << '\t' << counts[1] << '\t' << counts[2] << '\t' << predators << '\t' << born << '\t'
+              << predators_died << '\t' << of("by_predator") << '\t' << of("by_omnivore") << '\t' << of("by_grazer") << '\t'
+              << of("by_plant") << '\t' << of("by_unknown") << '\t' << of("starved") << '\t' << of("froze") << '\t' << of("overheated")
+              << '\t' << of("old age") << '\t' << of("exhausted") << '\t' << predators_died - known << '\t' << grazers_by_predators
+              << '\t' << omnivores_by_predators << '\t' << grazers_died << '\t' << omnivores_died << '\t' << numbers << '\t' << primal
+              << '\t' << actions_text.str() << '\n';
+        file_.flush();
+        // Running totals, for the summary.
+        totals_["predators born"] += born;
+        totals_["predators died"] += predators_died;
+        for (const auto& [cause, count] : died) totals_["predator death: " + cause] += count;
+        totals_["grazers killed by predators"] += grazers_by_predators;
+        totals_["omnivores killed by predators"] += omnivores_by_predators;
+        for (const auto& [name, count] : actions) totals_["predator turns: " + name] += count;
+        peak_ = std::max(peak_, predators);
+    }
+
+    std::string summary() const {
+        std::ostringstream text;
+        text << "predators at most: " << peak_ << '\n';
+        for (const auto& [name, count] : totals_) text << name << ": " << count << '\n';
+        return text.str();
+    }
+
+private:
+    static std::string killed_by(const Simulation& world, const Bitzkey& victim) {
+        std::string found = "unknown";
+        for (const auto& other : world.agents()) {
+            if (other.get() == &victim || !other->alive()) continue;
+            if (std::abs(other->x - victim.x) + std::abs(other->y - victim.y) > 1) continue;
+            const std::string_view did = other->last_action;
+            if (other->species == Species::Plant) {
+                if (found == "unknown") found = "plant";  // thorns, struck back at a browser
+                continue;
+            }
+            if (did != "attacked" && did != "defended" && did != "pounced") continue;
+            if (other->species == Species::Predator) return "predator";
+            found = other->species == Species::Omnivore ? "omnivore" : "grazer";
+        }
+        return found;
+    }
+
+    std::ofstream file_;
+    int first_new_ = 0;
+    int peak_ = 0;
+    std::map<std::string, long long> totals_;
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
     bool profile = false;
-    std::optional<std::string> trace_path, export_path, report_path;
+    std::optional<std::string> trace_path, export_path, report_path, diagnose_path;
     rules::Values changes;
     try {
         for (int index = 1; index < argc; ++index) {
@@ -114,6 +237,7 @@ int main(int argc, char** argv) {
             else if (flag == "--turns") turns = std::stoi(value);
             else if (flag == "--report-every") report_every = std::stoi(value);
             else if (flag == "--trace") trace_path = value;
+            else if (flag == "--diagnose") diagnose_path = value;
             else if (flag == "--export") export_path = value;
             else if (flag == "--brain-report") report_path = value;
             else if (flag == "--rule") {
@@ -155,12 +279,16 @@ int main(int argc, char** argv) {
             trace.open(*trace_path);
             trace << trace_line(world) << '\n';
         }
+        std::optional<Diagnosis> diagnosis;
+        if (diagnose_path) diagnosis.emplace(*diagnose_path);
         using Clock = std::chrono::steady_clock;
         auto last = Clock::now();
         const auto start = last;
         int last_turn = 0;
         for (int step = 1; step <= turns; ++step) {
+            if (diagnosis) diagnosis->before(world);
             world.advance();
+            if (diagnosis) diagnosis->after(world);
             if (trace) trace << trace_line(world) << '\n';
             const EndReason reason = world.end_reason();
             const bool report = report_every > 0 && world.turn() % report_every == 0;
@@ -172,6 +300,7 @@ int main(int argc, char** argv) {
                 for (const Bitzkey* agent : world.living()) counts[static_cast<int>(agent->species)] += 1;
                 std::printf("turn %5d  plants %4d  grazers %5d  omnivores %5d  predators %5d  %7.2f ms/turn\n",
                             world.turn(), counts[0], counts[1], counts[2], counts[3], ms);
+                std::fflush(stdout);  // seen at once, even written to a file
                 last = now;
                 last_turn = world.turn();
             }
@@ -183,6 +312,11 @@ int main(int argc, char** argv) {
         }
         const double total = std::chrono::duration<double>(Clock::now() - start).count();
         std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn(), total, total * 1000 / std::max(1, world.turn()));
+        if (diagnosis) {
+            const std::string summary = diagnosis->summary();
+            std::ofstream(*diagnose_path + ".summary.txt") << summary;
+            std::printf("%s", summary.c_str());
+        }
 
         if (profile) {
             const Simulation::Timings& took = world.timings;
