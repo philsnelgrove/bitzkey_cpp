@@ -93,6 +93,12 @@ inline double SOCIAL_MOOD = 0.3;      // how much what it sees moves its mood
 inline double SOCIAL_MEMORY = 0.8;    // the share of a seen success or failure it still senses a turn later
 inline double OTHER_KIND = 0.4;
 inline double LEARNING_RATE = 0.045;
+// The clever learn faster. The learning rate rises with intellect, and on top of that by up to
+// LEARNING_BOOST times again at the highest; the least intelligent get no boost. And each turn an
+// animal re-learns from REPLAY_PER_INTELLECT of its most recent experiences for each point of its
+// inborn intellect, so the least replay none.
+inline double LEARNING_BOOST = 1.0;
+inline int REPLAY_PER_INTELLECT = 2;
 inline std::array<double, 2> PANIC = {0.3, 1.0};
 inline double THORN_FORCE = 15;
 inline double THORN_SIZE_SHARE = 0.2;
@@ -265,6 +271,12 @@ struct Bitzkey {
     double meat = 0.0;                  // a corpse's meat left for scavengers
     double rot = 0.0;                   // meat lost to rot each turn
     std::vector<std::pair<int, int>> trail;  // the cells it passed through this turn, for the map
+    struct Memory {  // an experience to re-learn from
+        Senses senses{};
+        int choice = 0;
+        double target = 0.0;
+    };
+    std::vector<Memory> memories;  // its most recent experiences, newest last
     struct Young {  // conceived at mating, born at the end of the gestation
         Dna dna = 0;
         Mind mind{};
@@ -541,7 +553,7 @@ private:
     bool room_for_seedling(Cell cell) const;  // the cell is free, and plants don't crowd it
     void sprout(Dna dna, Cell cell, int generation);
     void settle(Bitzkey& agent);
-    void learn(Bitzkey& agent, double target);
+    void learn(Bitzkey& agent, double target, bool replay = false);
     // The nearest grass in sight, but none in a row further from its home temperature than here.
     std::optional<Cell> nearest_grass(const Bitzkey& agent, int sight) const;
     Bitzkey* nearest_carrion(const Bitzkey& agent, int sight) const;

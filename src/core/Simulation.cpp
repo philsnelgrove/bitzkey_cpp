@@ -827,10 +827,28 @@ void Simulation::settle(Bitzkey& agent) {
     }
 }
 
-void Simulation::learn(Bitzkey& agent, double target) {
-    // From its own last choice, by TD(lambda), so the choices before it share in what came of it.
-    agent.own_brain().learn_traced(agent.last_senses, agent.last_choice, target, LEARNING_RATE * agent.feeling(Intellect),
-                                   discount(agent));
+static double learning_rate(const Bitzkey& agent) {
+    // How fast its brain learns: with its intellect, boosted further the cleverer it is.
+    const double sharpness = agent.feeling(Intellect);
+    return LEARNING_RATE * sharpness * (1 + LEARNING_BOOST * sharpness);
+}
+
+void Simulation::learn(Bitzkey& agent, double target, bool replay) {
+    // From its own last choice, by TD(lambda), so the choices before it share in what came of it. With
+    // `replay`, it then re-learns from its most recent experiences, as many as its intellect allows,
+    // and remembers this one.
+    const double rate = learning_rate(agent);
+    agent.own_brain().learn_traced(agent.last_senses, agent.last_choice, target, rate, discount(agent), agent.feeling(Intellect));
+    if (!replay) return;
+    const std::size_t count = static_cast<std::size_t>(REPLAY_PER_INTELLECT * agent.inborn[Intellect]);
+    if (!count) return;
+    const std::size_t first = agent.memories.size() > count ? agent.memories.size() - count : 0;
+    for (std::size_t index = first; index < agent.memories.size(); ++index) {
+        const Bitzkey::Memory& memory = agent.memories[index];
+        agent.own_brain().learn(memory.senses, memory.choice, memory.target, rate);
+    }
+    agent.memories.push_back({agent.last_senses, agent.last_choice, target});
+    if (agent.memories.size() > count) agent.memories.erase(agent.memories.begin(), agent.memories.end() - static_cast<std::ptrdiff_t>(count));
 }
 
 bool Simulation::dies_of_age(Bitzkey& agent) {
@@ -859,7 +877,7 @@ void Simulation::think(Bitzkey& agent) {
         const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comfortable - agent.last_comfort;
         double best = values[options[0]];
         for (const int option : options) best = std::max(best, values[option]);
-        learn(agent, reward + discount(agent) * best);
+        learn(agent, reward + discount(agent) * best, true);
     }
     if (agent.panicked && situation.assailant) {
         // Fight or flight, decided by fear: it breaks off and flees its assailant.

@@ -90,6 +90,7 @@ constexpr int HIDDEN_SIZE = 34;  // neurons in each hidden layer
 constexpr int MIN_DEPTH = 2;     // hidden layers: twice the inborn intellect, and never fewer than this
 inline double TEMPERATURE = 0.2;
 inline double MUTATION = 0.05;
+inline double SMART_TRACE_DECAY = 0.97;  // lambda at the highest intellect: the clever trace credit further back
 inline double TRACE_DECAY = 0.9;  // lambda: how much of each earlier choice's credit carries on to the next, beside the discount
 // A new brain values setting off in a direction this much below its other actions, so an untaught
 // brain doesn't march straight away from its range, its herd and its food before it has learned where to go.
@@ -160,7 +161,9 @@ public:
     // Learn from its own choice by TD(lambda): every weight's eligibility fades by the discount times
     // TRACE_DECAY and gains how this action's value moves with it; then every weight moves by the
     // clipped error times its eligibility, so the choices before this one share in it.
-    void learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount);
+    // Lambda runs from TRACE_DECAY up to SMART_TRACE_DECAY with `sharpness`, its owner's intellect, 0 to 1.
+    void learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount,
+                      double sharpness = 0.0);
 
     nlohmann::ordered_json to_record() const;
     // Weights are matched to senses and actions by name; a brain saved with a single hidden

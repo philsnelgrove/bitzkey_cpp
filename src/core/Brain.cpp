@@ -229,9 +229,10 @@ void Brain::learn(const Senses& inputs, int action, double target, double learni
     output_biases[action] -= learning_rate * error;
 }
 
-void Brain::learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount) {
+void Brain::learn_traced(const Senses& inputs, int action, double target, double learning_rate, double discount,
+                         double sharpness) {
     if (learning_rate <= 0) return;
-    const double decay = discount * TRACE_DECAY;
+    const double decay = discount * (TRACE_DECAY + (SMART_TRACE_DECAY - TRACE_DECAY) * sharpness);
     if (!traces) {
         traces.emplace();
         for (const Layer& layer : layers) {
