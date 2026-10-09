@@ -17,8 +17,8 @@
 namespace bitzkey::ui {
 
 const std::array<Setting, 9> SETTINGS = {{
-    {"width", "Grid width", "cells across the world", 10, 250, 10},
-    {"height", "Grid height", "cells down the world", 10, 250, 10},
+    {"width", "Grid width", "cells across the world", 10, MAX_GRID, 10},
+    {"height", "Grid height", "cells down the world", 10, MAX_GRID, 10},
     {"population", "Bitzkeys", "spawned at the start, a random mix of species", 0, MAX_POPULATION, 10},
     {"grass_density", "Grass density", "percent of cells with grass at the start; regrowth scales too", 0, 100, 1},
     {"seed", "Random seed", "the same seed replays the same world; blank for a new one", 0, 999'999'999, 1, true, "random"},

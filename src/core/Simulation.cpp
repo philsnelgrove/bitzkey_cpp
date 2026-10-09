@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <execution>
+#include <numeric>
 #include <cstdio>
 #include <fstream>
 #include <limits>
@@ -31,6 +33,18 @@ std::array<std::vector<Shift>, 13> EXPERIENCES = {{
     {{Fear, -0.0133}, {Aggression, 0.0067}},      // defended
     {{Fear, 0.0067}},                             // panicked
 }};
+
+namespace {
+
+// Milliseconds since `since`, and `since` moved on to now: for Simulation::timings.
+double lap(std::chrono::steady_clock::time_point& since) {
+    const auto now = std::chrono::steady_clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(now - since).count();
+    since = now;
+    return ms;
+}
+
+}  // namespace
 
 namespace {
 
@@ -80,35 +94,40 @@ std::int64_t seed_offsets() { return static_cast<std::int64_t>(SIGHT_WITHIN[stat
 // Where young may be born around their mother, nearest first: the sides, then the corners, then each
 // ring further out, up to `reach`, its nearest cells first.
 const std::vector<Offset>& birth_offsets(int reach) {
-    static std::array<std::vector<Offset>, 16> cache;
-    auto& offsets = cache.at(static_cast<std::size_t>(reach));
-    if (offsets.empty()) {
-        offsets = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
-        std::vector<Offset> further;
-        for (int dy = -reach; dy <= reach; ++dy) {
-            for (int dx = -reach; dx <= reach; ++dx) {
-                if (std::max(std::abs(dx), std::abs(dy)) > 1) further.push_back({dx, dy});
+    static const std::array<std::vector<Offset>, 16> all = [] {  // built once, whatever thread asks first
+        std::array<std::vector<Offset>, 16> built;
+        for (int ring = 0; ring < 16; ++ring) {
+            std::vector<Offset>& offsets = built[static_cast<std::size_t>(ring)];
+            offsets = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}, {1, -1}, {1, 1}, {-1, 1}, {-1, -1}};
+            std::vector<Offset> further;
+            for (int dy = -ring; dy <= ring; ++dy) {
+                for (int dx = -ring; dx <= ring; ++dx) {
+                    if (std::max(std::abs(dx), std::abs(dy)) > 1) further.push_back({dx, dy});
+                }
             }
+            const auto key = [](const Offset& offset) {
+                return std::tuple{std::max(std::abs(offset.dx), std::abs(offset.dy)), offset.dx * offset.dx + offset.dy * offset.dy,
+                                  offset.dy, offset.dx};
+            };
+            std::sort(further.begin(), further.end(), [&](const Offset& a, const Offset& b) { return key(a) < key(b); });
+            offsets.insert(offsets.end(), further.begin(), further.end());
         }
-        const auto key = [](const Offset& offset) {
-            return std::tuple{std::max(std::abs(offset.dx), std::abs(offset.dy)), offset.dx * offset.dx + offset.dy * offset.dy,
-                              offset.dy, offset.dx};
-        };
-        std::sort(further.begin(), further.end(), [&](const Offset& a, const Offset& b) { return key(a) < key(b); });
-        offsets.insert(offsets.end(), further.begin(), further.end());
-    }
-    return offsets;
+        return built;
+    }();
+    return all.at(static_cast<std::size_t>(reach));
 }
 
 const std::vector<Offset>& nearby_offsets(int radius) {
-    static std::array<std::vector<Offset>, 16> cache;
-    auto& offsets = cache.at(static_cast<std::size_t>(radius));
-    if (offsets.empty()) {
-        for (int dx = -radius; dx <= radius; ++dx) {
-            for (int dy = -(radius - std::abs(dx)); dy <= radius - std::abs(dx); ++dy) offsets.push_back({dx, dy});
+    static const std::array<std::vector<Offset>, 16> all = [] {  // built once, whatever thread asks first
+        std::array<std::vector<Offset>, 16> built;
+        for (int reach = 0; reach < 16; ++reach) {
+            for (int dx = -reach; dx <= reach; ++dx) {
+                for (int dy = -(reach - std::abs(dx)); dy <= reach - std::abs(dx); ++dy) built[static_cast<std::size_t>(reach)].push_back({dx, dy});
+            }
         }
-    }
-    return offsets;
+        return built;
+    }();
+    return all.at(static_cast<std::size_t>(radius));
 }
 
 // Setting off in a direction, from north to west: the step in x and y, and what it then says it did.
@@ -302,6 +321,17 @@ Simulation::Simulation(Settings settings)
     YEAR_LENGTH = settings.year_length;
     if (width_ < 10 || height_ < 10) throw std::invalid_argument("World dimensions must both be at least 10 cells.");
     if (settings.population < 0) throw std::invalid_argument("Population cannot be negative.");
+    if (USE_GPU) {
+        std::string why;
+        gpu_ = gpu::BrainEngine::create(&why);
+        if (gpu_) {
+            gpu_status_ = "thinking on";
+            for (const gpu::DeviceInfo& device : gpu_->devices()) gpu_status_ += " " + device.name + ";";
+            gpu_status_.pop_back();
+        } else {
+            gpu_status_ = "thinking on the CPU: " + why;
+        }
+    }
     if (!(0 <= settings.grass_density && settings.grass_density <= 100)) {
         throw std::invalid_argument("Grass density must be between 0 and 100 percent.");
     }
@@ -455,6 +485,7 @@ Bitzkey& Simulation::add_agent(Dna dna, int x, int y, std::shared_ptr<Brain> bra
         if (!brain) brain = std::make_shared<Brain>(Brain::random(random_, depth));
         else if (brain->depth() != depth) brain = std::make_shared<Brain>(brain->resized(depth));
         agent->brain = std::move(brain);
+        if (gpu_) agent->gpu = gpu_->attach(*agent->brain);
     }
     ++next_identifier_;
     if (lineage_.size() <= static_cast<std::size_t>(agent->identifier)) lineage_.resize(agent->identifier + 1);
@@ -498,6 +529,12 @@ void Simulation::record() {
         history_bytes_ -= history_.back().bytes;
         history_.pop_back();
     }
+    if (gpu_) {  // brains change only on the GPUs, so there is no rewinding: the present alone, copied from nothing
+        history_.clear();
+        history_bytes_ = 0;
+        history_.push_back(Snapshot{turn_});
+        return;
+    }
     Snapshot held{turn_, deaths_, next_identifier_, {}, grass_, seeds_, random_.getstate(), insights_.snapshot()};
     held.agents.reserve(agents_.size());
     for (const auto& agent : agents_) {
@@ -507,7 +544,7 @@ void Simulation::record() {
     history_bytes_ += held.bytes;
     history_.push_back(std::move(held));
     while (history_.size() > 1 &&
-           ((HISTORY_TURNS < HISTORY_ALL && history_.size() > static_cast<std::size_t>(HISTORY_TURNS)) ||
+           (gpu_ || (HISTORY_TURNS < HISTORY_ALL && history_.size() > static_cast<std::size_t>(HISTORY_TURNS)) ||
             static_cast<double>(history_bytes_) > HISTORY_MEMORY * static_cast<double>(std::uintmax_t{1} << 30))) {
         history_bytes_ -= history_.front().bytes;
         history_.pop_front();
@@ -552,7 +589,9 @@ void Simulation::advance() {
     }
     if (end_reason() != EndReason::None) return;
     take_turn();
+    auto clock = std::chrono::steady_clock::now();
     record();
+    timings.record += lap(clock);
 }
 
 EndReason Simulation::end_reason() const {
@@ -605,6 +644,7 @@ void Simulation::update_climate() {
 }
 
 void Simulation::take_turn() {
+    auto clock = std::chrono::steady_clock::now();
     ++turn_;
     update_climate();
     index_cells();
@@ -613,6 +653,7 @@ void Simulation::take_turn() {
         if (!agent->died_turn && !agent->alive()) die(*agent, agent->hunger >= 100 ? "starved" : "killed");
     }
     std::vector<Bitzkey*> order = living();
+    std::vector<Bitzkey*> thinkers;
     plants_ = static_cast<int>(std::count_if(order.begin(), order.end(),
                                              [](const Bitzkey* agent) { return agent->species == Species::Plant; }));
     population_ = static_cast<int>(order.size()) - plants_;
@@ -661,8 +702,11 @@ void Simulation::take_turn() {
         agent->seen_failure *= SOCIAL_MEMORY;
         settle(*agent);
         if (agent->hunger >= 80) experience(*agent, Starving);
-        think(*agent);
+        thinkers.push_back(agent);
     }
+    timings.upkeep += lap(clock);
+    think_all(thinkers);
+    clock = std::chrono::steady_clock::now();
 
     germinate();
     wither_grass();
@@ -679,6 +723,7 @@ void Simulation::take_turn() {
     std::erase_if(agents_, [](const std::unique_ptr<Bitzkey>& agent) { return !agent; });
     insights_.decay();
     take_census();
+    timings.after += lap(clock);
 }
 
 void Simulation::take_census() {
@@ -836,19 +881,70 @@ static double learning_rate(const Bitzkey& agent) {
 void Simulation::learn(Bitzkey& agent, double target, bool replay) {
     // From its own last choice, by TD(lambda), so the choices before it share in what came of it. With
     // `replay`, it then re-learns from its most recent experiences, as many as its intellect allows,
-    // and remembers this one.
+    // and remembers this one. On the GPU, the lessons are queued, to be learnt in one batch.
     const double rate = learning_rate(agent);
-    agent.own_brain().learn_traced(agent.last_senses, agent.last_choice, target, rate, discount(agent), agent.feeling(Intellect));
-    if (!replay) return;
-    const std::size_t count = static_cast<std::size_t>(REPLAY_PER_INTELLECT * agent.inborn[Intellect]);
-    if (!count) return;
+    const std::size_t count = replay ? static_cast<std::size_t>(REPLAY_PER_INTELLECT * agent.inborn[Intellect]) : 0;
     const std::size_t first = agent.memories.size() > count ? agent.memories.size() - count : 0;
-    for (std::size_t index = first; index < agent.memories.size(); ++index) {
-        const Bitzkey::Memory& memory = agent.memories[index];
-        agent.own_brain().learn(memory.senses, memory.choice, memory.target, rate);
+    if (gpu_) {
+        if (rate > 0) {
+            const double decay = discount(agent) * (TRACE_DECAY + (SMART_TRACE_DECAY - TRACE_DECAY) * agent.feeling(Intellect));
+            queue_lesson(agent, agent.last_senses, agent.last_choice, target, rate, true, decay);
+            for (std::size_t index = first; count && index < agent.memories.size(); ++index) {
+                const Bitzkey::Memory& memory = agent.memories[index];
+                queue_lesson(agent, memory.senses, memory.choice, memory.target, rate, false, 0.0);
+            }
+        }
+    } else {
+        agent.own_brain().learn_traced(agent.last_senses, agent.last_choice, target, rate, discount(agent), agent.feeling(Intellect));
+        for (std::size_t index = first; count && index < agent.memories.size(); ++index) {
+            const Bitzkey::Memory& memory = agent.memories[index];
+            agent.own_brain().learn(memory.senses, memory.choice, memory.target, rate);
+        }
     }
+    if (!count) return;
     agent.memories.push_back({agent.last_senses, agent.last_choice, target});
     if (agent.memories.size() > count) agent.memories.erase(agent.memories.begin(), agent.memories.end() - static_cast<std::ptrdiff_t>(count));
+}
+
+void Simulation::queue_lesson(const Bitzkey& agent, const Senses& senses, int action, double target, double rate, bool traced,
+                              double decay) {
+    lesson_senses_.push_back(senses);
+    lessons_.push_back({agent.gpu, &lesson_senses_.back(), action, target, rate, traced, decay});
+}
+
+void Simulation::learn_queued() {
+    if (gpu_ && !lessons_.empty()) {
+        gpu_->learn(lessons_);
+    }
+    lessons_.clear();
+    lesson_senses_.clear();
+}
+
+void Simulation::sync(std::span<Bitzkey* const> agents) {
+    if (!gpu_) return;
+    std::vector<gpu::BrainEngine::Handle> handles;
+    std::vector<Brain*> into;
+    for (Bitzkey* agent : agents) {
+        if (agent->brain && agent->gpu >= 0 && agent->synced != turn_) {  // each once a turn: it learns no more till its end
+            agent->synced = turn_;
+            handles.push_back(agent->gpu);
+            into.push_back(&agent->own_brain());
+        }
+    }
+    if (!handles.empty()) gpu_->download(handles, into);
+}
+
+void Simulation::sync_brains() {
+    if (!gpu_) return;
+    std::vector<gpu::BrainEngine::Handle> handles;
+    std::vector<Brain*> into;
+    for (const auto& agent : agents_) {
+        if (agent->brain && agent->gpu >= 0) {
+            handles.push_back(agent->gpu);
+            into.push_back(&agent->own_brain());
+        }
+    }
+    if (!handles.empty()) gpu_->download(handles, into);
 }
 
 bool Simulation::dies_of_age(Bitzkey& agent) {
@@ -858,68 +954,141 @@ bool Simulation::dies_of_age(Bitzkey& agent) {
     return random_.random() < steepness * (agent.age - onset);
 }
 
-void Simulation::think(Bitzkey& agent) {
-    Sensed sensed = sense(agent);
-    Situation& situation = sensed.situation;
-    std::vector<int>& options = sensed.options;
-    if (travelled(agent.last_action)) {
-        if (situation.threat) {
-            experience(agent, Ambushed);
-        } else if ((situation.grass || situation.grass_here) && !(agent.last_senses[SenseGrassSeen] != 0.0)) {
-            experience(agent, Discovery);
+void Simulation::think(Bitzkey& agent) { think_all({&agent}); }
+
+void Simulation::think_all(const std::vector<Bitzkey*>& agents) {
+    auto clock = std::chrono::steady_clock::now();
+    // Every hunter first surveys its territory, so that all then sense the same world whatever their
+    // order; then all sense it, on every core at once, each writing only to itself.
+    std::for_each(std::execution::par, agents.begin(), agents.end(), [this](Bitzkey* agent) { survey(*agent); });
+    std::vector<Sensed> plans(agents.size());
+    std::vector<std::size_t> indices(agents.size());
+    std::iota(indices.begin(), indices.end(), std::size_t{0});
+    std::for_each(std::execution::par, indices.begin(), indices.end(),
+                  [&](std::size_t index) { plans[index] = sense(*agents[index], true); });
+    for (std::size_t index = 0; index < agents.size(); ++index) {  // all sense the world as it stands
+        Bitzkey* agent = agents[index];
+        const Sensed& sensed = plans[index];
+        if (travelled(agent->last_action)) {
+            if (sensed.situation.threat) {
+                experience(*agent, Ambushed);
+            } else if ((sensed.situation.grass || sensed.situation.grass_here) && !(agent->last_senses[SenseGrassSeen] != 0.0)) {
+                experience(*agent, Discovery);
+            }
         }
     }
-    const Values values = agent.brain->values(sensed.senses);
-    const double comfortable = comfort(agent, situation);
-    if (agent.has_last_senses) {
+    timings.sense += lap(clock);
+    std::vector<Values> values;  // one batch of brains
+    std::vector<double> comforts;
+    values.reserve(agents.size());
+    comforts.reserve(agents.size());
+    if (gpu_) {  // every brain at once, on the GPUs
+        std::vector<gpu::BrainEngine::Handle> handles;
+        std::vector<Senses> senses;
+        handles.reserve(agents.size());
+        senses.reserve(agents.size());
+        for (std::size_t index = 0; index < agents.size(); ++index) {
+            handles.push_back(agents[index]->gpu);
+            senses.push_back(plans[index].senses);
+        }
+        values.resize(agents.size());
+        gpu_->values(handles, senses, values);
+    } else {
+        for (std::size_t index = 0; index < agents.size(); ++index) values.push_back(agents[index]->brain->values(plans[index].senses));
+    }
+    for (std::size_t index = 0; index < agents.size(); ++index) comforts.push_back(comfort(*agents[index], plans[index].situation));
+    timings.think += lap(clock);
+    for (std::size_t index = 0; index < agents.size(); ++index) {
+        Bitzkey& agent = *agents[index];
+        if (!agent.has_last_senses) continue;
         // What came of its last choice: whatever raised its health (fullness counting with it) or its
         // mood was a success, whatever lowered them a failure, by how much; both may happen.
-        const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comfortable - agent.last_comfort;
-        double best = values[options[0]];
-        for (const int option : options) best = std::max(best, values[option]);
+        const double reward = agent.reward + wellbeing(agent) - agent.last_wellbeing + comforts[index] - agent.last_comfort;
+        const std::vector<int>& options = plans[index].options;
+        double best = values[index][options[0]];
+        for (const int option : options) best = std::max(best, values[index][option]);
         learn(agent, reward + discount(agent) * best, true);
     }
-    if (agent.panicked && situation.assailant) {
-        // Fight or flight, decided by fear: it breaks off and flees its assailant.
-        situation.hunter = situation.assailant;
-        situation.panic = true;
-        options = {Flee};
-    }
-    const auto odds = choice_odds(values, options);
-    double roll = random_.random();
-    int choice = options.back();
-    for (const auto& [option, chance] : odds) {
-        roll -= chance;
-        if (roll < 0) {
-            choice = option;
-            break;
+    learn_queued();  // on the GPUs, every brain's lessons at once
+    timings.learn += lap(clock);
+    std::vector<int> choices;
+    choices.reserve(agents.size());
+    for (std::size_t index = 0; index < agents.size(); ++index) {
+        Bitzkey& agent = *agents[index];
+        Situation& situation = plans[index].situation;
+        std::vector<int>& options = plans[index].options;
+        if (agent.panicked && situation.assailant) {
+            // Fight or flight, decided by fear: it breaks off and flees its assailant.
+            situation.hunter = situation.assailant;
+            situation.panic = true;
+            options = {Flee};
         }
+        const auto odds = choice_odds(values[index], options);
+        double roll = random_.random();
+        int choice = options.back();
+        for (const auto& [option, chance] : odds) {
+            roll -= chance;
+            if (roll < 0) {
+                choice = option;
+                break;
+            }
+        }
+        if (!situation.panic) insights_.record(agent.species, agent.profile(), options, choice);
+        agent.odds.fill(0.0);
+        agent.odds_offered = 0;
+        for (const auto& [option, chance] : odds) {
+            agent.odds[option] = chance;
+            agent.odds_offered |= 1U << option;
+        }
+        agent.has_last_senses = true;
+        agent.last_senses = plans[index].senses;
+        agent.last_choice = choice;
+        agent.last_wellbeing = wellbeing(agent);
+        agent.last_comfort = comforts[index];
+        agent.reward = 0.0;
+        agent.assailant.reset();  // the chance to strike back, or need to flee, passes with this choice
+        agent.panicked = false;
+        agent.alarm.reset();
+        agent.herd_assailant.reset();
+        choices.push_back(choice);
     }
-    if (!situation.panic) insights_.record(agent.species, agent.profile(), options, choice);
-    agent.odds.fill(0.0);
-    agent.odds_offered = 0;
-    for (const auto& [option, chance] : odds) {
-        agent.odds[option] = chance;
-        agent.odds_offered |= 1U << option;
+    if (gpu_) {  // the brains of all about to breed, and their mates', back from the GPUs at once
+        std::vector<Bitzkey*> breeding;
+        for (std::size_t index = 0; index < agents.size(); ++index) {
+            if (choices[index] == Breed && plans[index].situation.mate) {
+                breeding.push_back(agents[index]);
+                breeding.push_back(plans[index].situation.mate);
+            }
+        }
+        sync(breeding);
     }
-    agent.has_last_senses = true;
-    agent.last_senses = sensed.senses;
-    agent.last_choice = choice;
-    agent.last_wellbeing = wellbeing(agent);
-    agent.last_comfort = comfortable;
-    agent.reward = 0.0;
-    agent.assailant.reset();  // the chance to strike back, or need to flee, passes with this choice
-    agent.panicked = false;
-    agent.alarm.reset();
-    agent.herd_assailant.reset();
-    act(agent, choice, situation);
+    timings.choose += lap(clock);
+    for (std::size_t index = 0; index < agents.size(); ++index) {  // each in turn, in the world as those before it left it
+        if (agents[index]->alive()) act(*agents[index], choices[index], plans[index].situation);
+    }
+    learn_witnessed();
+    timings.act += lap(clock);
 }
 
-Simulation::Sensed Simulation::sense(Bitzkey& agent) {
+void Simulation::learn_witnessed() {
+    for (const Witnessed& seen : witnessed_) {
+        if (!seen.observer->brain || seen.rate <= 0) continue;  // not since dead
+        if (gpu_) queue_lesson(*seen.observer, seen.senses, seen.choice, seen.outcome, seen.rate, false, 0.0);
+        else seen.observer->own_brain().learn(seen.senses, seen.choice, seen.outcome, seen.rate);
+    }
+    witnessed_.clear();
+    learn_queued();
+}
+
+void Simulation::survey(Bitzkey& agent) {
     if (agent.species == Species::Predator || agent.species == Species::Omnivore) {
         std::tie(agent.rivalry, agent.own_rivalry) = territory(agent);
         std::tie(agent.hunts_grazers, agent.hunts_omnivores) = prey_switching(agent);
     }
+}
+
+Simulation::Sensed Simulation::sense(Bitzkey& agent, bool surveyed) {
+    if (!surveyed) survey(agent);
     Sensed sensed;
     Situation& s = sensed.situation;
     const std::vector<Bitzkey*> neighbors = nearby(agent, 1);
@@ -1113,10 +1282,14 @@ double Simulation::comfort(const Bitzkey& agent, const Situation& s) const {
 void Simulation::die(Bitzkey& agent, std::string_view cause) {
     if (agent.brain && agent.has_last_senses) {
         const double penalty = cause == "old age" ? 0.0 : DEATH_PENALTY;
-        learn(agent, agent.reward + wellbeing(agent) - agent.last_wellbeing - penalty);
+        if (!gpu_) learn(agent, agent.reward + wellbeing(agent) - agent.last_wellbeing - penalty);  // on the GPU, a brain about to go learns nothing that lasts
         if (cause != "old age") witness(agent, -DEATH_PENALTY);  // its herd sees it fail
     }
     agent.brain.reset();
+    if (gpu_ && agent.gpu >= 0) {
+        gpu_->detach(agent.gpu);
+        agent.gpu = -1;
+    }
     agent.womb.clear();  // the young it carried die with it
     agent.due_turn.reset();
     agent.health = std::min(agent.health, 0.0);  // whatever the cause, a recorded death leaves it dead
@@ -1143,6 +1316,10 @@ void Simulation::die(Bitzkey& agent, std::string_view cause) {
 void Simulation::act(Bitzkey& agent, int action, Situation& s) {
     switch (action) {
         case Eat:
+            if (grass_cell(agent.x, agent.y) <= 0) {  // another got here first
+                agent.last_action = "found it eaten";
+                break;
+            }
             grass_cell(agent.x, agent.y) -= 1;
             agent.nourish(GRASS_MEAL * agent.grazing);
             if (agent.last_action == "foraged") experience(agent, ForagedMeal);
@@ -1173,24 +1350,38 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
             move_toward(agent, s.suitor->x, s.suitor->y);
             agent.last_action = "courted";
             break;
-        case Breed:
+        case Breed: {
+            Bitzkey& mate = *s.mate;
+            if (!(mate.alive() && mate.can_breed() && agent.can_breed() && distance(mate.x, mate.y, agent.x, agent.y) <= 1)) {
+                agent.last_action = "was spurned";  // its mate died, moved off or bred with another first
+                break;
+            }
             agent.last_action = "mated";  // before breeding, so a parent that dies of it says so
-            breed(agent, *s.mate);
+            breed(agent, mate);
             break;
+        }
         case Hunt: {
             Bitzkey& quarry = *s.quarry;
             move_toward(agent, quarry.x, quarry.y);
             agent.last_action = "hunted";
-            if (distance(quarry.x, quarry.y, agent.x, agent.y) <= 1) {
+            if (quarry.alive() && distance(quarry.x, quarry.y, agent.x, agent.y) <= 1) {
                 attack(agent, quarry);
                 if (agent.alive()) agent.last_action = "pounced";
             }
             break;
         }
         case Attack:
+            if (!(s.prey->alive() && distance(s.prey->x, s.prey->y, agent.x, agent.y) <= 1)) {
+                agent.last_action = "missed";  // it fell or got away first
+                break;
+            }
             attack(agent, *s.prey);
             break;
         case Defend:
+            if (!(s.defend_target->alive() && distance(s.defend_target->x, s.defend_target->y, agent.x, agent.y) <= 1)) {
+                agent.last_action = "missed";
+                break;
+            }
             defend(agent, *s.defend_target, s.for_herd);
             break;
         case Herd:
@@ -1229,7 +1420,7 @@ void Simulation::act(Bitzkey& agent, int action, Situation& s) {
 
 void Simulation::browse(Bitzkey& agent, Bitzkey& plant) {
     move_toward(agent, plant.x, plant.y);
-    if (distance(plant.x, plant.y, agent.x, agent.y) > 1 || plant.cooldown) {
+    if (!plant.alive() || distance(plant.x, plant.y, agent.x, agent.y) > 1 || plant.cooldown) {
         agent.last_action = "sought plants";
         return;
     }
@@ -1245,6 +1436,10 @@ void Simulation::browse(Bitzkey& agent, Bitzkey& plant) {
 }
 
 void Simulation::uproot(Bitzkey& agent, Bitzkey& plant) {
+    if (!plant.alive()) {  // another got to it first
+        agent.last_action = "sought plants";
+        return;
+    }
     const double meal = (PLANT_MEAL + PLANT_MEAL_FOR_SIZE * plant.physique(Size)) * agent.browsing * plant_yield(plant);
     agent.nourish(meal * UPROOT_MEALS);
     plant.health -= UPROOT_BITE;
@@ -1273,8 +1468,8 @@ void Simulation::feast(Bitzkey& agent, Bitzkey& corpse) {
     // Go to the fresh kill and, once alongside, eat it whole: FRESH_KILL_MEALS times the meal of
     // making the kill. It isn't scavenging, and nothing is left: the body is gone at the turn's end.
     move_toward(agent, corpse.x, corpse.y);
-    if (distance(corpse.x, corpse.y, agent.x, agent.y) > 1) {
-        agent.last_action = "sought a kill";
+    if (distance(corpse.x, corpse.y, agent.x, agent.y) > 1 || !fresh(corpse) || corpse.meat <= 0) {
+        agent.last_action = "sought a kill";  // out of reach, or already eaten
         return;
     }
     agent.nourish(FRESH_KILL_MEALS * (KILL_MEAL + KILL_MEAL_FOR_SIZE * corpse.physique(Size)));
@@ -1413,6 +1608,8 @@ void Simulation::breed(Bitzkey& first, Bitzkey& second) {
                                          std::min(costs[1], std::max(0.0, 100 - second.hunger)) * second.stomach};
     const double given = py_sum(gifts);
     const int generation = std::max(first.generation, second.generation) + 1;
+    Bitzkey* couple[] = {&first, &second};
+    sync(couple);  // their brains as they now are, to inherit from
     for (int young = 0; young < litter; ++young) {
         // The child's mind starts at the average of its parents' current minds, mutated, and its
         // dot is written from that mind, so experience is inherited and shows. Its brain, a mix of
@@ -1639,7 +1836,7 @@ void Simulation::witness(const Bitzkey& actor, double outcome) {
             continue;
         }
         const double heed = observer->feeling(Empathy) * observer->feeling(Intellect);
-        observer->own_brain().learn(actor.last_senses, actor.last_choice, outcome, LEARNING_RATE * heed * SOCIAL_LEARNING);
+        witnessed_.push_back({observer, actor.last_senses, actor.last_choice, outcome, LEARNING_RATE * heed * SOCIAL_LEARNING});  // learnt at the end
         observer->reward += SOCIAL_MOOD * heed * outcome;
         if (outcome > 0) observer->seen_success = 1.0;
         else observer->seen_failure = 1.0;

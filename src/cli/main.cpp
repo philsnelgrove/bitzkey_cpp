@@ -40,7 +40,9 @@ void usage() {
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
         "  --brain-report FILE         write the brain report at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
-        "  --rules                     list the advanced rules, with their defaults and limits\n";
+        "  --rules                     list the advanced rules, with their defaults and limits\n"
+        "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
+        "  --profile                   say at the end how long each part of a turn took\n";
 }
 
 // Every rule, one line each, as the Python version lists them:
@@ -76,6 +78,7 @@ std::string trace_line(const Simulation& world) {
 int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
+    bool profile = false;
     std::optional<std::string> trace_path, export_path, report_path;
     rules::Values changes;
     try {
@@ -88,6 +91,14 @@ int main(int argc, char** argv) {
             if (flag == "--rules") {
                 list_rules();
                 return 0;
+            }
+            if (flag == "--profile") {  // where each turn's time goes, at the end
+                profile = true;
+                continue;
+            }
+            if (flag == "--gpu") {  // think on the GPUs: the USE_GPU rule
+                changes["USE_GPU"] = 1;
+                continue;
             }
             if (index + 1 >= argc) throw std::invalid_argument("missing value for " + flag);
             const std::string value = argv[++index];
@@ -138,6 +149,7 @@ int main(int argc, char** argv) {
 
     try {
         Simulation world(settings);
+        if (USE_GPU) std::printf("%s\n", world.gpu_status().c_str());
         std::ofstream trace;
         if (trace_path) {
             trace.open(*trace_path);
@@ -172,6 +184,14 @@ int main(int argc, char** argv) {
         const double total = std::chrono::duration<double>(Clock::now() - start).count();
         std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn(), total, total * 1000 / std::max(1, world.turn()));
 
+        if (profile) {
+            const Simulation::Timings& took = world.timings;
+            const double each = 1.0 / std::max(1, world.turn());
+            std::printf("ms a turn: upkeep %.2f  sense %.2f  think %.2f  learn %.2f  choose %.2f  act %.2f  after %.2f  record %.2f\n",
+                        took.upkeep * each, took.sense * each, took.think * each, took.learn * each, took.choose * each,
+                        took.act * each, took.after * each, took.record * each);
+        }
+        world.sync_brains();  // the brains as they now are, when they think on the GPUs
         const auto alive = world.living();
         if (export_path) {
             std::ofstream(*export_path) << export_bitzkeys(std::vector<const Bitzkey*>(alive.begin(), alive.end())) << '\n';

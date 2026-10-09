@@ -438,6 +438,7 @@ Bitzkey* App::selected() const {
 }
 
 void App::toggle_export() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     Bitzkey* agent = selected();
     if (!agent) {
         say("Select a Bitzkey first, then add it to export.");
@@ -455,6 +456,7 @@ void App::toggle_export() {
 }
 
 std::pair<std::vector<nlohmann::ordered_json>, int> App::chosen_records() const {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     // The living as they are now, the dead as they were when added (their brain is gone).
     std::unordered_map<int, const Bitzkey*> agents;
     for (const auto& agent : simulation_->agents()) agents[agent->identifier] = agent.get();
@@ -489,6 +491,7 @@ void App::add_to_catalog(const std::vector<nlohmann::ordered_json>& entries, con
 }
 
 void App::catalog_selected() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     const Bitzkey* agent = selected();
     if (!agent || !agent->alive()) {
         say("Select a living Bitzkey first, then add it to the catalog.");
@@ -500,6 +503,7 @@ void App::catalog_selected() {
 }
 
 void App::catalog_picked() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     if (graph_.selection().empty()) {
         say("Pick Bitzkeys on the graph first, then add them to the catalog.");
         return;
@@ -521,6 +525,7 @@ void App::catalog_picked() {
 }
 
 void App::catalog_export_list() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     std::unordered_map<int, const Bitzkey*> agents;
     for (const auto& agent : simulation_->agents()) agents[agent->identifier] = agent.get();
     std::vector<nlohmann::ordered_json> entries;
@@ -560,6 +565,7 @@ void App::export_chosen(bool to_file) {
 }
 
 void App::export_graph(bool to_file) {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     // The Bitzkeys selected in the colour graph, or everyone alive if none are. The living go with
     // brain and temperament; the dead keep no brain, and the long dead only their genome.
     const std::set<int>& chosen = graph_.selection();
@@ -667,6 +673,7 @@ void App::select(int identifier) {
 }
 
 bool App::renew() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     std::vector<const Bitzkey*> chosen;
     for (const Bitzkey* agent : simulation_->living()) {
         if (graph_.selection().contains(agent->identifier)) chosen.push_back(agent);
@@ -785,6 +792,7 @@ void App::draw_exemplars(Canvas& canvas) {
 }
 
 void App::save_report() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     const auto alive = simulation_->living();
     const std::vector<const Bitzkey*> animals(alive.begin(), alive.end());
     const std::string name = format("brain-report-turn-%05d.txt", simulation_->turn());
@@ -808,6 +816,7 @@ void App::copy(const std::string& text, const std::string& what) {
 }
 
 void App::copy_selected() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
     const Bitzkey* agent = selected();
     if (!agent) {
         say("Click a Bitzkey first, then press C to copy its genome.");
@@ -922,10 +931,20 @@ void App::draw_header(Canvas& canvas) {
     label.x = canvas.width() - label.w - UI(24);
     canvas.text(font, status, colour, label.x, UI(20));
     const std::string speed = std::string("SPEED ") + SPEED_LABELS[static_cast<std::size_t>(speed_)];
+    Rect speed_box{};
     canvas.text_at(UI.font(Face::Sans, 12), speed, {149, 170, 150}, [&](Rect& box) {
         box.x = label.x - box.w - UI(20);
         box.y = UI(23);
+        speed_box = box;
     });
+    if (!simulation_->gpu_status().empty()) {  // where the brains think, when the GPU was asked for
+        const std::string where = upper(simulation_->gpu_status());
+        canvas.text_at(UI.font(Face::Sans, 12), fit(where, UI(420)), simulation_->on_gpu() ? Color{131, 205, 143} : Color{238, 183, 110},
+                       [&](Rect& box) {
+                           box.x = speed_box.x - box.w - UI(24);
+                           box.y = UI(23);
+                       });
+    }
 }
 
 void App::draw_world(Canvas& canvas) {

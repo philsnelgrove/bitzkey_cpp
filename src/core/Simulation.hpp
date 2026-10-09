@@ -17,6 +17,7 @@
 #include "core/Census.hpp"
 #include "core/Exchange.hpp"
 #include "core/Genome.hpp"
+#include "core/GpuBrains.hpp"
 #include "core/Insights.hpp"
 #include "core/PyRandom.hpp"
 
@@ -26,11 +27,12 @@ constexpr int GRID_SIZE = 100;
 constexpr int INITIAL_POPULATION = 90;
 constexpr double GRASS_DENSITY = 50;      // percent of cells that start with grass
 inline double GRASS_REGROWTH = 0.004;  // share of the starting grass that grows back each turn
-constexpr int MAX_POPULATION = 600;       // the most Bitzkeys spawned at the start
+constexpr int MAX_POPULATION = 20000;     // the most Bitzkeys spawned at the start
 inline int CROWDING_RADIUS = 4;
 inline int CROWDING_LIMIT = 10;
 constexpr std::array<int, 2> SPAWN_GROUP = {3, 5};
-constexpr int MAX_IMPORTED = MAX_POPULATION / SPAWN_GROUP[1];
+constexpr int MAX_IMPORTED = 120;  // imported Bitzkeys, each spawning a group of its own
+constexpr int MAX_GRID = 1000;     // the widest and tallest a world can be, in cells
 inline int SPAWN_SPREAD = 2;
 inline int SPAWN_AT_HOME = 1;  // 1: a group appears in rows whose usual temperature is its home (the nearest, if none); 0: anywhere
 // The history is kept in memory: the world at each of the latest HISTORY_TURNS turns, whole, so the map
@@ -38,6 +40,10 @@ inline int SPAWN_AT_HOME = 1;  // 1: a group appears in rows whose usual tempera
 // large, fewer are kept, so they fit HISTORY_MEMORY gigabytes; the newest turn is always kept. Older turns live on
 // only in the colour graph.
 inline int HISTORY_TURNS = 100;
+// 1: every brain lives on the GPUs, thinking and learning there in batches, in floats; with brains
+// that change only there, the history keeps only the present. 0: on the CPU, exactly as the Python
+// version. Read when a world is made.
+inline int USE_GPU = 0;
 constexpr int HISTORY_ALL = 5000;  // at this many history turns or more, every turn is kept, so far as the memory allows
 inline double HISTORY_MEMORY = 1.0;  // GB, near enough
 constexpr std::uintmax_t AGENT_BYTES = 1000;  // what a Bitzkey takes in the history, besides its brain, near enough
@@ -277,6 +283,8 @@ struct Bitzkey {
         double target = 0.0;
     };
     std::vector<Memory> memories;  // its most recent experiences, newest last
+    int gpu = -1;  // its brain's handle on the GPUs, when the world thinks there
+    int synced = -1;  // the turn its brain was last brought back from them
     struct Young {  // conceived at mating, born at the end of the gestation
         Dna dna = 0;
         Mind mind{};
@@ -450,8 +458,26 @@ public:
         Situation situation;
     };
 
-    Sensed sense(Bitzkey& agent);
-    void think(Bitzkey& agent);
+    // A hunter's view of its territory: how crowded with rivals, and whether its prey are common enough to hunt.
+    void survey(Bitzkey& agent);
+    Sensed sense(Bitzkey& agent, bool surveyed = false);  // surveying first, unless it already has this turn
+    void think(Bitzkey& agent);  // one animal senses, learns, chooses and acts
+    // Animals think at once, in phases, so that their brains can be worked as one batch: all sense the
+    // world as it stands; all their brains value the actions open to them; all learn from their
+    // previous decisions; all choose; then each acts in turn, finding the world as those before it left
+    // it. What herd-mates learn from watching is learnt last, all together.
+    void think_all(const std::vector<Bitzkey*>& agents);
+    void learn_witnessed();  // herd-mates learn from what they saw this turn, each brain in the order it saw it
+    // Bring the living's brains back from the GPUs into their CPU copies, before anything reads their
+    // weights: an export, the catalog, the brain report. Nothing to do on the CPU.
+    void sync_brains();
+    bool on_gpu() const { return gpu_ != nullptr; }
+    // Milliseconds spent on each part of the turns so far, for finding where the time goes.
+    struct Timings {
+        double upkeep = 0, sense = 0, think = 0, learn = 0, choose = 0, act = 0, after = 0, record = 0;
+    };
+    Timings timings;
+    const std::string& gpu_status() const { return gpu_status_; }  // which GPUs think, or why none do
     void act(Bitzkey& agent, int action, Situation& situation);
     double comfort(const Bitzkey& agent, const Situation& situation) const;
     double wellbeing(const Bitzkey& agent) const;
@@ -601,6 +627,21 @@ private:
     std::vector<double> growth_;       // each row's share of medium, where grass grows
     std::vector<int> grass_rows_;      // the rows where grass grows at all
     std::vector<double> grass_reach_;  // their growth added up, row by row, for sowing
+    struct Witnessed {  // what a herd-mate saw this turn, to learn from at its end
+        Bitzkey* observer;
+        Senses senses;
+        int choice;
+        double outcome, rate;
+    };
+    std::vector<Witnessed> witnessed_;
+    std::unique_ptr<gpu::BrainEngine> gpu_;  // the GPUs every brain lives on, when the world thinks there
+    std::string gpu_status_;
+    std::deque<Senses> lesson_senses_;  // what each queued lesson sensed, kept still while it waits
+    std::vector<gpu::BrainEngine::Lesson> lessons_;  // lessons for the GPUs, learnt in one batch
+    void queue_lesson(const Bitzkey& agent, const Senses& senses, int action, double target, double rate, bool traced,
+                      double decay);
+    void learn_queued();
+    void sync(std::span<Bitzkey* const> agents);  // these brains back from the GPUs, each once a turn
     std::deque<Snapshot> history_;      // every turn kept, oldest first
     std::uintmax_t history_bytes_ = 0;  // the memory they take, near enough
     int frontier_ = 0;

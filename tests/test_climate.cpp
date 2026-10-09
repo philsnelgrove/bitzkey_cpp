@@ -520,6 +520,8 @@ TEST_CASE("herd-mates in sight learn from a death and feel it, by empathy and in
     const Brain before = *witness.brain;
     dying.health = 0;
     simulation.die(dying, "froze");
+    CHECK(*witness.brain == before);  // what the herd saw is learnt at the turn's end, with the rest
+    simulation.learn_witnessed();
     Brain expected = before;
     expected.learn(dying.last_senses, dying.last_choice, -DEATH_PENALTY, LEARNING_RATE);
     CHECK(*witness.brain == expected);
@@ -575,4 +577,26 @@ TEST_CASE("groups spawn where their home temperature is usual") {
     std::iota(equator.begin(), equator.end(), 40);
     CHECK(empty.home_rows(Hot) == equator);
     CHECK(empty.home_rows(VeryCold).size() == 36);  // the arctic, north and south
+}
+
+TEST_CASE("an action finds the world as those before it left it, and a stale plan fails softly") {
+    Simulation simulation = world_at(240);
+    Bitzkey& grazer = simulation.add_agent(encode_dna(Species::Grazer), 50, 50);
+    Bitzkey& prey = simulation.add_agent(encode_dna(Species::Grazer), 50, 51);
+    Bitzkey& predator = simulation.add_agent(encode_dna(Species::Predator), 51, 50);
+    simulation.index_cells();
+    Simulation::Situation situation;
+    simulation.act(grazer, Eat, situation);  // its grass was eaten before it got to it
+    CHECK(grazer.last_action == "found it eaten");
+    prey.health = 0;
+    simulation.die(prey, "killed");
+    situation.prey = &prey;
+    simulation.act(predator, Attack, situation);  // it fell to another first
+    CHECK(predator.last_action == "missed");
+    Bitzkey& mate = simulation.add_agent(encode_dna(Species::Grazer), 49, 50);
+    simulation.index_cells();
+    mate.cooldown = 5;  // it bred with another first
+    situation.mate = &mate;
+    simulation.act(grazer, Breed, situation);
+    CHECK((grazer.last_action == "was spurned" && grazer.womb.empty()));
 }

@@ -21,6 +21,13 @@ FetchContent_Declare(nlohmann_json
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# The Vulkan headers, for the GPU brains: Vulkan itself is loaded when the program runs, so neither
+# building nor running needs the Vulkan SDK.
+FetchContent_Declare(vulkan_headers
+    URL https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.296.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(vulkan_headers)
+
 # doctest for the unit tests.
 FetchContent_Declare(doctest
     URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.12.tar.gz
@@ -47,9 +54,10 @@ add_library(bitzkey_core STATIC
     src/core/Simulation.cpp
     src/core/Rules.cpp
     src/core/Catalog.cpp
+    src/core/GpuBrains.cpp
 )
 target_include_directories(bitzkey_core PUBLIC src)
-target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json PRIVATE Vulkan::Headers)
 
 # The window app: SDL2 for the window, input and clipboard, SDL_ttf for text. The official
 # prebuilt Visual C++ packages are fetched; their DLLs are copied beside the executable.
@@ -110,6 +118,7 @@ add_executable(bitzkey_tests
     tests/test_rules.cpp
     tests/test_climate.cpp
     tests/test_catalog.cpp
+    tests/test_gpu.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_core doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

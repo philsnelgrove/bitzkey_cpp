@@ -108,7 +108,7 @@ them in the same format as this Python loop, so the two lists can be compared li
 ..\bitzkey\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, '../bitzkey'); from tools import Rules as R; [print(f'{r.key}  {r.group}  {R.shown(r, R.get(r.key))}  {R.shown(r, r.minimum)}..{R.shown(r, r.maximum)} by {R.shown(r, r.step)}  {r.label}: {r.hint}') for r in R.RULES]"
 ```
 
-Both versions share every rule, including food-aware breeding, prey switching, light competition
+Both versions share every rule, including the two-part turn in which every animal senses, thinks and chooses at once and then acts in turn, food-aware breeding, prey switching, light competition
 between plants, the rewind history of the latest 100 turns held in memory within about 1 GB (both advanced rules, with a memory warning), the colour graph remembering the dead by colour alone, groups spawning in their home zone, the brain report's climate probes, faster learning for the clever (a boosted learning rate, replayed experiences and longer traces), the catalog, the exemplar cards beside the map with their menus of 43 statistics, a new world with the Bitzkeys picked on the graph, map zoom with Bitzkeys that zoom along, marquee and Ctrl-click selection with reticles, a graph zoom pinned to the present, seasons turning in every zone at once, movement trails, and gestation with larger litters for small bodies (see the Python README). Seeds 1, 2 (with a population cap, custom mutation rates, sparse grass and a 60 x 50 world) and
 7 have been checked identical over 150 to 300 turns. Seed 7 has also been checked identical over 300 turns with ten
 advanced rules changed, among them a territory, a diet, an experience, the seed reach and the brain's temperature.
@@ -120,11 +120,49 @@ identical over 400 turns, more than two years.
 The benchmark world used for the Python optimisations (seed 1, 100 x 100, turns 121 to 150, about
 1,500 to 2,300 animals): Python 286 ms per turn, C++ 12.5 ms per turn, about 23 times faster.
 
+## Thinking on the GPU
+
+Every brain can think and learn on the GPU instead of the CPU, through Vulkan compute, on any make
+of GPU. Turn on the advanced rule Think on the GPU (World group), or run the command-line tool with
+`--gpu`. The header then says which GPUs are thinking, or why none could and the CPU carries on.
+
+- Every brain lives in the GPUs' own memory, in pools of one depth, shared out among all the GPUs
+  found; each turn only the senses go up and only the values come back. All the brains value
+  their options in one batch, then learn in one batch: each its TD(lambda) lesson and replays, in
+  order, and at the turn's end what its herd taught it.
+- On the GPU a brain works in floats, not doubles, so a run differs from the same seed on the CPU
+  and from one GPU to another: the CPU stays the exact, Python-matched reference, and the unit tests
+  check the GPU's thinking and learning against it.
+- A brain's copy on the CPU is brought back only when something reads its weights: breeding, an
+  export, the catalog, the brain report.
+- With brains changing only on the GPU, the history keeps only the present: there is no rewinding.
+- Vulkan is loaded when a world asks for the GPU, so the app runs without it. Discrete GPUs are used
+  when there are any, else integrated ones. `BITZKEY_GPU=off` keeps the CPU; `BITZKEY_GPU=all` adds
+  integrated GPUs beside discrete ones.
+
+The animals also sense the world on every CPU core at once, each writing only to itself, and a world
+thinking on the GPU keeps no history to copy.
+
+On an RTX 5070 Ti Laptop GPU: a 100 x 100 world of a few hundred animals ran at 4.9 ms a turn on
+the GPU against 48.7 ms on the CPU; a 400 x 400 world of about 3,000 animals at 30 ms against 409 ms;
+and a 700 x 700 world of about 8,000 animals (11,000 Bitzkeys with the plants) at 94 ms, about 11
+turns a second. Worlds may be up to 1,000 x 1,000 cells, starting with up to 20,000 Bitzkeys.
+
+To see where the time goes, run the command-line tool with `--profile`, which prints each part of a
+turn's average (upkeep, sense, think, learn, choose, act, after, record), and set
+`BITZKEY_GPU_PROFILE=1` to have the GPU's own share broken down as the program ends.
+
+The shaders are in `shaders/`, and are compiled ahead of time into `src/core/shaders/` so that
+building needs no Vulkan SDK; after changing one, run `.\tools\compile_shaders.ps1`, which needs the
+SDK's `glslc`.
+
 ## Layout
 
 - `src/core/`: the simulation: `PyRandom` (Python's generator), `PyFormat` (Python's number
   conventions), `Genome`, `Brain`, `Insights`, `Census`, `Exchange`, `Simulation`, `Rules` (the
-  advanced rules).
+  advanced rules), `GpuBrains` (brains on the GPUs, through Vulkan).
+- `shaders/`: the GPU shaders, and
+  `src/core/shaders/` their compiled SPIR-V.
 - `src/cli/`: the command-line runner.
 - `src/ui/`: the window app: `Canvas` (software drawing with pygame's shapes), `Window`, `Ui`
   (scaling and fonts), `Look`, `Dialog`, `Setup`, `Advanced`, `Inspector` (a Bitzkey's details, for the
