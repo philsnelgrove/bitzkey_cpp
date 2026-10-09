@@ -43,6 +43,7 @@ void usage() {
         "                              beside it (FILE.summary.txt)\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
         "  --brain-report FILE         write the brain report at the end\n"
+        "  --death-report FILE         write the death report, and the first thinking animal's brain inspected, at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
         "  --rules                     list the advanced rules, with their defaults and limits\n"
         "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
@@ -202,7 +203,7 @@ int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
     bool profile = false;
-    std::optional<std::string> trace_path, export_path, report_path, diagnose_path;
+    std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path;
     rules::Values changes;
     try {
         for (int index = 1; index < argc; ++index) {
@@ -240,6 +241,7 @@ int main(int argc, char** argv) {
             else if (flag == "--diagnose") diagnose_path = value;
             else if (flag == "--export") export_path = value;
             else if (flag == "--brain-report") report_path = value;
+            else if (flag == "--death-report") deaths_path = value;
             else if (flag == "--rule") {
                 const std::size_t equals = value.find('=');
                 const std::string key = value.substr(0, equals);
@@ -333,6 +335,16 @@ int main(int argc, char** argv) {
         if (report_path) {
             const std::vector<const Bitzkey*> animals(alive.begin(), alive.end());
             std::ofstream(*report_path) << brain_report(world.turn(), animals, world.insights());
+        }
+        if (deaths_path) {
+            std::ofstream file(*deaths_path);
+            for (const std::string& line : death_report_lines(world.death_causes())) file << line << '\n';
+            for (const Bitzkey* agent : alive) {  // and the first thinking animal's brain, as inspected
+                if (!agent->brain) continue;
+                file << "\n#" << agent->identifier << '\n';
+                for (const std::string& line : brain_matrix_lines(*agent)) file << line << '\n';
+                break;
+            }
         }
     } catch (const std::exception& error) {
         std::cerr << "bitzkey_cli: " << error.what() << '\n';

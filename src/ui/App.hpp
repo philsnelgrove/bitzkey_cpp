@@ -13,6 +13,7 @@
 #include "ui/Canvas.hpp"
 #include "ui/ColourGraph.hpp"
 #include "ui/Dialog.hpp"
+#include "ui/Report.hpp"
 #include "ui/Window.hpp"
 
 namespace bitzkey::ui {
@@ -101,6 +102,8 @@ private:
                         const std::string& skipped = "");
     void catalog_selected();
     void catalog_picked();
+    void open_death_report();  // every death so far, by cause and species
+    void inspect_brains();     // pause, and show the selected Bitzkey's choices in each standard situation
     void browse_catalog();  // look through the catalog, importing and exporting nothing
     void catalog_export_list();
     void new_world();
@@ -131,6 +134,9 @@ private:
     ColourGraph graph_;
     std::vector<ExportEntry> export_list_;
     std::optional<Dialog> dialog_;
+    std::optional<Report> report_;        // the death report or a brain inspected, while open
+    std::optional<Rect> deaths_button_;   // on the insights panel
+    std::optional<Rect> brains_button_;   // beside the selected Bitzkey's heading
     std::string dialog_kind_;
     std::optional<Rect> add_button_;
     std::optional<Rect> catalog_button_;

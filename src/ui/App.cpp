@@ -177,7 +177,9 @@ App::Result App::run() {
         while (SDL_PollEvent(&event)) {
             window_.handle(event);
             if (event.type == SDL_QUIT) return Result::Quit;
-            if (dialog_) {
+            if (report_) {
+                if (report_->handle(event, window_.width(), window_.height())) report_.reset();
+            } else if (dialog_) {
                 if (const auto choice = dialog_->handle(event, window_.width(), window_.height())) {
                     Dialog current = *dialog_;
                     if (answer(*choice)) {
@@ -281,7 +283,7 @@ App::Result App::run() {
 void App::tick(double seconds) {
     // While playing, advance at the chosen speed, and stop to show the graph once the run has ended.
     elapsed_ += seconds;
-    if (!playing_ || dialog_) return;
+    if (!playing_ || dialog_ || report_) return;
     if (simulation_->ended()) {
         finish();
         return;
@@ -337,7 +339,11 @@ void App::click(int x, int y) {
             return;
         }
     }
-    if (add_button_ && add_button_->contains(x, y)) {
+    if (deaths_button_ && deaths_button_->contains(x, y)) {
+        open_death_report();
+    } else if (brains_button_ && brains_button_->contains(x, y)) {
+        inspect_brains();
+    } else if (add_button_ && add_button_->contains(x, y)) {
         toggle_export();
     } else if (catalog_button_ && catalog_button_->contains(x, y)) {
         catalog_selected();
@@ -931,6 +937,28 @@ void App::draw(Canvas& canvas) {
         graph_.draw(canvas, *simulation_, note);
     }
     if (dialog_) dialog_->draw(canvas);
+    if (report_) report_->draw(canvas);
+}
+
+void App::open_death_report() {
+    report_.emplace("Death report",
+                    format("Every death in this world up to turn %d: %d in all, by cause and species.", simulation_->turn(),
+                           simulation_->deaths()),
+                    death_report_lines(simulation_->death_causes()));
+}
+
+void App::inspect_brains() {
+    simulation_->sync_brains();  // the brains as they now are, when they think on the GPUs
+    const Bitzkey* agent = selected();
+    if (!agent || !agent->brain) {
+        say("Only a living animal has a brain to inspect.");
+        return;
+    }
+    playing_ = false;
+    report_.emplace(format("Brains of #%03d, %s", agent->identifier, std::string(species_name(agent->species)).c_str()),
+                    "Its chance of choosing each action open to it, in each standard situation, with its temperament now. "
+                    "* marks the likeliest; \u00b7 an action not open.",
+                    brain_matrix_lines(*agent));
 }
 
 void App::draw_header(Canvas& canvas) {
@@ -1058,6 +1086,8 @@ void App::draw_sidebar(Canvas& canvas) {
     canvas.line(x, UI(286), x + width, UI(286), {54, 68, 62});
     add_button_.reset();
     catalog_button_.reset();
+    deaths_button_.reset();
+    brains_button_.reset();
     if (show_insights_) {
         draw_insights(canvas, x, width);
         return;
@@ -1075,6 +1105,12 @@ void App::draw_sidebar(Canvas& canvas) {
     }
 
     draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y));
+    if (agent->brain) {  // a living animal: its brain can be inspected, beside the heading
+        brains_button_ = Rect{x + width - UI(130), UI(299), UI(130), UI(26)};
+        canvas.rect(*brains_button_, {44, 57, 52}, 0, UI(5));
+        canvas.text_at(UI.font(Face::Sans, 13, true), "INSPECT BRAINS", {220, 229, 211},
+                       [&](Rect& box) { box.center_at(brains_button_->centerx(), brains_button_->centery()); });
+    }
     canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(719));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
                                     [agent](const ExportEntry& entry) { return entry.identifier == agent->identifier; });
@@ -1175,6 +1211,16 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
         return y + 66;
     };
 
+    {  // every death so far, opened from the top of the panel
+        const Rect button{x + width - UI(130), at(INSIGHTS_TOP + 9), UI(130), UI(26)};
+        const Rect view = insights_view();
+        if (button.bottom() > view.y && button.y < view.bottom()) {
+            deaths_button_ = button.clip(view);
+            canvas.rect(button, {44, 57, 52}, 0, UI(5));
+            canvas.text_at(UI.font(Face::Sans, 13, true), "DEATH REPORT", {220, 229, 211},
+                           [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+        }
+    }
     double y = heading("BEHAVIOUR", "% of chances taken, recent turns", INSIGHTS_TOP + 11);
     for (int action = 0; action < ACTION_COUNT; ++action) {
         canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
