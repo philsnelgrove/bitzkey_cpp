@@ -24,8 +24,14 @@ Color zone_colour(double temperature) {
     return {blend(WORLD_GREY.r, low.r, high.r), blend(WORLD_GREY.g, low.g, high.g), blend(WORLD_GREY.b, low.b, high.b)};
 }
 
-int dot_radius(int size, int largest) {
-    return static_cast<int>(py_round(DOT_RADIUS_SMALLEST + static_cast<double>(largest - DOT_RADIUS_SMALLEST) * size / TRAIT_MAX));
+int dot_radius(int size, int largest, int smallest) {
+    return static_cast<int>(py_round(smallest + static_cast<double>(largest - smallest) * size / TRAIT_MAX));
+}
+
+std::pair<int, int> map_dot_radii(double cell) {
+    const int largest = std::max(DOT_RADIUS_LARGEST, static_cast<int>(py_round(cell / 2)) - RING_WIDTH);
+    const int smallest = std::max(ICON_MIN_RADIUS, static_cast<int>(py_round(static_cast<double>(largest) * ICON_MIN_RADIUS / DOT_RADIUS_LARGEST)));
+    return {smallest, largest};
 }
 
 std::vector<std::pair<int, int>> outline_offsets(int width) {

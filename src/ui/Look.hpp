@@ -36,7 +36,10 @@ inline Color to_color(const Rgb& rgb) {
 }
 
 // The dot's radius shows the body's size: from the smallest at size 0 to `largest` at the biggest.
-int dot_radius(int size, int largest = DOT_RADIUS_LARGEST);
+int dot_radius(int size, int largest = DOT_RADIUS_LARGEST, int smallest = DOT_RADIUS_SMALLEST);
+// The smallest and largest dots on the map, zoomed with it: the largest body's dot, ring and all, fills
+// a cell, and the smallest stays big enough for its icon, growing with the largest in proportion.
+std::pair<int, int> map_dot_radii(double cell);
 
 // Where a species icon is copied, in the outline colour, to outline it `width` pixels thick: a pixel
 // each way, or around a circle when wider, so its corners are outlined too.

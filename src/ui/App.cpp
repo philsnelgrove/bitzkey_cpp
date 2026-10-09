@@ -898,14 +898,14 @@ void App::draw_world(Canvas& canvas) {
             if (reach.contains(px, py)) canvas.circle(px, py, grass_radius, GRASS);
         }
     }
-    const int largest = std::max(DOT_RADIUS_LARGEST, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.45)));
+    const auto [smallest, largest] = map_dot_radii(std::min(board.cell_width, board.cell_height));  // zoomed with the map
     for (const auto& agent : simulation_->agents()) {  // the way each came this turn, faint, beneath them all
         Surface layer;
         for (const auto& [x, y] : agent->trail) {
             const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             if ((x == agent->x && y == agent->y) || !reach.contains(px, py)) continue;
-            if (!layer) layer = bitzkey_layer(agent->dna, dot_radius(agent->body[Size], largest), RING_WIDTH, agent->alive());
+            if (!layer) layer = bitzkey_layer(agent->dna, dot_radius(agent->body[Size], largest, smallest), RING_WIDTH, agent->alive());
             const int half = layer->w / 2;
             canvas.blit(layer.get(), px - half, py - half, static_cast<std::uint8_t>(py_round(255 * TRAIL_OPACITY)));
         }
@@ -914,7 +914,7 @@ void App::draw_world(Canvas& canvas) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
         if (!reach.contains(px, py)) continue;
-        const int radius = dot_radius(agent->body[Size], largest);
+        const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             canvas.circle(px, py, radius + RING_WIDTH + UI(3), SELECTED, std::max(1, UI(1)));
