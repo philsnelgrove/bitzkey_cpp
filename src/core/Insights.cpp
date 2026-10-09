@@ -158,14 +158,37 @@ const std::vector<Scenario>& scenarios() {
          {{SenseHunger, 0.5}, {SenseHealth, 1}, {SensePreyNear, 0.25}, {SensePreyFrailty, 0.5}, {SensePreyCloseness, 1},
           {SenseAge, 0.2}},
          {Attack, Hunt, Rest, GoEast, GoWest}, HUNTER_LIST},
+        // The climate: off home each way, far off, and at home with the weather turning toward it or not,
+        // so the report shows whether brains follow the warmth senses or only a habit of one direction.
         {"Too cold, warmer to the south",
-         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseWarmth, -0.5}, {SenseWarmthNorth, -1},
-          {SenseLatitude, -0.3}, {SenseAge, 0.2}},
-         {GoNorth, GoSouth, WalkNorth, WalkSouth, Rest}, ANIMAL_LIST},
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseComfortCloseness, 0.6},
+          {SenseWarmth, -0.5}, {SenseWarmthNorth, -1}, {SenseLatitude, -0.3}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"Too cold, warmer to the north",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseComfortCloseness, 0.6},
+          {SenseWarmth, -0.5}, {SenseWarmthSouth, -1}, {SenseLatitude, 0.3}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
         {"Too hot, cooler to the north",
-         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseWarmth, 0.5}, {SenseWarmthSouth, 0.5},
-          {SenseLatitude, 0.1}, {SenseAge, 0.2}},
-         {GoNorth, GoSouth, WalkNorth, WalkSouth, Rest}, ANIMAL_LIST},
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseComfortCloseness, 0.6},
+          {SenseWarmth, 0.5}, {SenseWarmthSouth, 0.5}, {SenseLatitude, 0.1}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"Too hot, cooler to the south",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 0.5}, {SenseComfortCloseness, 0.6},
+          {SenseWarmth, 0.5}, {SenseWarmthNorth, 0.5}, {SenseLatitude, -0.1}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"Far too cold, warmer to the south",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseClimateDiscomfort, 1}, {SenseComfortCloseness, 0.3},
+          {SenseWarmth, -1}, {SenseWarmthNorth, -1}, {SenseWarmthSouth, -0.5}, {SenseLatitude, -0.5}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"At home, cold coming from the north",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseComfortCloseness, 1}, {SenseWarmthNorth, -0.5}, {SenseLatitude, -0.3}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"At home, cold coming from the south",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseComfortCloseness, 1}, {SenseWarmthSouth, -0.5}, {SenseLatitude, 0.3}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
+        {"At home, the same all around",
+         {{SenseHunger, 0.3}, {SenseHealth, 1}, {SenseComfortCloseness, 1}, {SenseLatitude, -0.3}, {SenseAge, 0.2}},
+         {GoNorth, GoSouth, WalkNorth, WalkSouth, GoEast, GoWest, Rest}, ANIMAL_LIST},
         {"Starving, food scarce, a plant beside them",
          {{SenseHunger, 0.85}, {SenseHealth, 1}, {SensePlantCloseness, 1}, {SenseAge, 0.2}},
          {Uproot, Browse, Rest, GoEast, GoWest}, GRAZER_ONLY},
@@ -173,6 +196,8 @@ const std::vector<Scenario>& scenarios() {
     };
     return list;
 }
+
+constexpr int COLUMN = 11;  // characters to an action's column in the report: room for the longest name
 
 std::string pad_left(const std::string& text, int width) {
     return static_cast<int>(text.size()) >= width ? text : std::string(static_cast<std::size_t>(width) - text.size(), ' ') + text;
@@ -237,7 +262,7 @@ std::string brain_report(int turn, std::span<const Bitzkey* const> animals, cons
         lines.emplace_back("");
         lines.emplace_back(scenario.title);
         std::string header = "  " + std::string(18, ' ');
-        for (const int action : options) header += pad_left(std::string(ACTIONS[action]), 9);
+        for (const int action : options) header += pad_left(std::string(ACTIONS[action]), COLUMN);
         lines.push_back(header);
         for (const Species species : scenario.species) {
             const auto found = per_group.find({static_cast<int>(species), -1, 0});
@@ -246,7 +271,7 @@ std::string brain_report(int turn, std::span<const Bitzkey* const> animals, cons
                 continue;
             }
             std::string averages;
-            for (const int action : options) averages += py_percent(mean(found->second, action), 8) + " ";
+            for (const int action : options) averages += py_percent(mean(found->second, action), COLUMN - 1) + " ";
             lines.push_back("  " + pad_right(std::string(species_name(species)), 10) +
                             pad_left("(n=" + std::to_string(found->second.size()) + ")", 8) + averages);
         }
@@ -299,13 +324,13 @@ std::string brain_report(int turn, std::span<const Bitzkey* const> animals, cons
     lines.emplace_back("");
     lines.emplace_back("Observed behaviour, recent turns (share of chances taken)");
     header = "  " + std::string(10, ' ');
-    for (const auto action : ACTIONS) header += pad_left(std::string(action), 9);
+    for (const auto action : ACTIONS) header += pad_left(std::string(action), COLUMN);
     lines.push_back(header);
     for (const Species species : ANIMALS) {
         std::string cells;
         for (int action = 0; action < ACTION_COUNT; ++action) {
             const auto result = insights.rate(action, species);
-            cells += result.share ? py_percent(*result.share, 8) + " " : pad_left("-", 9);
+            cells += result.share ? py_percent(*result.share, COLUMN - 1) + " " : pad_left("-", COLUMN);
         }
         lines.push_back("  " + pad_right(std::string(species_name(species)), 10) + cells);
     }
