@@ -98,6 +98,13 @@ void ColourGraph::reset() {
     view_.reset();
 }
 
+void ColourGraph::keep_only(const std::set<int>& alive) {
+    if (std::all_of(selection_.begin(), selection_.end(), [&](int identifier) { return alive.contains(identifier); })) return;
+    std::set<int> living;
+    std::set_intersection(selection_.begin(), selection_.end(), alive.begin(), alive.end(), std::inserter(living, living.end()));
+    select(living, Mode::Replace);
+}
+
 void ColourGraph::select(const std::set<int>& picked, Mode mode) {
     std::set<int> result;
     switch (mode) {
@@ -122,6 +129,7 @@ void ColourGraph::select(const std::set<int>& picked, Mode mode) {
 
 std::pair<int, int> ColourGraph::window() const {
     if (!view_) return {0, frontier_};
+    if (pinned_) return {std::max(0, frontier_ - (view_->second - view_->first)), frontier_};  // kept at the latest turn
     return {std::max(0, view_->first), std::min(frontier_, view_->second)};
 }
 
@@ -150,10 +158,16 @@ void ColourGraph::zoom(int notches, int x) {
         view_.reset();
         return;
     }
+    if (!view_ || pinned_) {  // reaching the latest turn, it stays pinned there, the living in view
+        view_ = std::pair{whole - new_span, whole - 1};
+        pinned_ = true;
+        return;
+    }
     const int centre = turn_at(x);
     int new_first = static_cast<int>(py_round(centre - static_cast<double>(centre - first) * new_span / span));
     new_first = std::max(0, std::min(whole - new_span, new_first));
     view_ = std::pair{new_first, new_first + new_span - 1};
+    pinned_ = view_->second >= frontier_;
 }
 
 void ColourGraph::pan(int notches) {
@@ -162,6 +176,7 @@ void ColourGraph::pan(int notches) {
     const int span = last - first + 1;
     const int new_first = std::max(0, std::min(frontier_ + 1 - span, first + notches * std::max(1, span / 10)));
     view_ = std::pair{new_first, new_first + span - 1};
+    pinned_ = view_->second >= frontier_;
 }
 
 ColourGraph::Layout ColourGraph::layout() const {

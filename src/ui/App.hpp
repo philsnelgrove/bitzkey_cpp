@@ -61,7 +61,11 @@ private:
     std::pair<std::vector<nlohmann::ordered_json>, int> chosen_records() const;
     void export_chosen(bool to_file);
     void export_graph(bool to_file);
-    void select_at(int x, int y);
+    // Finish a left press on the map. A click picks the living Bitzkey under the pointer, or clears the
+    // selection on empty ground; a drag picks every living Bitzkey in its marquee. With CTRL (`adding`),
+    // a click adds the Bitzkey to the selection or takes it out, and a marquee adds to it.
+    void pick_on_map(int start_x, int start_y, int end_x, int end_y, bool adding);
+    std::optional<int> living_at(int x, int y);  // the living Bitzkey clicked at, if any
     void select(int identifier);  // on the map and the graph alike
     // Copy the living Bitzkeys picked on the graph to the clipboard and leave, to start a new world with
     // them alone imported. Returns whether it left.
@@ -129,6 +133,7 @@ private:
     std::string dialog_kind_;
     std::optional<Rect> add_button_;
     std::optional<Rect> catalog_button_;
+    std::optional<std::tuple<int, int, bool>> marquee_from_;  // a left press on the map: where, and whether CTRL was down
     std::vector<std::pair<Rect, int>> exemplar_cards_;  // each card beside the map, and whom it shows
     std::vector<Rect> exemplar_titles_;                 // each card's title, a menu of statistics, card by card
     std::optional<int> exemplar_menu_;                  // the card whose menu is open

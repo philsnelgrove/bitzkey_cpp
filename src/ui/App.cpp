@@ -120,7 +120,8 @@ std::string exemplar_text(const Bitzkey& agent, const ExemplarStat& stat) {
         default: return decimals("changed %.1f", value);
     }
 }
-constexpr int EXEMPLAR_WIDTH = 170;  // each column of exemplars, in design pixels
+constexpr int EXEMPLAR_WIDTH = 170;
+constexpr int MAP_DRAG_THRESHOLD = 5;  // design pixels a press must move on the map to draw a marquee rather than click  // each column of exemplars, in design pixels
 
 }  // namespace
 
@@ -255,7 +256,16 @@ App::Result App::run() {
                 }
                 else if (action != ColourGraph::Action::None) export_graph(action == ColourGraph::Action::Save);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-                click(event.button.x, event.button.y);
+                Canvas canvas = window_.frame();
+                if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
+                    marquee_from_ = std::tuple{event.button.x, event.button.y, (SDL_GetModState() & KMOD_CTRL) != 0};
+                } else {
+                    click(event.button.x, event.button.y);
+                }
+            } else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT && marquee_from_) {
+                const auto [start_x, start_y, adding] = *marquee_from_;
+                marquee_from_.reset();
+                pick_on_map(start_x, start_y, event.button.x, event.button.y, adding);
             }
         }
         tick(seconds);
@@ -337,7 +347,10 @@ void App::click(int x, int y) {
                card != exemplar_cards_.end()) {
         select(card->second);
     } else {
-        select_at(x, y);
+        Canvas canvas = window_.frame();
+        if (map_view(canvas).first.contains(x, y)) {  // a click on the map, pressed and let go at once
+            pick_on_map(x, y, x, y, (SDL_GetModState() & KMOD_CTRL) != 0);
+        }
     }
 }
 
@@ -596,24 +609,54 @@ void App::close_graph() {
     if (!picked.empty() && !(selected_id_ && picked.size() == 1 && picked.contains(*selected_id_))) selected_id_.reset();
 }
 
-void App::select_at(int x, int y) {
+std::optional<int> App::living_at(int x, int y) {
     Canvas canvas = window_.frame();
     const Board board = board_geometry(canvas);
     const Bitzkey* nearest = nullptr;
     double nearest_distance = std::numeric_limits<double>::infinity();
-    for (const auto& agent : simulation_->agents()) {
+    for (const Bitzkey* agent : simulation_->living()) {
         const double px = board.rect.x + (agent->x + 0.5) * board.cell_width;
         const double py = board.rect.y + (agent->y + 0.5) * board.cell_height;
         const double distance = std::hypot(x - px, y - py);
         if (distance < nearest_distance) {
-            nearest = agent.get();
+            nearest = agent;
             nearest_distance = distance;
         }
     }
-    const bool on_view = map_view(canvas).first.contains(x, y);  // zoomed in, the board reaches under the sidebar
-    if (nearest && on_view && board.rect.contains(x, y) &&
+    if (nearest && board.rect.contains(x, y) &&
         nearest_distance < std::max<double>(UI(9), std::min(board.cell_width, board.cell_height) * 1.6)) {
-        select(nearest->identifier);
+        return nearest->identifier;
+    }
+    return std::nullopt;
+}
+
+void App::pick_on_map(int start_x, int start_y, int end_x, int end_y, bool adding) {
+    std::set<int> picked;
+    if (std::max(std::abs(end_x - start_x), std::abs(end_y - start_y)) < UI(MAP_DRAG_THRESHOLD)) {
+        const std::optional<int> hit = living_at(start_x, start_y);
+        if (adding) {
+            picked = graph_.selection();
+            if (hit && !picked.erase(*hit)) picked.insert(*hit);
+        } else if (hit) {
+            picked.insert(*hit);
+        }
+    } else {
+        Canvas canvas = window_.frame();
+        const Board board = board_geometry(canvas);
+        const Rect box{std::min(start_x, end_x), std::min(start_y, end_y), std::abs(end_x - start_x) + 1, std::abs(end_y - start_y) + 1};
+        if (adding) picked = graph_.selection();
+        for (const Bitzkey* agent : simulation_->living()) {
+            const int px = static_cast<int>(board.rect.x + (agent->x + 0.5) * board.cell_width);
+            const int py = static_cast<int>(board.rect.y + (agent->y + 0.5) * board.cell_height);
+            if (box.contains(px, py)) picked.insert(agent->identifier);
+        }
+    }
+    graph_.select_all(picked);  // the map and the graph share one selection
+    if (picked.size() == 1) {   // one picked shows in the inspector
+        selected_id_ = *picked.begin();
+        show_insights_ = false;
+    } else {
+        selected_id_.reset();
     }
 }
 
@@ -845,6 +888,14 @@ bool App::map_event(const SDL_Event& event) {
 }
 
 void App::draw(Canvas& canvas) {
+    // Let go of any Bitzkey selected or picked that has died, so the sidebar returns to its neutral
+    // state rather than speaking of a selection no longer there.
+    if (simulation_) {
+        std::set<int> living;
+        for (const Bitzkey* agent : simulation_->living()) living.insert(agent->identifier);
+        if (selected_id_ && !living.contains(*selected_id_)) selected_id_.reset();
+        graph_.keep_only(living);
+    }
     canvas.fill({19, 26, 27});
     draw_header(canvas);
     draw_world(canvas);
@@ -917,11 +968,22 @@ void App::draw_world(Canvas& canvas) {
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
-            canvas.circle(px, py, radius + RING_WIDTH + UI(3), SELECTED, std::max(1, UI(1)));
+            draw_reticle(canvas, px, py, radius + RING_WIDTH + UI(3));
         }
         if (std::any_of(export_list_.begin(), export_list_.end(),
                         [&](const ExportEntry& entry) { return entry.identifier == agent->identifier; })) {
             canvas.circle(px, py, radius + RING_WIDTH + UI(6), EXPORTING, std::max(1, UI(1)));
+        }
+    }
+    if (marquee_from_) {  // the marquee being drawn
+        const auto [start_x, start_y, adding] = *marquee_from_;
+        int mouse_x = 0, mouse_y = 0;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+        if (std::max(std::abs(mouse_x - start_x), std::abs(mouse_y - start_y)) >= UI(MAP_DRAG_THRESHOLD)) {
+            const Rect box{std::min(start_x, mouse_x), std::min(start_y, mouse_y), std::abs(mouse_x - start_x) + 1,
+                           std::abs(mouse_y - start_y) + 1};
+            canvas.fill_rect(box, {245, 238, 206, 40});
+            canvas.rect(box, {245, 238, 206}, 1);
         }
     }
     for (int x = 0; x <= simulation_->width(); x += 10) {

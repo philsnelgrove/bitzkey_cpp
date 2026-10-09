@@ -54,6 +54,8 @@ public:
     void reset();  // forget the selection and zoom, for a new world
     const std::set<int>& selection() const { return selection_; }
     void select_only(int identifier) { select({identifier}, Mode::Replace); }
+    void select_all(const std::set<int>& picked) { select(picked, Mode::Replace); }  // exactly these
+    void keep_only(const std::set<int>& alive);  // let go of any picked that are no longer alive
     void close_menu() { menu_open_ = false; }
     int seek_turn() const { return seek_turn_; }
 
@@ -97,6 +99,7 @@ private:
     bool menu_open_ = false;  // the sort menu
     std::set<int> selection_;
     std::optional<std::pair<int, int>> view_;  // the turns shown when zoomed in
+    bool pinned_ = false;  // the zoomed view reaches the latest turn, and keeps up with it as the run goes on
     int seek_turn_ = 0;
     int selection_version_ = 0;
     int width_ = 0, height_ = 0;

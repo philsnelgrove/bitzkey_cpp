@@ -49,6 +49,10 @@ std::vector<std::pair<int, int>> outline_offsets(int width);
 // in the dot's colour inside a thin light grey outline; a smaller one is simply that colour. A dead Bitzkey is dimmed and crossed
 // through in red. With `opacity` below 1, all of it is drawn that faint, as a decaying corpse
 // fades away.
+// The ring round a selected Bitzkey, like a target's sights: a white ring inside a black one, each two
+// pixels, so it shows on light ground and dark, with a pip at north, east, south and west.
+void draw_reticle(Canvas& canvas, int x, int y, int radius);
+
 void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_width = RING_WIDTH,
                   bool alive = true, double opacity = 1.0);
 

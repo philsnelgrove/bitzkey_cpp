@@ -44,6 +44,16 @@ std::vector<std::pair<int, int>> outline_offsets(int width) {
     return {offsets.begin(), offsets.end()};
 }
 
+void draw_reticle(Canvas& canvas, int x, int y, int radius) {
+    canvas.circle(x, y, radius + 2, {0, 0, 0}, 2);
+    canvas.circle(x, y, radius, {255, 255, 255}, 2);
+    const int reach = radius + 2, length = std::max(3, radius / 2);
+    for (const auto& [dx, dy] : {std::pair{0, -1}, std::pair{1, 0}, std::pair{0, 1}, std::pair{-1, 0}}) {
+        canvas.line(x + dx * reach, y + dy * reach, x + dx * (reach + length), y + dy * (reach + length), {0, 0, 0}, 4);
+        canvas.line(x + dx * reach, y + dy * reach, x + dx * (reach + length), y + dy * (reach + length), {255, 255, 255}, 2);
+    }
+}
+
 Surface bitzkey_layer(Dna dna, int radius, int ring_width, bool alive) {
     const int reach = radius + ring_width + 1;
     Surface layer = make_surface(2 * reach + 1, 2 * reach + 1);
