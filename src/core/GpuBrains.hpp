@@ -25,6 +25,10 @@ struct DeviceInfo {
 // Vulkan is loaded when the engine is made, so the program runs without it: create() then gives
 // none, and the brains stay on the CPU. Discrete GPUs are used when there are any, else integrated
 // ones; BITZKEY_GPU=off turns the GPUs off, and BITZKEY_GPU=all uses integrated ones beside discrete.
+// Whether this computer has a GPU the brains can think on, found once and remembered; `why` says why
+// not when it hasn't.
+bool available(std::string* why = nullptr);
+
 class BrainEngine {
 public:
     using Handle = int;

@@ -759,6 +759,16 @@ private:
 }  // namespace
 
 
+bool available(std::string* why) {
+    static const std::pair<bool, std::string> found = [] {
+        std::string reason;
+        const bool usable = BrainEngine::create(&reason) != nullptr;
+        return std::pair{usable, reason};
+    }();
+    if (why) *why = found.second;
+    return found.first;
+}
+
 std::unique_ptr<BrainEngine> BrainEngine::create(std::string* why) {
     const std::string choice = environment("BITZKEY_GPU");
     if (choice == "off" || choice == "0" || choice == "none") {

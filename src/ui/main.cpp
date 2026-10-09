@@ -8,6 +8,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
+#include "core/GpuBrains.hpp"
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 #include "ui/App.hpp"
@@ -67,6 +68,7 @@ int main(int argc, char** argv) {
     int status = 0;
     try {
         remove_stale_histories();  // left behind by a run that ended without closing its world
+        if (gpu::available()) USE_GPU = 1;  // with a GPU, thinking on it is the default; before the rules' defaults are taken
         Window window(!options.windowed);
         SetupScreen setup(window, options.defaults);
         std::optional<Simulation::Settings> settings = setup.run();

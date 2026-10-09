@@ -7,6 +7,7 @@
 
 #include "core/GpuBrains.hpp"
 #include "core/PyRandom.hpp"
+#include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 
 using namespace bitzkey;
@@ -113,4 +114,12 @@ TEST_CASE("a world thinks on the GPUs, keeps only the present, and brings brains
     const Brain before = *thinker->brain;
     simulation.sync_brains();
     CHECK_FALSE(*thinker->brain == before);  // it learnt on the GPU, and that has come back
+}
+
+TEST_CASE("think on the GPU is locked, greyed out, only where there is no GPU") {
+    std::string why;
+    const bool found = gpu::available(&why);
+    CHECK(rules::locked("USE_GPU").empty() == found);
+    if (!found) CHECK_FALSE(why.empty());
+    CHECK(rules::locked("TEMPERATURE").empty());  // every other rule can be changed
 }

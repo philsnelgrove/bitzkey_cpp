@@ -1,5 +1,7 @@
 #include "core/Rules.hpp"
 
+#include "core/GpuBrains.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -188,6 +190,11 @@ std::string lower(std::string text) {
 }
 
 }  // namespace
+
+std::string locked(std::string_view key) {
+    if (key == "USE_GPU" && !gpu::available()) return "No GPU with Vulkan was found on this computer, so the brains think on the CPU.";
+    return {};
+}
 
 std::string_view warning(std::string_view key) {
     if (key == "HISTORY_TURNS") return "MEMORY: each turn kept holds the whole world, about 200 KB a brain (some 20 MB a turn with 100 animals), up to the history memory limit";

@@ -51,6 +51,7 @@ void AdvancedForm::select(int index) {
 }
 
 void AdvancedForm::adjust(int steps) {
+    if (!rules::locked(focused().key).empty()) return;  // not on this computer
     settle();
     const rules::Rule& rule = focused();
     double& value = values[rule.key];
@@ -59,6 +60,7 @@ void AdvancedForm::adjust(int steps) {
 
 void AdvancedForm::type_text(const std::string& text) {
     const rules::Rule& rule = focused();
+    if (!rules::locked(rule.key).empty()) return;
     std::string entry = typed.value_or("");
     for (const char character : text) {
         if (std::isdigit(static_cast<unsigned char>(character)) ||
@@ -71,6 +73,7 @@ void AdvancedForm::type_text(const std::string& text) {
 }
 
 void AdvancedForm::backspace() {
+    if (!rules::locked(focused().key).empty()) return;
     std::string shown = text(focused());
     if (!shown.empty()) shown.pop_back();
     typed = shown;
@@ -316,13 +319,15 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
     const auto [minus, box, plus] = buttons(row);
     TTF_Font* small = UI.font(Face::Sans, 12);
-    canvas.text(UI.font(Face::Sans, 15), upper(rule.label), {232, 236, 219}, row.x + UI(14), row.y + UI(3));
-    const bool warned = !rules::warning(rule.key).empty();  // a cost to heed: its hint in amber, the warning in full when chosen
-    canvas.text(small, fit(small, (warned ? "WARNING  " : "") + rule.hint, minus.x - row.x - UI(28)),
-                warned ? Color{238, 183, 110} : Color{130, 152, 136}, row.x + UI(14), row.y + UI(21));
+    canvas.text(UI.font(Face::Sans, 15), upper(rule.label), rules::locked(rule.key).empty() ? Color{232, 236, 219} : Color{120, 134, 124},
+                row.x + UI(14), row.y + UI(3));
+    const std::string lock = rules::locked(rule.key);  // not to be changed on this computer: greyed, saying why
+    const bool warned = lock.empty() && !rules::warning(rule.key).empty();  // a cost to heed: its hint in amber, the warning in full when chosen
+    canvas.text(small, fit(small, !lock.empty() ? lock : (warned ? "WARNING  " : "") + rule.hint, minus.x - row.x - UI(28)),
+                !lock.empty() ? Color{96, 110, 100} : warned ? Color{238, 183, 110} : Color{130, 152, 136}, row.x + UI(14), row.y + UI(21));
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
-        canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(UI.font(Face::Sans, 22, true), sign, {220, 229, 211},
+        canvas.rect(button, lock.empty() ? Color{44, 57, 52} : Color{34, 44, 42}, 0, UI(4));
+        canvas.text_at(UI.font(Face::Sans, 22, true), sign, lock.empty() ? Color{220, 229, 211} : Color{96, 110, 100},
                        [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
@@ -330,7 +335,7 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
     std::string shown = form_.text(rule);
     const bool changed = form_.values.at(rule.key) != rules::defaults().at(rule.key);
     if (focused && form_.typed && SDL_GetTicks() / 500 % 2) shown += "_";
-    canvas.text_at(UI.font(Face::Mono, 16), shown, changed ? Color{238, 183, 110} : Color{238, 238, 220},
+    canvas.text_at(UI.font(Face::Mono, 16), shown, !lock.empty() ? Color{96, 110, 100} : changed ? Color{238, 183, 110} : Color{238, 238, 220},
                    [&](Rect& text_box) { text_box.midright_at(box.right() - UI(10), box.centery()); });
 }
 

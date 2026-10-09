@@ -123,8 +123,10 @@ The benchmark world used for the Python optimisations (seed 1, 100 x 100, turns 
 ## Thinking on the GPU
 
 Every brain can think and learn on the GPU instead of the CPU, through Vulkan compute, on any make
-of GPU. Turn on the advanced rule Think on the GPU (World group), or run the command-line tool with
-`--gpu`. The header then says which GPUs are thinking, or why none could and the CPU carries on.
+of GPU. The app looks for one as it starts: where it finds one, the advanced rule Think on the GPU
+(World group) is on by default; where it finds none, the rule is greyed out, saying why, and the
+brains think on the CPU. The command-line tool thinks on the CPU, the exact reference, unless run
+with `--gpu`. The header says which GPUs are thinking, or why none could and the CPU carries on.
 
 - Every brain lives in the GPUs' own memory, in pools of one depth, shared out among all the GPUs
   found; each turn only the senses go up and only the values come back. All the brains value

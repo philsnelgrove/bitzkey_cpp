@@ -36,6 +36,8 @@ const Rule* find(std::string_view key);      // none for an unknown key
 // A warning shown with a rule, in full when it is chosen: a cost it runs up beyond the simulation
 // itself. Empty for most.
 std::string_view warning(std::string_view key);
+// Why a rule can't be changed on this computer, or empty when it can: Think on the GPU, without a GPU.
+std::string locked(std::string_view key);
 const Values& defaults();                    // as the program started
 Values current();
 // Why a set of values (every rule's) can't be applied, if it can't.
