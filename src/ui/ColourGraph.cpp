@@ -686,8 +686,15 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
     }
     if (!hovered) return chosen;
     const Dna dna = simulation.lineage(*hovered);
-    if (!living.contains(*hovered)) {  // remembered by its colour alone
-        return chosen + format("     |     dead   ring %08X   dot %08X", body_word(dna), mind_word(dna));
+    if (!living.contains(*hovered)) {  // remembered by its colour, and how it died
+        std::string died = "dead";
+        if (const Simulation::DeathRecord* record = simulation.death_record(*hovered)) {
+            died = "died: " + record->cause;
+            if (record->killer >= 0) died += format(" by #%03d %s", record->killer, std::string(species_name(record->killer_species)).c_str());
+        }
+        return chosen + format("     |     #%03d  %s  %s   ring %08X   dot %08X", *hovered,
+                               std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(), died.c_str(),
+                               body_word(dna), mind_word(dna));
     }
     return chosen + format("     |     #%03d  %s  alive   ring %08X   dot %08X", *hovered,
                            std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(),
