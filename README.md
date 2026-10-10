@@ -30,8 +30,8 @@ Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--grass-density`, `--seed`, `--population-cap`, `--mind-mutation`, `--body-mutation`,
 `--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 139
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
-(a turn every 0.24 s, as in Python), 2x, 4x, 8x, 32x, 64x (several turns a frame; a world too big to keep up runs as fast as it can), and MAX, which simulates as many turns as fit
-in each frame. `I` opens the insights panel (behaviour, life, temperament and the keenest
+(a turn every 0.24 s, as in Python), 2x, 4x, 8x, 16x, 32x, 64x and MAX, which is 128x (the faster speeds run several turns a frame; a world too big to keep up runs as fast as it can, at most 25 ms of turns
+in each frame). `I` opens the insights panel (behaviour, life, temperament and the keenest
 group for each action, by species); it scrolls with the wheel or its scroll bar, and selecting a
 Bitzkey closes it. Reports and exports are written to `Documents\Bitzkey\reports` and
 `Documents\Bitzkey\exports`. SDL2.dll and SDL2_ttf.dll are copied beside the executable by the

@@ -128,8 +128,9 @@ constexpr int MAP_DRAG_THRESHOLD = 5;  // design pixels a press must move on the
 namespace {
 
 // Seconds between turns at each speed; 0 runs as many turns as fit in a frame.
-constexpr std::array<double, 7> TURN_INTERVALS = {0.24, 0.12, 0.06, 0.03, 0.0075, 0.00375, 0.0};
-constexpr std::array<const char*, 7> SPEED_LABELS = {"1x", "2x", "4x", "8x", "32x", "64x", "MAX"};
+// Each speed twice the last; MAX is 128x, as fast as the turns can be simulated, 25 ms a frame at most.
+constexpr std::array<double, 8> TURN_INTERVALS = {0.24, 0.12, 0.06, 0.03, 0.015, 0.0075, 0.00375, 0.001875};
+constexpr std::array<const char*, 8> SPEED_LABELS = {"1x", "2x", "4x", "8x", "16x", "32x", "64x", "MAX"};
 constexpr Uint32 FRAME_MS = 33;      // about 30 frames a second
 constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent simulating
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
