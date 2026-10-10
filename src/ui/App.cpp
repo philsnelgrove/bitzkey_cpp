@@ -128,8 +128,8 @@ constexpr int MAP_DRAG_THRESHOLD = 5;  // design pixels a press must move on the
 namespace {
 
 // Seconds between turns at each speed; 0 runs as many turns as fit in a frame.
-constexpr std::array<double, 5> TURN_INTERVALS = {0.24, 0.12, 0.06, 0.03, 0.0};
-constexpr std::array<const char*, 5> SPEED_LABELS = {"1x", "2x", "4x", "8x", "MAX"};
+constexpr std::array<double, 7> TURN_INTERVALS = {0.24, 0.12, 0.06, 0.03, 0.0075, 0.00375, 0.0};
+constexpr std::array<const char*, 7> SPEED_LABELS = {"1x", "2x", "4x", "8x", "32x", "64x", "MAX"};
 constexpr Uint32 FRAME_MS = 33;      // about 30 frames a second
 constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent simulating
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
@@ -282,7 +282,7 @@ App::Result App::run() {
 
 void App::tick(double seconds) {
     // While playing, advance at the chosen speed, and stop to show the graph once the run has ended.
-    elapsed_ += seconds;
+    elapsed_ = std::min(elapsed_ + seconds, TURN_INTERVALS.front() + 0.01);  // time paused isn't made up for
     if (!playing_ || dialog_ || report_) return;
     if (simulation_->ended()) {
         finish();
@@ -290,9 +290,17 @@ void App::tick(double seconds) {
     }
     const double interval = TURN_INTERVALS[static_cast<std::size_t>(speed_)];
     if (interval > 0) {
-        if (elapsed_ < interval) return;
-        elapsed_ = 0;
-        simulation_->advance();
+        // As many turns as the time since the last calls for (32x and 64x need several a frame), but
+        // never more than MAX_TURN_MS of them: a world too big to keep up runs as fast as it can.
+        const Uint32 start = SDL_GetTicks();
+        while (elapsed_ >= interval && !simulation_->ended()) {
+            elapsed_ -= interval;
+            simulation_->advance();
+            if (SDL_GetTicks() - start >= MAX_TURN_MS) {
+                elapsed_ = 0;  // behind: start afresh rather than racing to catch up
+                break;
+            }
+        }
     } else {
         const Uint32 start = SDL_GetTicks();
         do {
