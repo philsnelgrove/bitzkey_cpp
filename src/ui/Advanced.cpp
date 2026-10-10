@@ -189,12 +189,42 @@ void AdvancedScreen::key(const SDL_Event& event) {
     show_focus();
 }
 
+namespace {
+constexpr const char* NATURAL_LAW =
+    "These are the settings for what might be called 'natural law'.  They have been carefully balanced to produce a world with fair chances for all.  Messing with any of them can produce unpredictable results.  Have fun!";
+constexpr int LAW_LINE = 20;  // design pixels between the lines of the word on natural law
+
+// The word on natural law, wrapped to fit the width.
+std::vector<std::string> law_lines(int width) {
+    TTF_Font* font = UI.font(Face::Sans, 15);
+    std::vector<std::string> lines;
+    std::string line, word;
+    const std::string text = NATURAL_LAW;
+    std::size_t at = 0;
+    while (at <= text.size()) {
+        const std::size_t space = std::min(text.find(' ', at), text.size());
+        word = text.substr(at, space - at);
+        const std::string trial = line.empty() ? word : line + " " + word;
+        if (!line.empty() && Canvas::text_width(font, trial) > width) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = trial;
+        }
+        at = space + 1;
+    }
+    lines.push_back(line);
+    return lines;
+}
+}  // namespace
+
 AdvancedScreen::Layout AdvancedScreen::layout() const {
     Layout places;
     places.card = Rect{0, 0, UI(760), std::min(window_.height() - UI(24), UI(800))}.center_at(window_.width() / 2,
                                                                                              window_.height() / 2);
     const Rect& card = places.card;
-    places.view = {card.x + UI(20), card.y + UI(100), card.w - UI(40), card.h - UI(100 + 118)};
+    const int top = UI(100) + static_cast<int>(law_lines(card.w - UI(56)).size()) * UI(LAW_LINE);  // beneath the word on natural law
+    places.view = {card.x + UI(20), card.y + top, card.w - UI(40), card.h - top - UI(118)};
     places.apply = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
     places.cancel = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
     places.reset_all = Rect{0, 0, UI(100), UI(28)}.topright_at(card.right() - UI(20), card.y + UI(28));
@@ -275,10 +305,14 @@ void AdvancedScreen::draw(Canvas& canvas) {
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(bold, "BITZKEY", {229, 239, 220}, card.x + UI(28), card.y + UI(24));
     canvas.text(small, "NEW WORLD  /  ADVANCED RULES", {144, 170, 151}, card.x + UI(52) + title, card.y + UI(33));
+    const std::vector<std::string> lines = law_lines(card.w - UI(56));
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        canvas.text(UI.font(Face::Sans, 15), lines[index], {229, 239, 220}, card.x + UI(28), card.y + UI(66) + static_cast<int>(index) * UI(LAW_LINE));
+    }
     canvas.text(UI.font(Face::Sans, 15),
                 "The rules the world plays by. " + std::to_string(form_.changed().size()) +
                     " changed from the defaults; changed values show in amber.",
-                {157, 177, 159}, card.x + UI(28), card.y + UI(66));
+                {157, 177, 159}, card.x + UI(28), card.y + UI(66) + static_cast<int>(lines.size()) * UI(LAW_LINE) + UI(6));
     for (const auto& [button, label] : {std::pair{places.reset, "RESET"}, std::pair{places.reset_all, "RESET ALL"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.text_at(button_font, label, {220, 229, 211},
