@@ -22,6 +22,7 @@ constexpr double DIM = 0.75;           // how far unselected Bitzkeys fade towar
 constexpr double FUTURE_DIM = 0.55;    // how far turns after the present fade, once rewound
 constexpr int MIN_VIEW = 10;           // the fewest turns the graph zooms in to
 constexpr double ZOOM_STEP = 0.8;      // each wheel notch shows this share of the turns before it
+constexpr double HEIGHT_ZOOM_MAX = 32.0;  // the closest the graph zooms into its height, times the whole
 constexpr Color BACKGROUND{30, 40, 40};
 constexpr int MENU_ROW = 22;           // design pixels per item of the sort menu
 constexpr int YEAR_LABEL_SPACING = 56; // design pixels the year labels on the timeline keep apart, at least
@@ -95,7 +96,14 @@ int sort_value(Dna dna, int sort) {
 
 void ColourGraph::reset() {
     select({}, Mode::Replace);
+    unzoom();
+}
+
+void ColourGraph::unzoom() {
     view_.reset();
+    pinned_ = false;
+    height_zoom_ = 1.0;
+    floor_ = 0.0;
 }
 
 void ColourGraph::keep_only(const std::set<int>& alive) {
@@ -168,6 +176,29 @@ void ColourGraph::zoom(int notches, int x) {
     new_first = std::max(0, std::min(whole - new_span, new_first));
     view_ = std::pair{new_first, new_first + new_span - 1};
     pinned_ = view_->second >= frontier_;
+}
+
+void ColourGraph::zoom_height(int notches, int y) {
+    const Rect chart = layout().chart;
+    const double up = static_cast<double>(chart.bottom() - y) / std::max(1, chart.h);  // the pointer's height, as a share
+    const double share = floor_ + up / height_zoom_;
+    height_zoom_ = std::max(1.0, std::min(HEIGHT_ZOOM_MAX, height_zoom_ * std::pow(1 / ZOOM_STEP, notches)));
+    set_floor(share - up / height_zoom_);
+}
+
+void ColourGraph::set_floor(double floor) { floor_ = std::max(0.0, std::min(1 - 1 / height_zoom_, floor)); }
+
+void ColourGraph::drag(int start_x, int start_y, std::pair<int, int> view, double floor, int x, int y) {
+    const Rect chart = layout().chart;
+    if (view_) {
+        const auto [first, last] = view;
+        const int span = last - first + 1;
+        const int shift = static_cast<int>(py_round(static_cast<double>(x - start_x) * span / std::max(1, chart.w)));
+        const int new_first = std::max(0, std::min(frontier_ + 1 - span, first - shift));
+        view_ = std::pair{new_first, new_first + span - 1};
+        pinned_ = view_->second >= frontier_;
+    }
+    set_floor(floor + static_cast<double>(y - start_y) / std::max(1, chart.h) / height_zoom_);
 }
 
 void ColourGraph::pan(int notches) {
@@ -258,6 +289,10 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
         mouse_x_ = event.motion.x;
         mouse_y_ = event.motion.y;
         if (scrub_) scrub_ = turn_at(event.motion.x);
+        if (pan_ && (pan_->moved || std::max(std::abs(event.motion.x - pan_->x), std::abs(event.motion.y - pan_->y)) >= UI(DRAG_THRESHOLD))) {
+            pan_->moved = true;
+            drag(pan_->x, pan_->y, pan_->view, pan_->floor, event.motion.x, event.motion.y);
+        }
     } else if (event.type == SDL_MOUSEWHEEL) {
         if (chart.contains(mouse_x_, mouse_y_) || timeline.contains(mouse_x_, mouse_y_)) {
             if (event.wheel.x) {
@@ -266,11 +301,18 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
                 pan(-event.wheel.y);
             } else {
                 zoom(event.wheel.y, mouse_x_);
+                if (chart.contains(mouse_x_, mouse_y_)) zoom_height(event.wheel.y, mouse_y_);
             }
         }
-    } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT) {
+    } else if (event.type == SDL_MOUSEBUTTONDOWN && (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE)) {
         if (chart.contains(event.button.x, event.button.y) || timeline.contains(event.button.x, event.button.y)) {
-            seek_turn_ = turn_at(event.button.x);
+            pan_ = Pan{event.button.x, event.button.y, event.button.button, window(), floor_, false};
+        }
+    } else if (event.type == SDL_MOUSEBUTTONUP && (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) && pan_) {
+        const Pan ended = *pan_;
+        pan_.reset();
+        if (ended.button == SDL_BUTTON_RIGHT && !ended.moved) {  // a right-click, not a pan
+            seek_turn_ = turn_at(ended.x);
             return Action::Seek;
         }
     } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
@@ -342,7 +384,10 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
         most = std::max(most, members.size());
     }
     peak_ = nice_ceiling(static_cast<double>(most));
-    const double unit = chart.h / peak_;
+    // Zoomed into the height, the chart shows 1 / height_zoom_ of it, from floor_ (a share of the top) up;
+    // slices beyond it lie outside the chart.
+    const double unit = chart.h * height_zoom_ / peak_;
+    const double base = chart.bottom() + floor_ * height_zoom_ * chart.h;  // where none would stand
 
     // Stacked by species, plants at the bottom; within each, by the sort's trait if there is one, then
     // similar colours together: greys by lightness, then hues round the wheel. A trait sorts only the
@@ -367,7 +412,7 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
         Bar bar{moment.end, chart.x + index * chart.w / count, chart.x + (index + 1) * chart.w / count, {}, moment.future};
         members.assign(moment.members.begin(), moment.members.end());
         std::sort(members.begin(), members.end(), [&](int a, int b) { return key_of(a) < key_of(b); });
-        double bottom = chart.bottom();
+        double bottom = base;
         for (const int identifier : members) {
             bar.slices.emplace_back(identifier, bottom - unit, bottom);
             bottom -= unit;
@@ -451,7 +496,8 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     const std::vector<long long> key = {simulation.turn(), simulation.frontier(), static_cast<long long>(simulation.census().snapshots().size()),
                                         static_cast<long long>(simulation.agents().size()), simulation.deaths(), dot_, chart.w, chart.h,
                                         chart.x, chart.y, selection_version_, first, last,
-                                        static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation)), sort_};
+                                        static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation)), sort_,
+                                        static_cast<long long>(std::llround(height_zoom_ * 1e6)), static_cast<long long>(std::llround(floor_ * 1e9))};
     if (key != key_) {
         key_ = key;
         build(simulation, chart, first, last);
@@ -466,7 +512,8 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
 
     for (const double fraction : {0.0, 0.5, 1.0}) {
         const int y = static_cast<int>(py_round(chart.bottom() - fraction * chart.h));
-        canvas.text_at(small, general(peak_ * fraction), {149, 170, 150},
+        const double value = peak_ * (floor_ + fraction / height_zoom_);
+        canvas.text_at(small, height_zoom_ == 1 ? general(value) : format("%.0f", value), {149, 170, 150},
                        [&](Rect& box) { box.x = chart.x - box.w - UI(8); box.y = y - box.h / 2; });
     }
 
@@ -475,10 +522,12 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     const std::optional<int> hovered =
         chart.contains(mouse_x_, mouse_y_) && !menu_open_ ? bitzkey_at(mouse_x_, mouse_y_) : std::nullopt;
     if (hovered) {
+        canvas.set_clip(chart.inflate(0, 2));  // zoomed into the height, slices may lie beyond the chart
         for (const auto& [left, right, top, bottom] : places_[*hovered]) {
             canvas.rect({left, static_cast<int>(py_round(top)) - 1, right - left, std::max(1, static_cast<int>(py_round(bottom - top))) + 2},
                         {245, 238, 206}, 1);
         }
+        canvas.set_clip(std::nullopt);
     }
     if (press_) {
         const Rect box = box_between(std::get<0>(*press_), std::get<1>(*press_), mouse_x_, mouse_y_).clip(chart);
@@ -501,7 +550,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.text_at(font, "OPEN CATALOG", {220, 229, 211}, [&](Rect& box) { box.center_at(places.open.centerx(), places.open.centery()); });
     canvas.text(small,
                 "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
-                "Zoom: wheel, SHIFT+wheel pans",
+                "Zoom: wheel    Pan: right-drag    Z: all",
                 {144, 170, 151}, panel.x + UI(24), panel.bottom() - UI(28));
     if (menu_open_) {
         draw_menu(canvas);
@@ -555,7 +604,8 @@ void ColourGraph::label_species(Canvas& canvas, const Simulation& simulation, co
     }
     TTF_Font* font = UI.font(Face::Sans, 12);
     const int height = TTF_FontHeight(font);
-    for (const auto& [species, band] : bands) {
+    for (const auto& [species, whole] : bands) {
+        const std::pair<double, double> band{std::max<double>(whole.first, chart.y), std::min<double>(whole.second, chart.bottom())};  // in view
         if (band.second - band.first < height) continue;
         std::string label(species_name(static_cast<Species>(species)));
         for (char& c : label) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -574,9 +624,10 @@ void ColourGraph::draw_timeline(Canvas& canvas, const Rect& chart, const Rect& t
     canvas.rect(timeline, {22, 30, 30}, 0, UI(4));
     draw_seasons(canvas, chart, timeline, first, last);
     canvas.rect(timeline, {54, 68, 62}, 1, UI(4));
-    const std::string middle = !view_ ? format("TURN %d", (first + last) / 2)
-                                      : format("TURNS %d - %d  (ZOOM x%.1f)", first, last,
-                                               static_cast<double>(frontier_ + 1) / (last - first + 1));
+    std::string middle = !view_ ? format("TURN %d", (first + last) / 2)
+                                : format("TURNS %d - %d  (ZOOM x%.1f)", first, last,
+                                         static_cast<double>(frontier_ + 1) / (last - first + 1));
+    if (height_zoom_ > 1) middle += format("  (HEIGHT x%.1f)", height_zoom_);
     const std::array<std::tuple<std::string, int, double>, 3> labels = {
         std::tuple{format("TURN %d", first), timeline.x + UI(8), 0.0}, std::tuple{middle, timeline.centerx(), 0.5},
         std::tuple{format("TURN %d", last), timeline.right() - UI(8), 1.0}};

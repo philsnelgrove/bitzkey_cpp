@@ -240,7 +240,9 @@ App::Result App::run() {
                 } else if (key == SDLK_k) {
                     if (show_census_) catalog_picked();
                     else catalog_selected();
-                } else if (key == SDLK_z && !show_census_) {
+                } else if (key == SDLK_z && show_census_) {
+                    graph_.unzoom();  // the whole run, its whole height
+                } else if (key == SDLK_z) {
                     map_zoom_ = 1.0;  // the whole map again
                     map_centre_.reset();
                 }

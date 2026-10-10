@@ -7,7 +7,8 @@
 // Bitzkeys are picked by clicking their slice or dragging a box around slices, then copied or
 // saved; the pick stays selected on the map when the graph closes. The graph also travels in time:
 // drag the timeline beneath it, or right-click, to move the world to that turn. The mouse wheel
-// zooms into a stretch of the run.
+// zooms into a stretch of the run and, as on the map, into the height around the pointer; dragging
+// with the right or middle button pans, and Z shows it all again.
 
 #include <map>
 #include <optional>
@@ -53,6 +54,7 @@ public:
 
     void switch_part() { dot_ = !dot_; }
     void reset();  // forget the selection and zoom, for a new world
+    void unzoom();  // the whole run, its whole height
     const std::set<int>& selection() const { return selection_; }
     void select_only(int identifier) { select({identifier}, Mode::Replace); }
     void select_all(const std::set<int>& picked) { select(picked, Mode::Replace); }  // exactly these
@@ -84,6 +86,12 @@ private:
     int turn_at(int x) const;
     int x_of(int turn) const;
     void zoom(int notches, int x);
+    // Zoom into the height (positive notches) or out, as the map zooms, the population under `y` staying put.
+    void zoom_height(int notches, int y);
+    void set_floor(double floor);
+    // Pan by dragging from (start_x, start_y) to (x, y), the view then `view` and the floor `floor`: the graph
+    // follows the pointer, in time while zoomed into it and in height while zoomed into that.
+    void drag(int start_x, int start_y, std::pair<int, int> view, double floor, int x, int y);
     void pan(int notches);
     std::optional<int> bitzkey_at(int x, int y) const;
     std::set<int> bitzkeys_in(const Rect& box) const;
@@ -102,6 +110,17 @@ private:
     std::set<int> selection_;
     std::optional<std::pair<int, int>> view_;  // the turns shown when zoomed in
     bool pinned_ = false;  // the zoomed view reaches the latest turn, and keeps up with it as the run goes on
+    double height_zoom_ = 1.0;  // how far zoomed into the height
+    double floor_ = 0.0;        // the share of the chart's full height at its bottom, zoomed in
+    // A pan with the right or middle button: where it began, the button, the view and floor then, and whether
+    // it has moved far enough to be a pan rather than a right-click.
+    struct Pan {
+        int x, y, button;
+        std::pair<int, int> view;
+        double floor;
+        bool moved;
+    };
+    std::optional<Pan> pan_;
     int seek_turn_ = 0;
     int selection_version_ = 0;
     int width_ = 0, height_ = 0;
