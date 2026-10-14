@@ -696,7 +696,10 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
         std::string died = "dead";
         if (const Simulation::DeathRecord* record = simulation.death_record(*hovered)) {
             died = "died: " + record->cause;
-            if (record->killer >= 0) died += format(" by #%03d %s", record->killer, std::string(species_name(record->killer_species)).c_str());
+            if (record->killer >= 0) {
+                died += format(" by #%03d %s, %s", record->killer, std::string(species_name(record->killer_species)).c_str(),
+                               record->activity.c_str());
+            }
         }
         return chosen + format("     |     #%03d  %s  %s   ring %08X   dot %08X   social %08X", *hovered,
                                std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(), died.c_str(),

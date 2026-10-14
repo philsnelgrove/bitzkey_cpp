@@ -1097,9 +1097,9 @@ void App::draw(Canvas& canvas) {
 
 void App::open_death_report() {
     report_.emplace("Death report",
-                    format("Every death in this world up to turn %d: %d in all, by cause and species.", simulation_->turn(),
-                           simulation_->deaths()),
-                    death_report_lines(simulation_->death_causes()));
+                    format("Every death in this world up to turn %d: %d in all, by cause and species, who killed whom and what "
+                           "the killers were doing, and the deadliest killers.", simulation_->turn(), simulation_->deaths()),
+                    death_report_lines(simulation_->deaths_so_far()));
 }
 
 void App::inspect_brains() {

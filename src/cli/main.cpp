@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
         }
         if (deaths_path) {
             std::ofstream file(*deaths_path);
-            for (const std::string& line : death_report_lines(world.death_causes())) file << line << '\n';
+            for (const std::string& line : death_report_lines(world.deaths_so_far())) file << line << '\n';
             for (const Bitzkey* agent : alive) {  // and the first thinking animal's brain, as inspected
                 if (!agent->brain) continue;
                 file << "\n#" << agent->identifier << '\n';
