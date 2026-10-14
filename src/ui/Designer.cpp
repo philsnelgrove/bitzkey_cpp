@@ -287,7 +287,9 @@ void Designer::draw(Canvas& canvas) {
         });
     }
 
-    const Bitzkey sample(0, form_.dna, 0, 0);
+    Bitzkey sample(0, form_.dna, 0, 0);
+    sample.age = static_cast<int>(std::lround(sample.lifespan / 2));  // grown, not feeble
+    sample.grow();
     std::vector<std::string> facts;
     if (sample.species == Species::Plant) {
         facts = {"A plant: it photosynthesises and never moves,", "thinks, breeds or eats.",

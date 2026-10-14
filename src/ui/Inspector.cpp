@@ -126,8 +126,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     canvas.text(mono_small, format("HEALTH %5.1f/%.0f", std::max(0.0, agent.health), agent.max_health), {161, 207, 162}, health,
                 at(302));
     bar(canvas, health, at(320), half, agent.health / agent.max_health, {124, 190, 131});
-    canvas.text(small, format("AGE %d / ~%.0f    GENERATION %d    CHILDREN %d", agent.age, agent.lifespan, agent.generation,
-                              agent.children),
+    canvas.text(small, format("AGE %d / ~%.0f%s    GENERATION %d    CHILDREN %d", agent.age, agent.lifespan,
+                              agent.feeble ? " FEEBLE" : "", agent.generation, agent.children),
                 {145, 164, 146}, x, at(334));
     std::string state = "LAST ACTION: " + upper(agent.last_action);
     if (!agent.alive()) state += format("     MEAT LEFT %.0f", agent.meat);
