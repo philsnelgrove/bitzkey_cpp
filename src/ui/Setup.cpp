@@ -161,11 +161,7 @@ void SetupForm::load(const std::string& text) {
 }
 
 void SetupForm::add_design(Dna dna) {
-    nlohmann::ordered_json record = nlohmann::ordered_json::object();
-    record["version"] = GENOME_VERSION;
-    record["ring"] = hex_word(body_word(dna));
-    record["dot"] = hex_word(mind_word(dna));
-    paste(dumps(record));
+    paste(dumps(genome_record(dna)));  // all three words, social background and all
 }
 
 void SetupForm::settle(const Setting& setting) {

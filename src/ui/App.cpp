@@ -160,13 +160,7 @@ std::string plural(std::size_t count, const char* word = "Bitzkey") {
     return std::to_string(count) + " " + word + (count != 1 ? "s" : "");
 }
 
-nlohmann::ordered_json genome_only(Dna dna) {
-    nlohmann::ordered_json record = nlohmann::ordered_json::object();
-    record["version"] = GENOME_VERSION;
-    record["ring"] = hex_word(body_word(dna));
-    record["dot"] = hex_word(mind_word(dna));
-    return record;
-}
+nlohmann::ordered_json genome_only(Dna dna) { return genome_record(dna); }
 
 }  // namespace
 
