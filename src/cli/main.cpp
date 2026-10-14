@@ -46,6 +46,8 @@ void usage() {
         "  --death-report FILE         write the death report, and the first thinking animal's brain inspected, at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
         "  --rule-at TURN:KEY=VALUE    change a rule once the world reaches TURN, as the map's ADVANCED does; may be repeated\n"
+        "  --deploy-at TURN:X,Y:FILE   deploy the Bitzkeys exported in FILE at cell X,Y once the world reaches TURN,\n"
+        "                              as the catalog's DEPLOY does; may be repeated\n"
         "  --rules                     list the advanced rules, with their defaults and limits\n"
         "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
         "  --profile                   say at the end how long each part of a turn took\n";
@@ -207,6 +209,11 @@ int main(int argc, char** argv) {
     std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path;
     rules::Values changes;
     std::map<int, rules::Values> later;  // rules changed once the world reaches a turn, by turn
+    struct Deployment {
+        int x, y;
+        std::vector<Imported> bitzkeys;
+    };
+    std::multimap<int, Deployment> deployments;  // Bitzkeys deployed once the world reaches a turn, by turn
     try {
         for (int index = 1; index < argc; ++index) {
             const std::string flag = argv[index];
@@ -254,6 +261,19 @@ int main(int argc, char** argv) {
                 if (colon == std::string::npos) changes[key] = std::stod(rule.substr(equals + 1));
                 else later[std::stoi(value.substr(0, colon))][key] = std::stod(rule.substr(equals + 1));
             }
+            else if (flag == "--deploy-at") {
+                const std::size_t first = value.find(':'), comma = value.find(','), second = value.find(':', first + 1);
+                if (first == std::string::npos || comma == std::string::npos || second == std::string::npos) {
+                    throw std::invalid_argument("--deploy-at needs TURN:X,Y:FILE");
+                }
+                std::ifstream file(value.substr(second + 1), std::ios::binary);
+                if (!file) throw std::invalid_argument("cannot read " + value.substr(second + 1));
+                std::stringstream text;
+                text << file.rdbuf();
+                deployments.emplace(std::stoi(value.substr(0, first)),
+                                    Deployment{std::stoi(value.substr(first + 1, comma - first - 1)),
+                                               std::stoi(value.substr(comma + 1, second - comma - 1)), import_bitzkeys(text.str())});
+            }
             else if (flag == "--import") {
                 std::ifstream file(value, std::ios::binary);
                 if (!file) throw std::invalid_argument("cannot read " + value);
@@ -299,6 +319,8 @@ int main(int argc, char** argv) {
                 rules::apply(changes);
                 world.rules_changed();
             }
+            const auto [from, to] = deployments.equal_range(world.turn());  // as the catalog's DEPLOY does
+            for (auto due = from; due != to; ++due) world.deploy(due->second.bitzkeys, due->second.x, due->second.y);
             if (diagnosis) diagnosis->before(world);
             world.advance();
             if (diagnosis) diagnosis->after(world);

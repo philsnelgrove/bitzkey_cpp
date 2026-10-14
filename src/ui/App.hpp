@@ -106,6 +106,12 @@ private:
     void inspect_brains();     // pause, and show the selected Bitzkey's choices in each standard situation
     void browse_catalog();  // look through the catalog, importing and exporting nothing
     void edit_rules();      // pause, and change the rules this world plays by
+    // Deploy mode: the cursor becomes a target, and each click on the map, or each step of a drag, puts DEPLOY_GROUP
+    // of each Bitzkey there; a right-click or ESC stops.
+    void start_deploying(std::vector<Imported> bitzkeys);
+    void stop_deploying();
+    bool deploy_event(const SDL_Event& event);  // whether it used the event
+    std::optional<std::pair<int, int>> cell_at(int x, int y);  // the world's cell under a point on the map
     void catalog_export_list();
     void new_world();
     std::string save_export(const std::string& name, const std::string& text);
@@ -150,6 +156,8 @@ private:
     Rect export_button_;
     Rect open_button_;  // the catalog, to look through
     Rect advanced_button_;  // this world's rules
+    std::vector<Imported> deploying_;               // the Bitzkeys to paint onto the map; none when not deploying
+    std::optional<std::pair<int, int>> painted_;    // the cell last painted while the button is held
     std::string message_;
     Uint32 message_until_ = 0;
     bool playing_ = true;

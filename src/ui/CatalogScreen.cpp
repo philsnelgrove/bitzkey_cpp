@@ -42,7 +42,9 @@ std::pair<CatalogScreen::Outcome, std::vector<catalog::Entry>> CatalogScreen::ru
                 const SDL_Keycode key = event.key.keysym.sym;
                 const Uint16 mods = event.key.keysym.mod;
                 if (key == SDLK_ESCAPE) return {Outcome::Close, {}};
-                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !chosen_.empty() && !browsing_) return {Outcome::Import, chosen_entries()};
+                if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !chosen_.empty()) {
+                    return {browsing_ ? Outcome::Deploy : Outcome::Import, chosen_entries()};
+                }
                 if (key == SDLK_F11) window_.toggle_fullscreen();
                 else if ((key == SDLK_UP || key == SDLK_DOWN) && !entries_.empty()) {
                     const int moved = std::max(0, std::min(static_cast<int>(entries_.size()) - 1, picked_ + (key == SDLK_DOWN ? 1 : -1)));
@@ -56,7 +58,7 @@ std::pair<CatalogScreen::Outcome, std::vector<catalog::Entry>> CatalogScreen::ru
                 scroll_to(scroll_ - event.wheel.y);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 if (const auto outcome = click(event.button.x, event.button.y)) {
-                    if (*outcome == Outcome::Import) return {Outcome::Import, chosen_entries()};
+                    if (*outcome == Outcome::Import || *outcome == Outcome::Deploy) return {*outcome, chosen_entries()};
                     return {*outcome, {}};
                 }
             }
@@ -160,7 +162,7 @@ const Bitzkey& CatalogScreen::inspect(int index) {
 std::optional<CatalogScreen::Outcome> CatalogScreen::click(int x, int y) {
     const Layout places = layout();
     if (places.close.contains(x, y)) return Outcome::Close;
-    if (places.import.contains(x, y) && !chosen_.empty() && !browsing_) return Outcome::Import;
+    if (places.import.contains(x, y) && !chosen_.empty()) return browsing_ ? Outcome::Deploy : Outcome::Import;  // browsing, it deploys
     if (places.remove.contains(x, y) && !chosen_.empty()) {
         ask_to_remove();
         return std::nullopt;
@@ -223,17 +225,17 @@ void CatalogScreen::draw(Canvas& canvas) {
         draw_details(canvas, agent, inside_x, [&](int offset) { return details.y + UI(150 + offset); }, inside_w);
     }
 
-    const std::string adding = chosen_.size() <= 1 ? "ADD TO IMPORT" : "ADD " + std::to_string(chosen_.size()) + " TO IMPORT";
+    const std::string adding = browsing_ ? (chosen_.size() <= 1 ? "DEPLOY" : "DEPLOY " + std::to_string(chosen_.size()))  // onto the map
+                               : chosen_.size() <= 1 ? "ADD TO IMPORT" : "ADD " + std::to_string(chosen_.size()) + " TO IMPORT";
     for (const auto& [button, label, lit] : {std::tuple{places.remove, std::string("REMOVE"), false}, std::tuple{places.import, adding, true},
                                             std::tuple{places.close, std::string("CLOSE"), false}}) {
-        if (lit && browsing_) continue;  // nothing to import
         const bool active = lit && !chosen_.empty();
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
         canvas.text_at(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211},
                        [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
     }
     const std::string hint = !note_.empty() ? note_
-                             : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    DELETE  remove    ESC  close"
+                             : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  deploy    DELETE  remove    ESC  close"
                                             : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
     canvas.text(small, hint, !note_.empty() ? Color{238, 183, 110} : Color{116, 139, 124}, places.remove.right() + UI(16),
                 places.remove.centery() - UI(8));

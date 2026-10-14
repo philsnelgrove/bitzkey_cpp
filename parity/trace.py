@@ -30,10 +30,14 @@ parser.add_argument("--rule", action="append", default=[], metavar="KEY=VALUE",
                     help="change one of the advanced rules; may be repeated")
 parser.add_argument("--rule-at", action="append", default=[], metavar="TURN:KEY=VALUE",
                     help="change a rule once the world reaches TURN, as the map's ADVANCED does; may be repeated")
+parser.add_argument("--deploy-at", action="append", default=[], metavar="TURN:X,Y:FILE",
+                    help="deploy the Bitzkeys exported in FILE at cell X,Y once the world reaches TURN, as the catalog's "
+                         "DEPLOY does; may be repeated")
 options = parser.parse_args()
 
 sys.path.insert(0, str(options.python_project))
 from tools import Rules  # noqa: E402
+from tools.Exchange import import_bitzkeys  # noqa: E402
 from tools.Simulation import Simulation  # noqa: E402
 
 changes = {}
@@ -52,6 +56,11 @@ for rule in options.rule_at:
     if key not in Rules.BY_KEY or not value or not turn.isdigit():
         parser.error(f"unknown rule {rule}")
     later.setdefault(int(turn), {})[key] = float(value)
+deployments: dict[int, list[tuple[int, int, list]]] = {}
+for deployment in options.deploy_at:
+    turn, place, path = deployment.split(":", 2)
+    x, y = place.split(",")
+    deployments.setdefault(int(turn), []).append((int(x), int(y), import_bitzkeys(Path(path).read_text(encoding="utf-8"))))
 
 
 def trace_line(world: Simulation) -> str:
@@ -75,6 +84,8 @@ with options.out.open("w") as out:
             changes.update(later[world.turn])
             Rules.apply(changes)
             world.rules_changed()
+        for x, y, bitzkeys in deployments.get(world.turn, ()):  # as the catalog's DEPLOY does
+            world.deploy(bitzkeys, x, y)
         world.advance()
         out.write(trace_line(world) + "\n")
         if world.end_reason:

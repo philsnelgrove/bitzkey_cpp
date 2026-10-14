@@ -23,7 +23,7 @@ std::filesystem::path catalog_path();  // catalog.json beside exports/
 
 class CatalogScreen {
 public:
-    enum class Outcome { Import, Close, Quit };
+    enum class Outcome { Import, Deploy, Close, Quit };  // Deploy: browsing, onto the running world
 
     explicit CatalogScreen(Window& window, bool browsing = false);
     // The Bitzkeys chosen to import, in catalog order, or none when closed or the window closes. They

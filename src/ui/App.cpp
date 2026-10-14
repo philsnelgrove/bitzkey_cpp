@@ -194,6 +194,8 @@ App::Result App::run() {
                         return Result::Configure;
                     }
                 }
+            } else if (!deploying_.empty() && !show_census_ && deploy_event(event)) {
+                // deploying from the catalog
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
                 if (key == SDLK_ESCAPE && exemplar_menu_) {
@@ -570,13 +572,78 @@ void App::edit_rules() {
 }
 
 void App::browse_catalog() {
-    // The world waits meanwhile. Closing the window from there closes the program.
+    // The world waits meanwhile. DEPLOY closes it to paint the Bitzkeys chosen onto the map. Closing the window from
+    // there closes the program.
     const auto [outcome, entries] = CatalogScreen(window_, true).run();
     if (outcome == CatalogScreen::Outcome::Quit) {
         SDL_Event quit{};
         quit.type = SDL_QUIT;
         SDL_PushEvent(&quit);
+    } else if (outcome == CatalogScreen::Outcome::Deploy && !entries.empty()) {
+        std::vector<Imported> bitzkeys;
+        for (const catalog::Entry& entry : entries) bitzkeys.push_back(catalog::imported(entry));
+        start_deploying(std::move(bitzkeys));
     }
+}
+
+namespace {
+SDL_Cursor* system_cursor(SDL_SystemCursor which) {
+    static std::map<SDL_SystemCursor, SDL_Cursor*> made;  // kept for the program's life
+    SDL_Cursor*& cursor = made[which];
+    if (!cursor) cursor = SDL_CreateSystemCursor(which);
+    return cursor;
+}
+}  // namespace
+
+void App::start_deploying(std::vector<Imported> bitzkeys) {
+    show_census_ = false;
+    const std::size_t count = bitzkeys.size();
+    deploying_ = std::move(bitzkeys);
+    painted_.reset();
+    SDL_SetCursor(system_cursor(SDL_SYSTEM_CURSOR_CROSSHAIR));
+    say(format("DEPLOY: click or drag on the map to place %d of %s.  RIGHT-CLICK or ESC  stop", DEPLOY_GROUP,
+               count == 1 ? "it" : format("each of the %zu", count).c_str()));
+}
+
+void App::stop_deploying() {
+    deploying_.clear();
+    painted_.reset();
+    SDL_SetCursor(system_cursor(SDL_SYSTEM_CURSOR_ARROW));
+    say("Deploying stopped.");
+}
+
+bool App::deploy_event(const SDL_Event& event) {
+    // A left press on the map places a group, and holding it, the drag paints another every DEPLOY_GROUP cells; a
+    // right-click or ESC stops.
+    if ((event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) ||
+        (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_RIGHT)) {
+        stop_deploying();
+        return true;
+    }
+    if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
+        painted_.reset();
+        return true;
+    }
+    const bool pressed = event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT;
+    const bool painting = event.type == SDL_MOUSEMOTION && painted_;
+    if (!pressed && !painting) return false;
+    const auto cell = pressed ? cell_at(event.button.x, event.button.y) : cell_at(event.motion.x, event.motion.y);
+    if (!cell) return !pressed;  // a press off the map works the rest of the screen
+    if (painting && std::max(std::abs(cell->first - painted_->first), std::abs(cell->second - painted_->second)) < DEPLOY_GROUP) return true;
+    painted_ = cell;
+    const auto placed = simulation_->deploy(deploying_, cell->first, cell->second);
+    say(format("Deployed %zu at (%d, %d).  RIGHT-CLICK or ESC  stop", placed.size(), cell->first, cell->second));
+    return true;
+}
+
+std::optional<std::pair<int, int>> App::cell_at(int x, int y) {
+    Canvas canvas = window_.frame();
+    if (!map_view(canvas).first.contains(x, y)) return std::nullopt;
+    const Board board = board_geometry(canvas);
+    const int cell_x = static_cast<int>(std::floor((x - board.rect.x) / board.cell_width));
+    const int cell_y = static_cast<int>(std::floor((y - board.rect.y) / board.cell_height));
+    if (cell_x < 0 || cell_x >= simulation_->width() || cell_y < 0 || cell_y >= simulation_->height()) return std::nullopt;
+    return std::pair{cell_x, cell_y};
 }
 
 void App::catalog_export_list() {
