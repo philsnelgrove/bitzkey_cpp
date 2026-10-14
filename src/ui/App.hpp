@@ -81,6 +81,11 @@ private:
     Rect board_area(const Canvas& canvas) const;  // left of the sidebar, between the header and the footer
     void draw_exemplars(Canvas& canvas);
     void draw_exemplar_menu(Canvas& canvas);  // the open card's statistics, beneath its title
+    // The square popup: moving the pointer over a map square lists the Bitzkeys stacked there, and the
+    // list stays while the pointer is over it; clicking a name selects that Bitzkey. Returns whether the
+    // event was used.
+    bool square_event(const SDL_Event& event);
+    void draw_square(Canvas& canvas);  // the popup listing the Bitzkeys in the square under the pointer
     int sidebar_width(const Canvas& canvas) const;
     // Where the map shows, and the scale at which the whole map fits it.
     std::pair<Rect, double> map_view(const Canvas& canvas) const;
@@ -152,6 +157,9 @@ private:
     std::vector<Rect> exemplar_titles_;                 // each card's title, a menu of statistics, card by card
     std::optional<int> exemplar_menu_;                  // the card whose menu is open
     std::vector<std::pair<Rect, int>> menu_items_;      // the open menu's choices, and which statistic each is
+    std::optional<std::pair<int, int>> square_;         // the map square under the pointer, listed in a popup
+    std::optional<Rect> square_panel_;
+    std::vector<std::pair<Rect, int>> square_rows_;     // each name in the popup, and whom it is
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
     Rect open_button_;  // the catalog, to look through

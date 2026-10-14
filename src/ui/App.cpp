@@ -190,6 +190,8 @@ App::Result App::run() {
                 }
             } else if (!deploying_.empty() && !show_census_ && deploy_event(event)) {
                 // deploying from the catalog
+            } else if (!show_census_ && square_event(event)) {
+                // a name in the square popup
             } else if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
                 if (key == SDLK_ESCAPE && exemplar_menu_) {
@@ -630,6 +632,61 @@ bool App::deploy_event(const SDL_Event& event) {
     return true;
 }
 
+bool App::square_event(const SDL_Event& event) {
+    if (event.type == SDL_MOUSEMOTION) {
+        if (!(square_panel_ && square_panel_->contains(event.motion.x, event.motion.y))) {
+            const bool quiet = event.motion.state == 0 && !exemplar_menu_ && deploying_.empty();
+            square_ = quiet ? cell_at(event.motion.x, event.motion.y) : std::nullopt;
+        }
+        return false;
+    }
+    if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT && square_panel_ &&
+        square_panel_->contains(event.button.x, event.button.y)) {
+        for (const auto& [row, identifier] : square_rows_)
+            if (row.contains(event.button.x, event.button.y)) select(identifier);
+        return true;
+    }
+    return false;
+}
+
+void App::draw_square(Canvas& canvas) {
+    square_panel_.reset();
+    square_rows_.clear();
+    if (!square_ || show_census_ || dialog_ || report_) return;
+    std::vector<const Bitzkey*> here;
+    int used = 0;
+    for (const Bitzkey* agent : simulation_->living())
+        if (agent->x == square_->first && agent->y == square_->second) {
+            here.push_back(agent);
+            used += agent->space();
+        }
+    if (here.empty()) return;
+    const Board board = board_geometry(canvas);
+    const int row = UI(MENU_ROW), width = UI(230);
+    Rect panel{static_cast<int>(board.rect.x + (square_->first + 1) * board.cell_width),  // touching the square, to reach it
+               static_cast<int>(board.rect.y + square_->second * board.cell_height), width,
+               static_cast<int>(here.size() + 1) * row + UI(8)};
+    if (panel.right() > canvas.width() - UI(4)) panel.x = static_cast<int>(board.rect.x + square_->first * board.cell_width) - width;
+    panel.y = std::max(UI(4), std::min(canvas.height() - panel.h - UI(4), panel.y));
+    canvas.rect(panel, {27, 37, 37}, 0, UI(5));
+    canvas.rect(panel, {131, 205, 143}, 1, UI(5));
+    int mouse_x = 0, mouse_y = 0;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    canvas.text(small, format("SQUARE (%d, %d)   %d/%d SPACES", square_->first, square_->second, used, CELL_SPACE),
+                {144, 170, 151}, panel.x + UI(10), panel.y + UI(6));
+    for (std::size_t index = 0; index < here.size(); ++index) {
+        const Bitzkey& agent = *here[index];
+        const Rect item{panel.x + UI(4), panel.y + UI(4) + static_cast<int>(index + 1) * row, width - UI(8), row};
+        if (item.contains(mouse_x, mouse_y)) canvas.rect(item, {44, 57, 52}, 0, UI(3));
+        canvas.text(small, format("#%03d  %s   size %d  ·  %d spaces", agent.identifier,
+                                  upper(species_name(agent.species)).c_str(), agent.body[Size], agent.space()),
+                    agent.identifier == selected_id_ ? Color{131, 205, 143} : Color{220, 229, 211}, item.x + UI(6), item.y + UI(2));
+        square_rows_.push_back({item, agent.identifier});
+    }
+    square_panel_ = panel;
+}
+
 std::optional<std::pair<int, int>> App::cell_at(int x, int y) {
     Canvas canvas = window_.frame();
     if (!map_view(canvas).first.contains(x, y)) return std::nullopt;
@@ -1027,6 +1084,7 @@ void App::draw(Canvas& canvas) {
     draw_exemplars(canvas);
     draw_sidebar(canvas);
     draw_footer(canvas);
+    draw_square(canvas);
     draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
     if (show_census_) {
         const std::optional<std::string> note =
