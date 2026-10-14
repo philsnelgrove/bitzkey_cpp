@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdio>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -70,54 +71,67 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
                   std::optional<double> here) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
-    TTF_Font* mono = UI.font(Face::Mono, 14);
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
     draw_bitzkey(canvas, agent.dna, x + UI(10), at(11), dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), RING_WIDTH,
                  agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
     canvas.text(font, format("#%03d  %s", agent.identifier, upper(species_name(agent.species)).c_str()), {238, 238, 220},
                 x + UI(28), at(0));
-    canvas.text(mono, format("DOT / MIND   %08X", mind_word(agent.dna)), {211, 219, 201}, x, at(28));
-    canvas.text(mono, format("RING / BODY  %08X", body_word(agent.dna)), {211, 219, 201}, x, at(47));
+    canvas.text(mono_small, format("DOT %08X RING %08X SOCIAL %08X", mind_word(agent.dna), body_word(agent.dna), social_word(agent.dna)),
+                {211, 219, 201}, x, at(26));
 
-    const int body_x = x + std::min(UI(168), width / 2 + UI(18));
-    canvas.text(mono_small, known ? "MIND      born   now" : "MIND      born", {149, 170, 150}, x, at(74));
-    canvas.text(small, "BODY", {149, 170, 150}, body_x, at(74));
-    for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) {
-        const int born = agent.inborn[trait];
-        const double now = agent.mind[trait];
-        const std::string name(MIND_TRAITS[trait]);
-        if (!known) {
-            canvas.text(mono_small, format("%-11s%3d", name.c_str(), born), {175, 192, 172}, x, at(92 + trait * 16));
-            continue;
+    // Temperament: the mind's traits on the left, the social background's on the right.
+    const int right = x + std::min(UI(168), width / 2 + UI(18));
+    for (const auto& [left, heading, first, count] : {std::tuple{x, "MIND", 0, DOT_TRAIT_COUNT},
+                                                     std::tuple{right, "SOCIAL", DOT_TRAIT_COUNT, SOCIAL_TRAIT_COUNT}}) {
+        canvas.text(mono_small, format("%-10sborn", heading) + (known ? " now" : ""), {149, 170, 150}, left, at(46));
+        for (int index = 0; index < count; ++index) {
+            const int trait = first + index;
+            const int born = agent.inborn[trait];
+            const double now = agent.mind[trait];
+            const std::string name(TEMPERAMENT[trait]);
+            if (!known) {
+                canvas.text(mono_small, format("%-11s%2d", name.c_str(), born), {175, 192, 172}, left, at(62 + index * 14));
+                continue;
+            }
+            const Color colour = std::abs(now - born) < 0.25 ? Color{175, 192, 172}
+                                 : now > born               ? Color{131, 205, 143}
+                                                            : Color{238, 183, 110};
+            canvas.text(mono_small, format("%-11s%2d%5.1f", name.c_str(), born, now), colour, left, at(62 + index * 14));
         }
-        const Color colour = std::abs(now - born) < 0.25 ? Color{175, 192, 172}
-                             : now > born               ? Color{131, 205, 143}
-                                                        : Color{238, 183, 110};
-        canvas.text(mono_small, format("%-11s%3d%6.1f", name.c_str(), born, now), colour, x, at(92 + trait * 16));
     }
-    for (int trait = 1; trait < BODY_TRAIT_COUNT; ++trait) {
-        canvas.text(mono_small, format("%-9s%3d", std::string(BODY_TRAITS[trait]).c_str(), agent.body[trait]), {175, 192, 172},
-                    body_x, at(92 + (trait - 1) * 16));
+    canvas.text(mono_small, format("%-11s%2d", "neurodiv.", decode_neurodivergence(agent.dna)), {175, 192, 172}, right,
+                at(62 + SOCIAL_TRAIT_COUNT * 14));
+
+    // The body, three to a row.
+    canvas.text(mono_small, "BODY", {149, 170, 150}, x, at(206));
+    for (int index = 0; index < BODY_TRAIT_COUNT; ++index) {
+        const int row = index / 3, column = index % 3;
+        const std::string cell = index < BODY_TRAIT_COUNT - 1
+                                     ? format("%-10s%2d", std::string(BODY_TRAITS[index + 1]).c_str(), agent.body[index + 1])
+                                     : format("%-7s%5.2f", "burn", agent.burn);
+        canvas.text(mono_small, cell, {175, 192, 172}, x + column * width / 3, at(222 + row * 14));
     }
-    canvas.text(mono_small, format("%-7s%5.2f", "burn", agent.burn), {175, 192, 172}, body_x, at(92 + 9 * 16));
-    draw_climate(canvas, agent, x, at(254), width, known ? here : std::nullopt);
+    draw_climate(canvas, agent, x, at(280), width, known ? here : std::nullopt);
 
     if (!known) {
-        canvas.text(small, format("LIFESPAN ~%.0f", agent.lifespan), {145, 164, 146}, x, at(276));
-        canvas.text(small, "Not in the world at this turn: only its genome is known.", {116, 139, 124}, x, at(292));
+        canvas.text(small, format("LIFESPAN ~%.0f", agent.lifespan), {145, 164, 146}, x, at(302));
+        canvas.text(small, "Not in the world at this turn: only its genome is known.", {116, 139, 124}, x, at(318));
         return;
     }
-    canvas.text(mono, format("HUNGER  %5.1f%%", std::min(100.0, agent.hunger)), {224, 177, 118}, x, at(276));
-    bar(canvas, x, at(295), width, agent.hunger / 100, {224, 150, 94});
-    canvas.text(mono, format("HEALTH  %5.1f / %.0f", std::max(0.0, agent.health), agent.max_health), {161, 207, 162}, x, at(305));
-    bar(canvas, x, at(324), width, agent.health / agent.max_health, {124, 190, 131});
+    const int half = (width - UI(12)) / 2;
+    canvas.text(mono_small, format("HUNGER %5.1f%%", std::min(100.0, agent.hunger)), {224, 177, 118}, x, at(302));
+    bar(canvas, x, at(320), half, agent.hunger / 100, {224, 150, 94});
+    const int health = x + width - half;
+    canvas.text(mono_small, format("HEALTH %5.1f/%.0f", std::max(0.0, agent.health), agent.max_health), {161, 207, 162}, health,
+                at(302));
+    bar(canvas, health, at(320), half, agent.health / agent.max_health, {124, 190, 131});
     canvas.text(small, format("AGE %d / ~%.0f    GENERATION %d    CHILDREN %d", agent.age, agent.lifespan, agent.generation,
                               agent.children),
-                {145, 164, 146}, x, at(337));
+                {145, 164, 146}, x, at(334));
     std::string state = "LAST ACTION: " + upper(agent.last_action);
     if (!agent.alive()) state += format("     MEAT LEFT %.0f", agent.meat);
-    canvas.text(small, state, {145, 164, 146}, x, at(353));
+    canvas.text(small, state, {145, 164, 146}, x, at(350));
     if (agent.odds_offered) {
         std::vector<std::pair<int, double>> odds;
         for (int action = 0; action < ACTION_COUNT; ++action) {
@@ -129,7 +143,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
             if (index) line += "   ";
             line += std::string(ACTIONS[static_cast<std::size_t>(odds[index].first)]) + " " + py_percent(odds[index].second, 0);
         }
-        canvas.text(small, line, {175, 192, 172}, x, at(369));
+        canvas.text(small, line, {175, 192, 172}, x, at(366));
     }
 }
 

@@ -37,11 +37,11 @@ struct Bar {
 // The smallest 1, 2 or 5 times a power of ten at or above the value.
 double nice_ceiling(double value);
 
-// What a species' Bitzkeys are sorted by: their colour (0), then each mind trait, then each body
-// trait but species, then each climate gene; lowest at the bottom (for the home temperature,
-// hottest at the bottom).
+// What a species' Bitzkeys are sorted by: their colour (0), then each mind trait, each social trait,
+// then each body trait but species, then each climate gene; lowest at the bottom (for the home
+// temperature, hottest at the bottom).
 constexpr std::array<std::string_view, 3> CLIMATE_SORTS = {"temperature", "heat tolerance", "cold tolerance"};
-constexpr int SORT_COUNT = 1 + MIND_TRAIT_COUNT + BODY_TRAIT_COUNT - 1 + 3;
+constexpr int SORT_COUNT = 1 + TEMPERAMENT_COUNT + BODY_TRAIT_COUNT - 1 + 3;
 std::string sort_name(int sort);   // "colour", or the trait's or climate gene's name
 std::string sort_label(int sort);  // as the menu shows it
 int sort_value(Dna dna, int sort);  // the inborn trait a sort orders by; 0 for colour
@@ -52,7 +52,7 @@ public:
     // Open: the catalog, to look through.
     enum class Action { None, Copy, Save, Seek, Map, Catalog, Renew, Open };
 
-    void switch_part() { dot_ = !dot_; }
+    void switch_part() { part_ = (part_ + 1) % 3; }
     void reset();  // forget the selection and zoom, for a new world
     void unzoom();  // the whole run, its whole height
     const std::set<int>& selection() const { return selection_; }
@@ -104,7 +104,7 @@ private:
     std::string describe(const Simulation& simulation, std::optional<int> hovered) const;
     static Rect box_between(int x1, int y1, int x2, int y2);
 
-    bool dot_ = false;
+    int part_ = 0;  // the colours shown: 0 the ring's, 1 the dot's, 2 the social background's
     int sort_ = 0;
     bool menu_open_ = false;  // the sort menu
     std::set<int> selection_;

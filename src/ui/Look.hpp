@@ -13,7 +13,6 @@ namespace bitzkey::ui {
 
 constexpr int RING_WIDTH = 2;
 constexpr Color CROSS{225, 55, 55};  // the red cross through a dead Bitzkey
-constexpr Color CENTRE{0, 0, 0};     // the black centre behind a species icon
 constexpr Color OUTLINE{190, 190, 190};  // the thin light grey outline around a species icon
 constexpr int DOT_RADIUS_SMALLEST = 1;
 constexpr int DOT_RADIUS_LARGEST = 5;  // bigger cells raise the top

@@ -35,12 +35,16 @@ struct ExemplarStat {
     int index;  // the trait, or the StateStat
     bool lowest;
 };
-constexpr std::array<ExemplarStat, 43> EXEMPLAR_STATS = {{
+constexpr std::array<ExemplarStat, 50> EXEMPLAR_STATS = {{
     {"SMARTEST", StatKind::Mind, Intellect, false}, {"MOST AGGRESSIVE", StatKind::Mind, Aggression, false},
     {"MOST AMOROUS", StatKind::Mind, Libido, false}, {"MOST SOCIABLE", StatKind::Mind, Sociability, false},
     {"MOST CURIOUS", StatKind::Mind, Curiosity, false}, {"MOST FEARFUL", StatKind::Mind, Fear, false},
     {"GREATEST APPETITE", StatKind::Mind, Appetite, false}, {"MOST PATIENT", StatKind::Mind, Patience, false},
     {"MOST EMPATHETIC", StatKind::Mind, Empathy, false}, {"MOST TOLERANT", StatKind::Mind, Tolerance, false},
+    {"BEST MEMORY", StatKind::Mind, Memory, false}, {"MOST RESILIENT", StatKind::Mind, Resilience, false},
+    {"MOODIEST", StatKind::Mind, Moodiness, false}, {"MOST LOYAL", StatKind::Mind, Loyalty, false},
+    {"MOST DOMINANT", StatKind::Mind, Dominance, false}, {"MOST TRUSTING", StatKind::Mind, Trust, false},
+    {"MOST CLANNISH", StatKind::Mind, Kinship, false},
     {"SIMPLEST", StatKind::Mind, Intellect, true}, {"GENTLEST", StatKind::Mind, Aggression, true},
     {"BRAVEST", StatKind::Mind, Fear, true}, {"MOST SOLITARY", StatKind::Mind, Sociability, true},
     {"LARGEST", StatKind::Body, Size, false}, {"SMALLEST", StatKind::Body, Size, true},
@@ -85,7 +89,7 @@ double exemplar_value(const Bitzkey& agent, const ExemplarStat& stat) {
         case Herd: return agent.herd_instinct();
         default: {  // how far experience has moved its temperament from what it was born with
             std::vector<double> shifts;
-            for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) shifts.push_back(std::abs(agent.mind[trait] - agent.inborn[trait]));
+            for (int trait = 0; trait < TEMPERAMENT_COUNT; ++trait) shifts.push_back(std::abs(agent.mind[trait] - agent.inborn[trait]));
             return py_sum(shifts);
         }
     }
@@ -101,7 +105,7 @@ std::string exemplar_text(const Bitzkey& agent, const ExemplarStat& stat) {
     const double value = exemplar_value(agent, stat);
     const int whole = static_cast<int>(value);
     switch (stat.kind) {
-        case StatKind::Mind: return std::string(MIND_TRAITS[static_cast<std::size_t>(stat.index)]) + " " + std::to_string(whole);
+        case StatKind::Mind: return std::string(TEMPERAMENT[static_cast<std::size_t>(stat.index)]) + " " + std::to_string(whole);
         case StatKind::Body: return std::string(BODY_TRAITS[static_cast<std::size_t>(stat.index)]) + " " + std::to_string(whole);
         case StatKind::Home: return std::string("home ") + HOMES[static_cast<std::size_t>(whole)];
         case StatKind::State: break;
@@ -1304,8 +1308,8 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
     }
 
     y = heading("TEMPERAMENT", "average now; green above inborn, amber below", y + 14);
-    for (int trait = 0; trait < MIND_TRAIT_COUNT; ++trait) {
-        canvas.text(small, upper(MIND_TRAITS[static_cast<std::size_t>(trait)]), {149, 170, 150}, x, at(y));
+    for (int trait = 0; trait < TEMPERAMENT_COUNT; ++trait) {
+        canvas.text(small, upper(TEMPERAMENT[static_cast<std::size_t>(trait)]), {149, 170, 150}, x, at(y));
         for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
             const auto now = average(index, [trait](const Bitzkey& a) { return a.mind[static_cast<std::size_t>(trait)]; });
             if (!now) {

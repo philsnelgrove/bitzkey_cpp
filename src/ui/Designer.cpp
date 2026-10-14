@@ -14,16 +14,20 @@ namespace bitzkey::ui {
 
 namespace {
 constexpr int PREVIEW_ZOOM = 16;  // the preview is the in-world look, this many times larger
-constexpr Dna GENOME_MASK = ~0ULL;
-
 constexpr std::array<std::string_view, 4> HARDINESS = {"none", "heat", "cold", "both"};
+constexpr std::array<const char*, 3> LABELS = {"RING / BODY", "DOT / MIND", "SOCIAL"};
 
+// Where a field lies in its word: the social fields in the social background, the rest in the dot and ring.
 int shift_of(Field field) {
     if (field.kind == FieldKind::Climate) return field.index == 0 ? 30 : 62;
+    if (field.kind == FieldKind::Social) return field.index == SOCIAL_TRAIT_COUNT ? NEURODIVERGENCE_SHIFT : TRAIT_BITS * field.index;
     return TRAIT_BITS * field.index + (field.kind == FieldKind::Mind ? 0 : 32);
 }
 
-int largest(Field field) { return field.kind == FieldKind::Climate ? 3 : TRAIT_MAX; }
+int largest(Field field) {
+    if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT}) return NEURODIVERGENCE_MAX;
+    return field.kind == FieldKind::Climate ? 3 : TRAIT_MAX;
+}
 
 std::string format(const char* pattern, auto... values) {
     char buffer[256];
@@ -33,28 +37,37 @@ std::string format(const char* pattern, auto... values) {
 }  // namespace
 
 Field field_at(int position) {
-    if (position < MIND_TRAIT_COUNT) return {FieldKind::Mind, position};
-    if (position == MIND_TRAIT_COUNT) return {FieldKind::Climate, 0};
+    if (position < DOT_TRAIT_COUNT) return {FieldKind::Mind, position};
+    if (position == DOT_TRAIT_COUNT) return {FieldKind::Climate, 0};
     if (position < COLUMN_ROWS + BODY_TRAIT_COUNT) return {FieldKind::Body, position - COLUMN_ROWS};
     if (position == COLUMN_ROWS + BODY_TRAIT_COUNT) return {FieldKind::Climate, 1};
-    return {FieldKind::Hex, position - 2 * COLUMN_ROWS};
+    if (position < ROW_COUNT) return {FieldKind::Social, position - 2 * COLUMN_ROWS};
+    return {FieldKind::Hex, position - ROW_COUNT};
 }
 
 int field_position(Field field) {
     switch (field.kind) {
         case FieldKind::Mind: return field.index;
         case FieldKind::Body: return COLUMN_ROWS + field.index;
-        case FieldKind::Climate: return field.index == 0 ? MIND_TRAIT_COUNT : COLUMN_ROWS + BODY_TRAIT_COUNT;
-        default: return 2 * COLUMN_ROWS + field.index;
+        case FieldKind::Climate: return field.index == 0 ? DOT_TRAIT_COUNT : COLUMN_ROWS + BODY_TRAIT_COUNT;
+        case FieldKind::Social: return 2 * COLUMN_ROWS + field.index;
+        default: return ROW_COUNT + field.index;
     }
 }
 
-int DesignerForm::value(Field field) const { return static_cast<int>((dna >> shift_of(field)) & static_cast<Dna>(largest(field))); }
+int DesignerForm::value(Field field) const {
+    const std::uint64_t word = field.kind == FieldKind::Social ? dna.social : dna.bits;
+    return static_cast<int>((word >> shift_of(field)) & static_cast<std::uint64_t>(largest(field)));
+}
 
 void DesignerForm::set_value(Field field, int new_value) {
     const int shift = shift_of(field), most = largest(field);
-    dna = (dna & ~(static_cast<Dna>(most) << shift) & GENOME_MASK) |
-          (static_cast<Dna>(std::max(0, std::min(most, new_value))) << shift);
+    const auto kept = static_cast<std::uint64_t>(std::max(0, std::min(most, new_value))) << shift;
+    if (field.kind == FieldKind::Social) {
+        dna.social = static_cast<std::uint32_t>((dna.social & ~(static_cast<std::uint32_t>(most) << shift)) | kept);
+    } else {
+        dna.bits = (dna.bits & ~(static_cast<std::uint64_t>(most) << shift)) | kept;
+    }
 }
 
 std::string DesignerForm::code(int part) const {
@@ -110,15 +123,18 @@ void DesignerForm::backspace() {
 }
 
 void DesignerForm::randomise(PyRandom& rng) {
-    dna = rng.getrandbits(64);
+    dna.bits = rng.getrandbits(64);
+    dna.social = static_cast<std::uint32_t>(rng.getrandbits(32));
     typed.reset();
 }
 
 void DesignerForm::set_word(int part, std::uint32_t new_word) {
     if (part == 0) {
-        dna = (dna & WORD) | (static_cast<Dna>(new_word) << 32);
+        dna.bits = (dna.bits & WORD) | (static_cast<std::uint64_t>(new_word) << 32);
+    } else if (part == 1) {
+        dna.bits = (dna.bits & ~static_cast<std::uint64_t>(WORD)) | new_word;
     } else {
-        dna = (dna & ~static_cast<Dna>(WORD)) | new_word;
+        dna.social = new_word;
     }
 }
 
@@ -130,7 +146,11 @@ std::uint64_t fresh_seed() {
 }  // namespace
 
 Designer::Designer(Window& window, std::optional<Dna> dna) : window_(window), rng_(fresh_seed()), form_(0) {
-    if (!dna) dna = (rng_.getrandbits(64) & ~(static_cast<Dna>(0x3) << 32)) | (static_cast<Dna>(rng_.randrange(1, 4)) << 32);
+    if (!dna) {
+        dna = Dna{rng_.getrandbits(64)};
+        dna->social = static_cast<std::uint32_t>(rng_.getrandbits(32));
+        dna->bits = (dna->bits & ~(std::uint64_t{0x3} << 32)) | (static_cast<std::uint64_t>(rng_.randrange(1, 4)) << 32);
+    }
     form_.dna = *dna;
 }
 
@@ -184,14 +204,19 @@ Designer::Layout Designer::layout() const {
     Layout places;
     places.card = Rect{0, 0, UI(1040), UI(800)}.center_at(window_.width() / 2, window_.height() / 2);
     const Rect& card = places.card;
-    places.preview = {card.x + UI(24), card.y + UI(92), UI(320), UI(300)};
-    places.ring_code = {places.preview.right() - UI(160), places.preview.bottom() + UI(16), UI(160), UI(34)};
-    places.dot_code = {places.preview.right() - UI(160), places.preview.bottom() + UI(60), UI(160), UI(34)};
+    places.preview = {card.x + UI(24), card.y + UI(92), UI(320), UI(270)};
+    for (int part = 0; part < 3; ++part) {
+        places.codes[static_cast<std::size_t>(part)] = {places.preview.right() - UI(160), places.preview.bottom() + UI(16 + 44 * part),
+                                                        UI(160), UI(34)};
+    }
     const int column_width = (card.right() - UI(24) - (places.preview.right() + UI(32)) - UI(24)) / 2;
-    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
-        const int column = index / COLUMN_ROWS, row = index % COLUMN_ROWS;
+    constexpr int social_top = 124 + COLUMN_ROWS * 36 + 44;  // beneath the mind and body, under its own heading
+    for (int index = 0; index < ROW_COUNT; ++index) {
+        const bool social = index >= 2 * COLUMN_ROWS;
+        const int place = social ? index - 2 * COLUMN_ROWS : index, rows = social ? SOCIAL_ROWS : COLUMN_ROWS;
+        const int column = place / rows, row = place % rows;
         const int left = places.preview.right() + UI(32) + column * (column_width + UI(24));
-        places.rows[static_cast<std::size_t>(index)] = {left, card.y + UI(124 + row * 50), column_width, UI(42)};
+        places.rows[static_cast<std::size_t>(index)] = {left, card.y + UI((social ? social_top : 124) + row * 36), column_width, UI(30)};
     }
     places.apply = {card.right() - UI(24) - UI(120), card.bottom() - UI(68), UI(120), UI(44)};
     places.cancel = {card.right() - UI(24) - UI(132) - UI(120), card.bottom() - UI(68), UI(120), UI(44)};
@@ -200,9 +225,9 @@ Designer::Layout Designer::layout() const {
 }
 
 std::array<Rect, 3> Designer::controls(const Rect& row) {
-    const Rect plus{row.right() - UI(38), row.centery() - UI(15), UI(30), UI(30)};
-    const Rect box{plus.x - UI(112), row.centery() - UI(16), UI(104), UI(32)};
-    const Rect minus{box.x - UI(38), row.centery() - UI(15), UI(30), UI(30)};
+    const Rect plus{row.right() - UI(34), row.centery() - UI(13), UI(26), UI(26)};
+    const Rect box{plus.x - UI(112), row.centery() - UI(13), UI(104), UI(26)};
+    const Rect minus{box.x - UI(34), row.centery() - UI(13), UI(26), UI(26)};
     return {minus, box, plus};
 }
 
@@ -211,9 +236,10 @@ std::optional<Designer::Outcome> Designer::click(int x, int y) {
     if (places.apply.contains(x, y)) return Outcome::Apply;
     if (places.cancel.contains(x, y)) return Outcome::Cancel;
     if (places.random.contains(x, y)) form_.randomise(rng_);
-    if (places.ring_code.contains(x, y)) form_.select(field_position({FieldKind::Hex, 0}));
-    if (places.dot_code.contains(x, y)) form_.select(field_position({FieldKind::Hex, 1}));
-    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
+    for (int part = 0; part < 3; ++part) {
+        if (places.codes[static_cast<std::size_t>(part)].contains(x, y)) form_.select(field_position({FieldKind::Hex, part}));
+    }
+    for (int index = 0; index < ROW_COUNT; ++index) {
         const Rect& row = places.rows[static_cast<std::size_t>(index)];
         if (!row.contains(x, y)) continue;
         if (index != form_.focus) form_.select(index);
@@ -236,22 +262,22 @@ void Designer::draw(Canvas& canvas) {
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(bold, "BITZKEY DESIGNER", {229, 239, 220}, card.x + UI(24), card.y + UI(22));
     canvas.text(small, "NEW WORLD  /  DESIGN AN IMPORT", {144, 170, 151}, card.x + UI(48) + title, card.y + UI(31));
-    canvas.text(font, "Every trait is part of the genome, so the dot and ring colours change with them.", {157, 177, 159},
+    canvas.text(font, "Every trait is part of the genome, so the dot, ring and social background colours change with them.", {157, 177, 159},
                 card.x + UI(24), card.y + UI(60));
 
     // The large preview, and the Bitzkey at the size it will have in the world.
     canvas.rect(preview, {22, 30, 30}, 0, UI(6));
     canvas.rect(preview, {54, 68, 62}, 1, UI(6));
     const int size = form_.value({FieldKind::Body, Size});
-    draw_bitzkey(canvas, form_.dna, preview.centerx(), preview.y + UI(150), UI(PREVIEW_ZOOM * dot_radius(size)),
+    draw_bitzkey(canvas, form_.dna, preview.centerx(), preview.y + UI(130), UI(PREVIEW_ZOOM * dot_radius(size)),
                  UI(PREVIEW_ZOOM * RING_WIDTH));
     canvas.text(small, "actual size", {116, 139, 124}, preview.x + UI(12), preview.bottom() - UI(26));
     draw_bitzkey(canvas, form_.dna, preview.x + UI(96), preview.bottom() - UI(18), dot_radius(size));
 
-    for (int part = 0; part < 2; ++part) {
-        const Rect& box = part == 0 ? places.ring_code : places.dot_code;
+    for (int part = 0; part < 3; ++part) {
+        const Rect& box = places.codes[static_cast<std::size_t>(part)];
         const bool focused = form_.focused() == Field{FieldKind::Hex, part};
-        canvas.text(font, part == 0 ? "RING / BODY" : "DOT / MIND", {149, 170, 150}, preview.x, box.y + UI(8));
+        canvas.text(font, LABELS[static_cast<std::size_t>(part)], {149, 170, 150}, preview.x, box.y + UI(8));
         canvas.rect(box, {19, 26, 27}, 0, UI(4));
         canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
         std::string code = form_.code(part);
@@ -290,13 +316,16 @@ void Designer::draw(Canvas& canvas) {
         facts.push_back("At home where it is " + temperature + "." + hardy[static_cast<std::size_t>(hardiness)]);
     }
     for (std::size_t index = 0; index < facts.size(); ++index) {
-        canvas.text(small, facts[index], {187, 199, 181}, preview.x, places.dot_code.bottom() + UI(20 + 22 * static_cast<int>(index)));
+        canvas.text(small, facts[index], {187, 199, 181}, preview.x, places.codes[2].bottom() + UI(16 + 20 * static_cast<int>(index)));
     }
 
-    // The trait rows: mind on the left, body on the right.
-    canvas.text(font, "MIND  /  INNER DOT", {220, 229, 211}, places.rows[0].x, places.rows[0].y - UI(28));
-    canvas.text(font, "BODY  /  OUTER RING", {220, 229, 211}, places.rows[COLUMN_ROWS].x, places.rows[COLUMN_ROWS].y - UI(28));
-    for (int index = 0; index < 2 * COLUMN_ROWS; ++index) {
+    // The trait rows: mind on the left, body on the right, and the social background beneath.
+    for (const auto& [index, heading] : {std::pair{0, "MIND  /  INNER DOT"}, std::pair{COLUMN_ROWS, "BODY  /  OUTER RING"},
+                                         std::pair{2 * COLUMN_ROWS, "SOCIAL  /  BACKGROUND"}}) {
+        const Rect& first = places.rows[static_cast<std::size_t>(index)];
+        canvas.text(font, heading, {220, 229, 211}, first.x, first.y - UI(28));
+    }
+    for (int index = 0; index < ROW_COUNT; ++index) {
         draw_row(canvas, field_at(index), places.rows[static_cast<std::size_t>(index)], index == form_.focus);
     }
 
@@ -320,10 +349,12 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
     const auto [minus, box, plus] = controls(row);
     const std::string_view name = field.kind == FieldKind::Climate ? (field.index == 0 ? "hardiness" : "temperature")
-                                  : field.kind == FieldKind::Mind    ? MIND_TRAITS[field.index]
-                                                                     : BODY_TRAITS[field.index];
-    canvas.text(font, name, {232, 236, 219}, row.x + UI(12), row.y + UI(6));
-    const Rect meter{row.x + UI(12), row.bottom() - UI(11), minus.x - row.x - UI(28), UI(4)};
+                                  : field.kind == FieldKind::Mind    ? TEMPERAMENT[field.index]
+                                  : field.kind == FieldKind::Social
+                                      ? (field.index == SOCIAL_TRAIT_COUNT ? std::string_view("neurodivergence") : TEMPERAMENT[DOT_TRAIT_COUNT + field.index])
+                                      : BODY_TRAITS[field.index];
+    canvas.text(font, name, {232, 236, 219}, row.x + UI(12), row.y + UI(2));
+    const Rect meter{row.x + UI(12), row.bottom() - UI(6), minus.x - row.x - UI(28), UI(3)};
     canvas.fill_rect(meter, {44, 57, 52});
     canvas.fill_rect({meter.x, meter.y, static_cast<int>(py_round(static_cast<double>(meter.w) * value / largest(field))), meter.h},
                      {131, 205, 143});

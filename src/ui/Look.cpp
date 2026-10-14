@@ -71,15 +71,16 @@ void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_wi
         return;
     }
     Color dot = to_color(color_from_word(mind_word(dna))), ring = to_color(color_from_word(body_word(dna))), outline = OUTLINE;
+    Color social = to_color(color_from_word(social_word(dna)));  // the background behind its species icon
     if (!alive) {
-        for (Color* colour : {&dot, &ring, &outline}) {
+        for (Color* colour : {&dot, &ring, &outline, &social}) {
             *colour = {static_cast<std::uint8_t>(colour->r / 3), static_cast<std::uint8_t>(colour->g / 3),
                        static_cast<std::uint8_t>(colour->b / 3)};
         }
     }
     canvas.circle(x, y, radius + ring_width, ring);
     if (radius >= ICON_MIN_RADIUS) {
-        canvas.circle(x, y, radius, CENTRE);
+        canvas.circle(x, y, radius, social);
         const auto species = static_cast<Species>(decode_body(dna)[SpeciesTrait]);
         for (const auto& [dx, dy] : outline_offsets(std::max(1, ring_width / RING_WIDTH))) {  // as thick as the ring is enlarged
             draw_icon(canvas, species, x + dx, y + dy, radius * 0.8, outline);

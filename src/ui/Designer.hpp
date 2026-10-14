@@ -17,15 +17,19 @@ namespace bitzkey::ui {
 struct Screens;
 
 // The climate fields: 0 the hardiness (the tolerance flags, the dot's top two bits, as one value:
-// 1 heat, 2 cold, 3 both), 1 the home temperature (the ring's top two bits).
-enum class FieldKind { Mind, Body, Climate, Hex };
+// 1 heat, 2 cold, 3 both), 1 the home temperature (the ring's top two bits). The social fields: its
+// traits, then its neurodivergence.
+enum class FieldKind { Mind, Body, Climate, Social, Hex };
 struct Field {
     FieldKind kind;
-    int index;  // the trait, or 0 for the ring and 1 for the dot
+    int index;  // the trait, or 0 for the ring, 1 for the dot and 2 for the social background
     bool operator==(const Field&) const = default;
 };
-constexpr int COLUMN_ROWS = MIND_TRAIT_COUNT + 1;  // a column for each word: its traits, then its climate field
-constexpr int FIELD_COUNT = 2 * COLUMN_ROWS + 2;
+constexpr int COLUMN_ROWS = DOT_TRAIT_COUNT + 1;  // a column each for the dot and ring: its traits, then its climate field
+constexpr int SOCIAL_FIELDS = SOCIAL_TRAIT_COUNT + 1;  // beneath them both, in two columns
+constexpr int SOCIAL_ROWS = (SOCIAL_FIELDS + 1) / 2;
+constexpr int ROW_COUNT = 2 * COLUMN_ROWS + SOCIAL_FIELDS;  // every field but the hex codes
+constexpr int FIELD_COUNT = ROW_COUNT + 3;
 Field field_at(int position);
 int field_position(Field field);
 
@@ -35,9 +39,9 @@ public:
     explicit DesignerForm(Dna dna) : dna(dna) {}
 
     Field focused() const { return field_at(focus); }
-    int value(Field field) const;  // 0 to 7; for species, the raw value that picks it (mod 4)
+    int value(Field field) const;  // 0 to 7; for species, the raw value that picks it (mod 4); neurodivergence to 15
     void set_value(Field field, int value);
-    std::uint32_t word(int part) const { return part == 0 ? body_word(dna) : mind_word(dna); }
+    std::uint32_t word(int part) const { return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna); }
     std::string code(int part) const;  // what is being typed into a word, else its value
     void select(int position);
     void move(int offset) { select(focus + offset); }
@@ -64,8 +68,9 @@ public:
 private:
     friend struct Screens;  // the screenshot tool
     struct Layout {
-        Rect card, preview, ring_code, dot_code, apply, cancel, random;
-        std::array<Rect, 2 * COLUMN_ROWS> rows;
+        Rect card, preview, apply, cancel, random;
+        std::array<Rect, 3> codes;  // the ring's, the dot's and the social background's
+        std::array<Rect, ROW_COUNT> rows;
     };
     Layout layout() const;
     static std::array<Rect, 3> controls(const Rect& row);  // minus, value box, plus

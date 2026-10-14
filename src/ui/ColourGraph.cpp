@@ -24,7 +24,7 @@ constexpr int MIN_VIEW = 10;           // the fewest turns the graph zooms in to
 constexpr double ZOOM_STEP = 0.8;      // each wheel notch shows this share of the turns before it
 constexpr double HEIGHT_ZOOM_MAX = 32.0;  // the closest the graph zooms into its height, times the whole
 constexpr Color BACKGROUND{30, 40, 40};
-constexpr int MENU_ROW = 22;           // design pixels per item of the sort menu
+constexpr int MENU_ROW = 18;           // design pixels per item of the sort menu: small enough for every trait to fit
 constexpr int YEAR_LABEL_SPACING = 56; // design pixels the year labels on the timeline keep apart, at least
 constexpr int FIRST_CLIMATE_SORT = SORT_COUNT - static_cast<int>(CLIMATE_SORTS.size());
 
@@ -37,7 +37,12 @@ std::string fit_text(const std::string& text, TTF_Font* font, int width) {
     return shortened + "...";
 }
 
-Color colour_of(Dna dna, bool dot) { return to_color(color_from_word(dot ? mind_word(dna) : body_word(dna))); }
+// The genome's word for a part: 0 the ring, 1 the dot, 2 the social background.
+std::uint32_t word_of(Dna dna, int part) { return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna); }
+
+Color colour_of(Dna dna, int part) { return to_color(color_from_word(word_of(dna, part))); }
+
+constexpr std::array<const char*, 3> TITLES = {"RING / BODY", "DOT / MIND", "SOCIAL BACKGROUND"};
 
 Color faded(Color colour, double amount) {
     const auto channel = [amount](int value, int back) {
@@ -73,8 +78,8 @@ double nice_ceiling(double value) {
 std::string sort_name(int sort) {
     if (sort == 0) return "colour";
     if (sort >= FIRST_CLIMATE_SORT) return std::string(CLIMATE_SORTS[static_cast<std::size_t>(sort - FIRST_CLIMATE_SORT)]);
-    if (sort <= MIND_TRAIT_COUNT) return std::string(MIND_TRAITS[static_cast<std::size_t>(sort - 1)]);
-    return std::string(BODY_TRAITS[static_cast<std::size_t>(sort - MIND_TRAIT_COUNT)]);
+    if (sort <= TEMPERAMENT_COUNT) return std::string(TEMPERAMENT[static_cast<std::size_t>(sort - 1)]);
+    return std::string(BODY_TRAITS[static_cast<std::size_t>(sort - TEMPERAMENT_COUNT)]);
 }
 
 std::string sort_label(int sort) {
@@ -90,8 +95,8 @@ int sort_value(Dna dna, int sort) {
         const Climate climate = decode_climate(dna);
         return sort == FIRST_CLIMATE_SORT ? climate.temperature : sort == FIRST_CLIMATE_SORT + 1 ? climate.heat : climate.cold;
     }
-    if (sort <= MIND_TRAIT_COUNT) return decode_mind(dna)[static_cast<std::size_t>(sort - 1)];
-    return decode_body(dna)[static_cast<std::size_t>(sort - MIND_TRAIT_COUNT)];
+    if (sort <= TEMPERAMENT_COUNT) return decode_temperament(dna)[static_cast<std::size_t>(sort - 1)];
+    return decode_body(dna)[static_cast<std::size_t>(sort - TEMPERAMENT_COUNT)];
 }
 
 void ColourGraph::reset() {
@@ -234,12 +239,13 @@ ColourGraph::Layout ColourGraph::layout() const {
 }
 
 std::vector<std::pair<int, Rect>> ColourGraph::menu_items() const {
-    // Under the sort button, a small gap before the mind traits, the body traits and the climate genes.
+    // Under the sort button, a small gap before the mind traits, the social traits, the body traits and the
+    // climate genes.
     const Rect button = layout().sort;
     std::vector<std::pair<int, Rect>> items;
     int top = button.bottom() + UI(2);
     for (int sort = 0; sort < SORT_COUNT; ++sort) {
-        if (sort == 1 || sort == 1 + MIND_TRAIT_COUNT || sort == FIRST_CLIMATE_SORT) top += UI(6);
+        if (sort == 1 || sort == 1 + DOT_TRAIT_COUNT || sort == 1 + TEMPERAMENT_COUNT || sort == FIRST_CLIMATE_SORT) top += UI(6);
         items.emplace_back(sort, Rect{button.x, top, button.w, UI(MENU_ROW)});
         top += UI(MENU_ROW);
     }
@@ -398,10 +404,10 @@ void ColourGraph::build(const Simulation& simulation, const Rect& chart, int fir
         auto found = order.find(identifier);
         if (found == order.end()) {
             const Dna dna = simulation.lineage(identifier);
-            const auto [group, hue, value] = colour_order(color_from_word(dot_ ? mind_word(dna) : body_word(dna)));
+            const auto [group, hue, value] = colour_order(color_from_word(word_of(dna, part_)));
             const int trait = sort_ == 0 ? 0 : alive.contains(identifier) ? sort_value(dna, sort_) : -1;
             found = order.emplace(identifier, Key{decode_body(dna)[SpeciesTrait], trait, group, hue, value,
-                                                  dot_ ? mind_word(dna) : body_word(dna), identifier}).first;
+                                                  word_of(dna, part_), identifier}).first;
         }
         return found->second;
     };
@@ -443,7 +449,7 @@ void ColourGraph::render(const Simulation& simulation, const Rect& chart) {
         std::optional<Color> run_colour;
         double run_top = 0, run_bottom = 0;
         for (const auto& [identifier, top, bottom] : bar.slices) {
-            Color colour = colour_of(simulation.lineage(identifier), dot_);
+            Color colour = colour_of(simulation.lineage(identifier), part_);
             if (choosing && !selection_.contains(identifier)) colour = faded(colour, DIM);
             if (bar.future) colour = faded(colour, FUTURE_DIM);
             if (!run_colour || !(colour == *run_colour)) {
@@ -478,10 +484,10 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.fill_rect({0, 0, width_, height_}, {8, 12, 12, 175});
     canvas.rect(panel, BACKGROUND, 0, UI(6));
     canvas.rect(panel, {80, 99, 85}, 1, UI(6));
-    canvas.text(UI.font(Face::Sans, 22, true), std::string("COLOUR GRAPH  /  ") + (dot_ ? "DOT / MIND" : "RING / BODY"),
+    canvas.text(UI.font(Face::Sans, 22, true), std::string("COLOUR GRAPH  /  ") + TITLES[static_cast<std::size_t>(part_)],
                 {229, 239, 220}, panel.x + UI(24), panel.y + UI(18));
     canvas.text(small,
-                std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot    C  copy    S  save    K  catalog    "
+                std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social    C  copy    S  save    K  catalog    "
                             "G or ESC  ") + (ended_ ? "new world" : "close"),
                 {144, 170, 151}, panel.x + UI(24), panel.y + UI(54));
     for (const auto& [button, name] : {std::pair{places.clear, "CLEAR"}, std::pair{places.copy, "COPY"},
@@ -494,7 +500,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
 
     const auto [first, last] = window();
     const std::vector<long long> key = {simulation.turn(), simulation.frontier(), static_cast<long long>(simulation.census().snapshots().size()),
-                                        static_cast<long long>(simulation.agents().size()), simulation.deaths(), dot_, chart.w, chart.h,
+                                        static_cast<long long>(simulation.agents().size()), simulation.deaths(), part_, chart.w, chart.h,
                                         chart.x, chart.y, selection_version_, first, last,
                                         static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation)), sort_,
                                         static_cast<long long>(std::llround(height_zoom_ * 1e6)), static_cast<long long>(std::llround(floor_ * 1e9))};
@@ -692,13 +698,13 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
             died = "died: " + record->cause;
             if (record->killer >= 0) died += format(" by #%03d %s", record->killer, std::string(species_name(record->killer_species)).c_str());
         }
-        return chosen + format("     |     #%03d  %s  %s   ring %08X   dot %08X", *hovered,
+        return chosen + format("     |     #%03d  %s  %s   ring %08X   dot %08X   social %08X", *hovered,
                                std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(), died.c_str(),
-                               body_word(dna), mind_word(dna));
+                               body_word(dna), mind_word(dna), social_word(dna));
     }
-    return chosen + format("     |     #%03d  %s  alive   ring %08X   dot %08X", *hovered,
+    return chosen + format("     |     #%03d  %s  alive   ring %08X   dot %08X   social %08X", *hovered,
                            std::string(SPECIES[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait])]).c_str(),
-                           body_word(dna), mind_word(dna));
+                           body_word(dna), mind_word(dna), social_word(dna));
 }
 
 }  // namespace bitzkey::ui

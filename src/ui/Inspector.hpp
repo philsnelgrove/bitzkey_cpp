@@ -12,8 +12,8 @@
 namespace bitzkey::ui {
 
 // Heights, in design pixels, of the details: in full, and for a Bitzkey known only by its genome.
-constexpr int DETAILS_HEIGHT = 385;
-constexpr int GENOME_HEIGHT = 308;
+constexpr int DETAILS_HEIGHT = 382;
+constexpr int GENOME_HEIGHT = 334;
 // Each temperature's colour, from hot to very cold, for the map's zones and the details.
 constexpr std::array<Color, 4> TEMPERATURE_COLOURS = {{{238, 160, 110}, {175, 192, 172}, {140, 185, 230}, {200, 225, 250}}};
 
