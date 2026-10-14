@@ -33,7 +33,7 @@ int rule_count() { return static_cast<int>(rules::all().size()); }
 // ---------------------------------------------------------------------------------------------
 // The form
 
-AdvancedForm::AdvancedForm(const rules::Values& given) {
+AdvancedForm::AdvancedForm(const rules::Values& given, bool running_) : running(running_) {
     for (const rules::Rule& rule : rules::all()) {
         const auto found = given.find(rule.key);
         values[rule.key] = found != given.end() ? found->second : rules::defaults().at(rule.key);
@@ -51,7 +51,7 @@ void AdvancedForm::select(int index) {
 }
 
 void AdvancedForm::adjust(int steps) {
-    if (!rules::locked(focused().key).empty()) return;  // not on this computer
+    if (!rules::locked(focused().key, running).empty()) return;  // not on this computer
     settle();
     const rules::Rule& rule = focused();
     double& value = values[rule.key];
@@ -60,7 +60,7 @@ void AdvancedForm::adjust(int steps) {
 
 void AdvancedForm::type_text(const std::string& text) {
     const rules::Rule& rule = focused();
-    if (!rules::locked(rule.key).empty()) return;
+    if (!rules::locked(rule.key, running).empty()) return;
     std::string entry = typed.value_or("");
     for (const char character : text) {
         if (std::isdigit(static_cast<unsigned char>(character)) ||
@@ -73,7 +73,7 @@ void AdvancedForm::type_text(const std::string& text) {
 }
 
 void AdvancedForm::backspace() {
-    if (!rules::locked(focused().key).empty()) return;
+    if (!rules::locked(focused().key, running).empty()) return;
     std::string shown = text(focused());
     if (!shown.empty()) shown.pop_back();
     typed = shown;
@@ -103,7 +103,7 @@ void AdvancedForm::settle() {
 // ---------------------------------------------------------------------------------------------
 // The screen
 
-AdvancedScreen::AdvancedScreen(Window& window, const rules::Values& values) : window_(window), form_(values) {
+AdvancedScreen::AdvancedScreen(Window& window, const rules::Values& values, bool running) : window_(window), form_(values, running) {
     const auto& all = rules::all();
     int top = 0;
     for (std::size_t index = 0; index < all.size(); ++index) {
@@ -304,13 +304,15 @@ void AdvancedScreen::draw(Canvas& canvas) {
     canvas.rect(card, {27, 37, 37}, 0, UI(8));
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(bold, "BITZKEY", {229, 239, 220}, card.x + UI(28), card.y + UI(24));
-    canvas.text(small, "NEW WORLD  /  ADVANCED RULES", {144, 170, 151}, card.x + UI(52) + title, card.y + UI(33));
+    canvas.text(small, form_.running ? "THIS WORLD  /  ADVANCED RULES" : "NEW WORLD  /  ADVANCED RULES", {144, 170, 151},
+                card.x + UI(52) + title, card.y + UI(33));
     const std::vector<std::string> lines = law_lines(card.w - UI(56));
     for (std::size_t index = 0; index < lines.size(); ++index) {
         canvas.text(UI.font(Face::Sans, 15), lines[index], {229, 239, 220}, card.x + UI(28), card.y + UI(66) + static_cast<int>(index) * UI(LAW_LINE));
     }
     canvas.text(UI.font(Face::Sans, 15),
-                "The rules the world plays by. " + std::to_string(form_.changed().size()) +
+                std::string(form_.running ? "This world plays by these from its next turn. " : "The rules the world plays by. ") +
+                    std::to_string(form_.changed().size()) +
                     " changed from the defaults; changed values show in amber.",
                 {157, 177, 159}, card.x + UI(28), card.y + UI(66) + static_cast<int>(lines.size()) * UI(LAW_LINE) + UI(6));
     for (const auto& [button, label] : {std::pair{places.reset, "RESET"}, std::pair{places.reset_all, "RESET ALL"}}) {
@@ -353,9 +355,9 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
     const auto [minus, box, plus] = buttons(row);
     TTF_Font* small = UI.font(Face::Sans, 12);
-    canvas.text(UI.font(Face::Sans, 15), upper(rule.label), rules::locked(rule.key).empty() ? Color{232, 236, 219} : Color{120, 134, 124},
+    canvas.text(UI.font(Face::Sans, 15), upper(rule.label), rules::locked(rule.key, form_.running).empty() ? Color{232, 236, 219} : Color{120, 134, 124},
                 row.x + UI(14), row.y + UI(3));
-    const std::string lock = rules::locked(rule.key);  // not to be changed on this computer: greyed, saying why
+    const std::string lock = rules::locked(rule.key, form_.running);  // not to be changed on this computer: greyed, saying why
     const bool warned = lock.empty() && !rules::warning(rule.key).empty();  // a cost to heed: its hint in amber, the warning in full when chosen
     canvas.text(small, fit(small, !lock.empty() ? lock : (warned ? "WARNING  " : "") + rule.hint, minus.x - row.x - UI(28)),
                 !lock.empty() ? Color{96, 110, 100} : warned ? Color{238, 183, 110} : Color{130, 152, 136}, row.x + UI(14), row.y + UI(21));

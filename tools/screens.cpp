@@ -51,6 +51,11 @@ struct Screens {
         advanced.form_.type_text("0.3");
         advanced.draw(canvas);
         save(canvas, folder / "advanced-mid.bmp");
+        AdvancedScreen running(window, setup.rules_, true);  // opened from the map: this world's rules
+        running.form_.select(4);
+        running.show_focus();
+        running.draw(canvas);
+        save(canvas, folder / "advanced-world.bmp");
 
         Designer designer(window, encode_dna(Species::Predator, {{"size", 6}, {"strength", 5}, {"weapons", 7}, {"armour", 3},
                                                                  {"speed", 4}, {"sight", 5}, {"fertility", 4}, {"aggression", 6},

@@ -15,6 +15,7 @@
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
 #include "core/Catalog.hpp"
+#include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Inspector.hpp"
 #include "ui/Look.hpp"
@@ -367,6 +368,8 @@ void App::click(int x, int y) {
         open_export_dialog();
     } else if (open_button_.contains(x, y)) {
         browse_catalog();
+    } else if (advanced_button_.contains(x, y)) {
+        edit_rules();
     } else if (const auto card = std::find_if(exemplar_cards_.begin(), exemplar_cards_.end(),
                                               [&](const auto& entry) { return entry.first.contains(x, y); });
                card != exemplar_cards_.end()) {
@@ -547,6 +550,23 @@ void App::catalog_picked() {
         return;
     }
     add_to_catalog(entries, plural(entries.size()), skipped);
+}
+
+void App::edit_rules() {
+    // Applied, they hold from this world's next turn, and for its restarts. Closing the window from there closes
+    // the program.
+    playing_ = false;
+    const auto [outcome, changed] = AdvancedScreen(window_, rules::current(), true).run();
+    if (outcome == AdvancedScreen::Outcome::Quit) {
+        SDL_Event quit{};
+        quit.type = SDL_QUIT;
+        SDL_PushEvent(&quit);
+    } else if (outcome == AdvancedScreen::Outcome::Apply && changed) {
+        rules::apply(*changed);
+        simulation_->rules_changed();
+        say(format("This world now plays by %zu rule%s changed from the defaults. Paused: SPACE plays on.", changed->size(),
+                   changed->size() != 1 ? "s" : ""));
+    }
 }
 
 void App::browse_catalog() {
@@ -1382,8 +1402,14 @@ void App::draw_footer(Canvas& canvas) {
     canvas.rect(open_button_, {44, 57, 52}, 0, UI(6));
     canvas.text_at(button_font, "OPEN CATALOG", {220, 229, 211},
                    [&](Rect& box) { box.center_at(open_button_.centerx(), open_button_.centery()); });
+    const bool changed = !rules::changed(rules::current()).empty();  // amber while this world plays by changed rules
+    advanced_button_ = Rect{0, 0, Canvas::text_width(button_font, "ADVANCED") + UI(32), UI(34)}.midright_at(open_button_.x - UI(10),
+                                                                                                        height - UI(26));
+    canvas.rect(advanced_button_, changed ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(6));
+    canvas.text_at(button_font, "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211},
+                   [&](Rect& box) { box.center_at(advanced_button_.centerx(), advanced_button_.centery()); });
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
-    const int room = open_button_.x - left - UI(16);
+    const int room = advanced_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
         canvas.text(small, fit(message_, room), {238, 183, 110}, left, height - UI(36));
         return;

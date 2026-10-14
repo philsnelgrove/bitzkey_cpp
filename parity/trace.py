@@ -28,6 +28,8 @@ parser.add_argument("--turns", type=int, default=200)
 parser.add_argument("--out", type=Path, required=True)
 parser.add_argument("--rule", action="append", default=[], metavar="KEY=VALUE",
                     help="change one of the advanced rules; may be repeated")
+parser.add_argument("--rule-at", action="append", default=[], metavar="TURN:KEY=VALUE",
+                    help="change a rule once the world reaches TURN, as the map's ADVANCED does; may be repeated")
 options = parser.parse_args()
 
 sys.path.insert(0, str(options.python_project))
@@ -43,6 +45,13 @@ for rule in options.rule:
 if problems := Rules.problems({**Rules.DEFAULTS, **changes}):
     parser.error(problems[0])
 Rules.apply(changes)
+later: dict[int, dict[str, float]] = {}
+for rule in options.rule_at:
+    turn, _, rest = rule.partition(":")
+    key, _, value = rest.partition("=")
+    if key not in Rules.BY_KEY or not value or not turn.isdigit():
+        parser.error(f"unknown rule {rule}")
+    later.setdefault(int(turn), {})[key] = float(value)
 
 
 def trace_line(world: Simulation) -> str:
@@ -62,6 +71,10 @@ world = Simulation(options.width, options.height, options.population, options.se
 with options.out.open("w") as out:
     out.write(trace_line(world) + "\n")
     for _ in range(options.turns):
+        if world.turn in later:  # as the map's ADVANCED does
+            changes.update(later[world.turn])
+            Rules.apply(changes)
+            world.rules_changed()
         world.advance()
         out.write(trace_line(world) + "\n")
         if world.end_reason:

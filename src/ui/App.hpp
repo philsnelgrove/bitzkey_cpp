@@ -105,6 +105,7 @@ private:
     void open_death_report();  // every death so far, by cause and species
     void inspect_brains();     // pause, and show the selected Bitzkey's choices in each standard situation
     void browse_catalog();  // look through the catalog, importing and exporting nothing
+    void edit_rules();      // pause, and change the rules this world plays by
     void catalog_export_list();
     void new_world();
     std::string save_export(const std::string& name, const std::string& text);
@@ -148,6 +149,7 @@ private:
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
     Rect open_button_;  // the catalog, to look through
+    Rect advanced_button_;  // this world's rules
     std::string message_;
     Uint32 message_until_ = 0;
     bool playing_ = true;

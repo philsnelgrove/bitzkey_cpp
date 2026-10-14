@@ -45,6 +45,7 @@ void usage() {
         "  --brain-report FILE         write the brain report at the end\n"
         "  --death-report FILE         write the death report, and the first thinking animal's brain inspected, at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
+        "  --rule-at TURN:KEY=VALUE    change a rule once the world reaches TURN, as the map's ADVANCED does; may be repeated\n"
         "  --rules                     list the advanced rules, with their defaults and limits\n"
         "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
         "  --profile                   say at the end how long each part of a turn took\n";
@@ -205,6 +206,7 @@ int main(int argc, char** argv) {
     bool profile = false;
     std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path;
     rules::Values changes;
+    std::map<int, rules::Values> later;  // rules changed once the world reaches a turn, by turn
     try {
         for (int index = 1; index < argc; ++index) {
             const std::string flag = argv[index];
@@ -242,11 +244,15 @@ int main(int argc, char** argv) {
             else if (flag == "--export") export_path = value;
             else if (flag == "--brain-report") report_path = value;
             else if (flag == "--death-report") deaths_path = value;
-            else if (flag == "--rule") {
-                const std::size_t equals = value.find('=');
-                const std::string key = value.substr(0, equals);
-                if (equals == std::string::npos || !rules::find(key)) throw std::invalid_argument("unknown rule " + value);
-                changes[key] = std::stod(value.substr(equals + 1));
+            else if (flag == "--rule" || flag == "--rule-at") {
+                const std::size_t colon = flag == "--rule-at" ? value.find(':') : std::string::npos;
+                if (flag == "--rule-at" && colon == std::string::npos) throw std::invalid_argument("--rule-at needs TURN:KEY=VALUE");
+                const std::string rule = colon == std::string::npos ? value : value.substr(colon + 1);
+                const std::size_t equals = rule.find('=');
+                const std::string key = rule.substr(0, equals);
+                if (equals == std::string::npos || !rules::find(key)) throw std::invalid_argument("unknown rule " + rule);
+                if (colon == std::string::npos) changes[key] = std::stod(rule.substr(equals + 1));
+                else later[std::stoi(value.substr(0, colon))][key] = std::stod(rule.substr(equals + 1));
             }
             else if (flag == "--import") {
                 std::ifstream file(value, std::ios::binary);
@@ -288,6 +294,11 @@ int main(int argc, char** argv) {
         const auto start = last;
         int last_turn = 0;
         for (int step = 1; step <= turns; ++step) {
+            if (const auto due = later.find(world.turn()); due != later.end()) {  // as the map's ADVANCED does
+                for (const auto& [key, value] : due->second) changes[key] = value;
+                rules::apply(changes);
+                world.rules_changed();
+            }
             if (diagnosis) diagnosis->before(world);
             world.advance();
             if (diagnosis) diagnosis->after(world);

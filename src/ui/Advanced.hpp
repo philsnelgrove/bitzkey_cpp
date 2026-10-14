@@ -1,6 +1,7 @@
 #pragma once
 // The advanced panel: every tunable rule of the simulation, by group, opened from the
-// configuration panel. Applying it sets the rules the next world plays by.
+// configuration panel, where applying it sets the rules the next world plays by, or from the map,
+// where it sets the rules of the world running there.
 
 #include <array>
 #include <optional>
@@ -20,7 +21,8 @@ struct Screens;
 // Every rule's value, the focused rule, and any number being typed into it.
 class AdvancedForm {
 public:
-    explicit AdvancedForm(const rules::Values& values);
+    // `running`: the rules of the world running on the map, rather than of the next new world.
+    explicit AdvancedForm(const rules::Values& values, bool running = false);
 
     const rules::Rule& focused() const { return rules::all()[static_cast<std::size_t>(focus)]; }
     std::string text(const rules::Rule& rule) const;
@@ -37,6 +39,7 @@ public:
     void finish() { settle(); }
 
     rules::Values values;
+    bool running = false;
     int focus = 0;
     std::optional<std::string> typed;  // partial input for the focused rule; none shows its value
 
@@ -48,7 +51,7 @@ class AdvancedScreen {
 public:
     enum class Outcome { Apply, Cancel, Quit };
 
-    AdvancedScreen(Window& window, const rules::Values& values);
+    AdvancedScreen(Window& window, const rules::Values& values, bool running = false);
     // The changed rules when applied.
     std::pair<Outcome, std::optional<rules::Values>> run();
 
