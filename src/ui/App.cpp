@@ -65,7 +65,8 @@ constexpr std::array<ExemplarStat, 50> EXEMPLAR_STATS = {{
 }};
 // The statistic each card shows, left column then right, top to bottom; changed from a card's title,
 // and kept for the rest of the session.
-std::array<int, 10> exemplar_choices = {0, 14, 27, 29, 30, 16, 19, 17, 22, 31};
+// SMARTEST, LARGEST, OLDEST, MOST CHILDREN, LATEST GENERATION; STRONGEST, FASTEST, BEST ARMOURED, MOST FERTILE, BEST FED
+std::array<int, 10> exemplar_choices = {0, 21, 34, 36, 37, 23, 26, 24, 29, 38};
 constexpr std::array<const char*, 4> HOMES = {"hot", "medium", "cold", "very cold"};
 constexpr int MENU_ROW = 20, MENU_COLUMN = 200;  // an exemplar menu's rows and columns, in design pixels
 
