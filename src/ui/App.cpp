@@ -166,6 +166,13 @@ nlohmann::ordered_json genome_only(Dna dna) { return genome_record(dna); }
 
 App::App(Window& window, Simulation::Settings settings) : window_(window), settings_(std::move(settings)) { new_world(); }
 
+// How large the selected Bitzkeys' sights are now: from their size to twice it and back, every RETICLE_PULSE_MS,
+// paused or not.
+double reticle_pulse() {
+    constexpr double RETICLE_PULSE_MS = 2000;
+    return 1.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * SDL_GetTicks() / RETICLE_PULSE_MS);
+}
+
 void App::new_world() { simulation_ = std::make_unique<Simulation>(settings_); }
 
 App::Result App::run() {
@@ -1183,7 +1190,7 @@ void App::draw_world(Canvas& canvas) {
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
-            draw_reticle(canvas, px, py, radius + RING_WIDTH + UI(3));
+            draw_reticle(canvas, px, py, static_cast<int>(std::lround((radius + RING_WIDTH + UI(3)) * reticle_pulse())));
         }
         if (std::any_of(export_list_.begin(), export_list_.end(),
                         [&](const ExportEntry& entry) { return entry.identifier == agent->identifier; })) {
