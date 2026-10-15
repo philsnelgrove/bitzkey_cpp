@@ -34,7 +34,7 @@ public:
 private:
     friend struct Screens;  // the screenshot tool
     struct Layout {
-        Rect card, list, details, remove, import, close;
+        Rect card, list, details, remove, design, import, close;
     };
     Layout layout() const;
     Rect row(int index) const;
@@ -45,6 +45,9 @@ private:
     std::vector<catalog::Entry> chosen_entries() const;
     void ask_to_remove();
     void remove();
+    // Open the designer on the entry picked (a fresh genome if the catalog is empty); a design applied joins the
+    // catalog as a new entry, its genome alone, and is picked. Returns false if the window was closed from it.
+    bool design();
     const Bitzkey& inspect(int index);
     std::optional<Outcome> click(int x, int y);
     void draw(Canvas& canvas);

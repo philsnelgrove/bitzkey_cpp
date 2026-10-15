@@ -15,6 +15,7 @@
 
 namespace bitzkey::ui {
 
+
 namespace {
 constexpr int BAR_PIXELS = 5;          // target width of one bar
 constexpr int DRAG_THRESHOLD = 4;      // a press that moves less than this (design pixels) is a click
@@ -463,6 +464,17 @@ void ColourGraph::render(const Simulation& simulation, const Rect& chart) {
     }
 }
 
+// How a dead Bitzkey died, as far as it is known: the turn, the cause, and what killed it, doing what.
+std::string death_note(const Simulation& simulation, int identifier) {
+    const Simulation::DeathRecord* death = simulation.death_record(identifier);
+    if (!death) return "Dead: only its genome is known.";
+    std::string killer;
+    if (death->killer >= 0) {
+        killer = format(" by #%03d %s, %s", death->killer, std::string(species_name(death->killer_species)).c_str(), death->activity.c_str());
+    }
+    return format("Died at turn %d: %s%s.", death->turn, death->cause.c_str(), killer.c_str());
+}
+
 void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::optional<std::string>& note) {
     width_ = canvas.width();
     height_ = canvas.height();
@@ -560,10 +572,15 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
                 {144, 170, 151}, panel.x + UI(24), panel.bottom() - UI(28));
     if (menu_open_) {
         draw_menu(canvas);
-    } else if (hovered && alive_.contains(*hovered) && !press_) {  // the dead show only their colour, below
+    } else if (hovered && alive_.contains(*hovered) && !press_) {
         const auto& agents = simulation.agents();
         const auto found = std::find_if(agents.begin(), agents.end(), [&](const auto& agent) { return agent->identifier == *hovered; });
         if (found != agents.end()) draw_tooltip(canvas, **found, true, mouse_x_, mouse_y_, simulation.temperature((*found)->y));
+    } else if (hovered && !press_) {  // the dead: what the genome fixes, and how it died
+        Bitzkey remembered(*hovered, simulation.lineage(*hovered), 0, 0);
+        remembered.age = static_cast<int>(std::lround(remembered.lifespan / 2));  // grown, not feeble: its genome's body
+        remembered.grow();
+        draw_tooltip(canvas, remembered, false, mouse_x_, mouse_y_, std::nullopt, death_note(simulation, *hovered));
     }
 }
 

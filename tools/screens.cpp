@@ -1,6 +1,7 @@
 // Draw every screen off-screen and save it as a BMP, to check the interface without a person at
 // the keyboard:  bitzkey_screens OUTPUT_FOLDER [WIDTH HEIGHT]
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -101,6 +102,11 @@ struct Screens {
         catalog_screen.picked_ = 1;
         catalog_screen.draw(canvas);
         save(canvas, folder / "catalog.bmp");
+        catalog_screen.entries_.push_back(catalog::design_entry(encode_dna(Species::Grazer, {{"size", 4}, {"speed", 6}})));
+        catalog_screen.inspected_.clear();
+        catalog_screen.picked_ = static_cast<int>(catalog_screen.entries_.size()) - 1;
+        catalog_screen.draw(canvas);
+        save(canvas, folder / "catalog-designed.bmp");
         app.show_insights_ = true;
         app.draw(canvas);
         save(canvas, folder / "app-insights.bmp");
@@ -129,6 +135,16 @@ struct Screens {
         graph.mouse_y_ = static_cast<int>((top + bottom) / 2);
         app.draw(canvas);
         save(canvas, folder / "app-graph-tooltip.bmp");
+        for (const Bar& any : graph.bars_) {  // and over a dead one: its genome and how it died
+            const auto dead = std::find_if(any.slices.begin(), any.slices.end(),
+                                           [&](const auto& slice) { return !graph.alive_.contains(std::get<0>(slice)); });
+            if (dead == any.slices.end()) continue;
+            graph.mouse_x_ = any.left + 1;
+            graph.mouse_y_ = static_cast<int>((std::get<1>(*dead) + std::get<2>(*dead)) / 2);
+            app.draw(canvas);
+            save(canvas, folder / "app-graph-tooltip-dead.bmp");
+            break;
+        }
         std::set<int> predators;
         for (const Bitzkey* agent : app.simulation_->living()) {
             if (agent->species == Species::Predator) predators.insert(agent->identifier);

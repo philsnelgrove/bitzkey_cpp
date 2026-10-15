@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "ui/Designer.hpp"
 #include "ui/Inspector.hpp"
 #include "ui/Look.hpp"
 #include "ui/Platform.hpp"
@@ -77,11 +78,12 @@ CatalogScreen::Layout CatalogScreen::layout() const {
     places.card = Rect{0, 0, std::min(UI(940), window_.width() - UI(40)), std::min(UI(760), window_.height() - UI(40))}
                       .center_at(window_.width() / 2, window_.height() / 2);
     const Rect& card = places.card;
-    places.details = {card.right() - UI(24) - UI(330), card.y + UI(96), UI(330), card.h - UI(170)};
-    places.list = {card.x + UI(24), card.y + UI(96), places.details.x - card.x - UI(48), card.h - UI(170)};
+    places.details = {card.right() - UI(24) - UI(330), card.y + UI(96), UI(330), card.h - UI(186)};
+    places.list = {card.x + UI(24), card.y + UI(96), places.details.x - card.x - UI(48), card.h - UI(186)};
     places.close = Rect{0, 0, UI(120), UI(36)}.bottomright_at(card.right() - UI(24), card.bottom() - UI(18));
     places.import = Rect{0, 0, UI(180), UI(36)}.bottomright_at(places.close.x - UI(10), places.close.bottom());
     places.remove = Rect{0, 0, UI(110), UI(36)}.bottomleft_at(card.x + UI(24), card.bottom() - UI(18));
+    places.design = Rect{0, 0, UI(110), UI(36)}.bottomleft_at(places.remove.right() + UI(10), places.remove.bottom());
     return places;
 }
 
@@ -153,6 +155,24 @@ void CatalogScreen::remove() {
     scroll_to(scroll_);
 }
 
+bool CatalogScreen::design() {
+    const std::optional<Dna> dna = entries_.empty() ? std::nullopt : std::optional(inspect(picked_).dna);
+    const auto [outcome, designed] = Designer(window_, dna).run();
+    if (outcome == Designer::Outcome::Quit) return false;
+    if (outcome == Designer::Outcome::Apply && designed) {
+        try {
+            catalog::add({catalog::design_entry(*designed)}, catalog_path());
+            entries_ = catalog::load(catalog_path());
+            note_ = "Designed and added to the catalog.";
+        } catch (const std::exception& error) {
+            note_ = error.what();
+        }
+        inspected_.clear();
+        if (!entries_.empty()) choose(static_cast<int>(entries_.size()) - 1, 0);
+    }
+    return true;
+}
+
 const Bitzkey& CatalogScreen::inspect(int index) {
     auto found = inspected_.find(index);
     if (found == inspected_.end()) found = inspected_.emplace(index, catalog::inspected(entries_[static_cast<std::size_t>(index)])).first;
@@ -167,6 +187,7 @@ std::optional<CatalogScreen::Outcome> CatalogScreen::click(int x, int y) {
         ask_to_remove();
         return std::nullopt;
     }
+    if (places.design.contains(x, y)) return design() ? std::nullopt : std::optional(Outcome::Quit);
     if (places.list.contains(x, y)) {
         const int last = std::min(static_cast<int>(entries_.size()), scroll_ + rows_shown());
         for (int index = scroll_; index < last; ++index) {
@@ -227,7 +248,8 @@ void CatalogScreen::draw(Canvas& canvas) {
 
     const std::string adding = browsing_ ? (chosen_.size() <= 1 ? "DEPLOY" : "DEPLOY " + std::to_string(chosen_.size()))  // onto the map
                                : chosen_.size() <= 1 ? "ADD TO IMPORT" : "ADD " + std::to_string(chosen_.size()) + " TO IMPORT";
-    for (const auto& [button, label, lit] : {std::tuple{places.remove, std::string("REMOVE"), false}, std::tuple{places.import, adding, true},
+    for (const auto& [button, label, lit] : {std::tuple{places.remove, std::string("REMOVE"), false}, std::tuple{places.design, std::string("DESIGNER"), false},
+                                            std::tuple{places.import, adding, true},
                                             std::tuple{places.close, std::string("CLOSE"), false}}) {
         const bool active = lit && !chosen_.empty();
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
@@ -237,8 +259,10 @@ void CatalogScreen::draw(Canvas& canvas) {
     const std::string hint = !note_.empty() ? note_
                              : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  deploy    DELETE  remove    ESC  close"
                                             : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
-    canvas.text(small, hint, !note_.empty() ? Color{238, 183, 110} : Color{116, 139, 124}, places.remove.right() + UI(16),
-                places.remove.centery() - UI(8));
+    canvas.text_at(small, hint, !note_.empty() ? Color{238, 183, 110} : Color{116, 139, 124}, [&](Rect& box) {  // above the buttons
+        box.x = places.card.right() - UI(24) - box.w;
+        box.y = places.list.bottom() + UI(6);
+    });
     if (dialog_) dialog_->draw(canvas);
 }
 

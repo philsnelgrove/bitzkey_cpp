@@ -68,7 +68,7 @@ void bar(Canvas& canvas, int x, int y, int width, double value, Color color) {
 }  // namespace
 
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width, bool known,
-                  std::optional<double> here) {
+                  std::optional<double> here, const std::string& note) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
@@ -116,7 +116,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
 
     if (!known) {
         canvas.text(small, format("LIFESPAN ~%.0f", agent.lifespan), {145, 164, 146}, x, at(302));
-        canvas.text(small, "Not in the world at this turn: only its genome is known.", {116, 139, 124}, x, at(318));
+        canvas.text(small, !note.empty() ? note : std::string("Not in the world at this turn: only its genome is known."), {116, 139, 124}, x,
+                    at(318));
         return;
     }
     const int half = (width - UI(12)) / 2;
@@ -147,7 +148,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     }
 }
 
-Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y, std::optional<double> here) {
+Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y, std::optional<double> here,
+                  const std::string& note) {
     const int width = UI(300), padding = UI(12);
     Rect box{mouse_x + UI(18), mouse_y + UI(12), width + 2 * padding, UI(known ? DETAILS_HEIGHT : GENOME_HEIGHT) + 2 * padding};
     if (box.right() > canvas.width()) box.x = mouse_x - UI(18) - box.w;
@@ -155,7 +157,7 @@ Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x,
     canvas.rect(box, {19, 26, 27}, 0, UI(6));
     canvas.rect(box, {131, 205, 143}, 1, UI(6));
     const int top = box.y + padding;
-    draw_details(canvas, agent, box.x + padding, [top](int offset) { return top + UI(offset); }, width, known, here);
+    draw_details(canvas, agent, box.x + padding, [top](int offset) { return top + UI(offset); }, width, known, here, note);
     return box;
 }
 
