@@ -39,8 +39,9 @@ void usage() {
         "  --turns N                   turns to run (default 400)\n"
         "  --report-every N            print a population line every N turns (default 100)\n"
         "  --trace FILE                write one line per turn, for comparing with the Python version\n"
-        "  --diagnose FILE             write how the predators fare, a line a turn, saved as it goes, and a summary\n"
-        "                              beside it (FILE.summary.txt)\n"
+        "  --diagnose FILE             write how the predators fare, a line a turn, saved as it goes; how every species\n"
+        "                              fares, a line a species a turn (FILE.ecology.tsv); and a summary of both\n"
+        "                              beside them (FILE.summary.txt)\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
         "  --brain-report FILE         write the brain report at the end\n"
         "  --death-report FILE         write the death report, and the first thinking animal's brain inspected, at the end\n"
@@ -200,6 +201,136 @@ private:
     std::map<std::string, long long> totals_;
 };
 
+// A turn-by-turn look at every species, for finding out why a world collapses: one line a species a turn,
+// tab-separated, saved as it is written. Deaths come from the world's own records (cause, and the killer's species);
+// the rest is each species' state at the turn's end: how fed and well, how many feeble or away from home, and how
+// many are ready to breed, and of those how many their home's food and their prey's numbers would let.
+class Ecology {
+public:
+    explicit Ecology(const std::string& path) : file_(path) {
+        file_ << "turn\tspecies\talive\tborn\tdied\tby_grazer\tby_omnivore\tby_predator\tby_plant\tstarved\tfroze\toverheated"
+                 "\told_age\texhausted\teaten\tother\thunger\tstarving\thealth\tfeeble\taway\tready\twell_fed\tprey_rare\tpregnant"
+                 "\tage\tdied_infant\tdied_newborn\tdeath_age\tgrass\tseeds\tactions\n";
+        file_.flush();
+    }
+
+    void before(const Simulation& world) { first_new_ = world.next_identifier(); }
+
+    void after(const Simulation& world) {
+        const int turn = world.turn();
+        struct Tally {
+            int alive = 0, born = 0, died = 0, starving = 0, feeble = 0, away = 0, ready = 0, well_fed = 0, prey_rare = 0, pregnant = 0;
+            int died_infant = 0, died_newborn = 0;  // deaths in infancy (the feeble start of life), and within NEWBORN_TURNS of birth
+            double death_age = 0;
+            double hunger = 0, health = 0, age = 0;
+            std::map<std::string, int> causes, actions;
+        };
+        std::array<Tally, 4> tallies;
+        for (const Bitzkey* agent : world.living()) {
+            Tally& tally = tallies[static_cast<std::size_t>(agent->species)];
+            ++tally.alive;
+            tally.born += agent->identifier >= first_new_;
+            tally.hunger += agent->hunger;
+            tally.starving += agent->hunger >= 100;
+            tally.health += agent->health / agent->max_health;
+            tally.age += agent->age;
+            tally.feeble += agent->feeble;
+            tally.away += agent->climate_steps(world.temperature(agent->y)) >= 0.5;
+            tally.pregnant += !agent->womb.empty();
+            if (agent->species != Species::Plant && agent->can_breed()) {
+                ++tally.ready;
+                const bool fed = world.well_fed(*agent), rare = world.prey_rare(*agent);
+                tally.well_fed += fed;
+                tally.prey_rare += rare;
+            }
+            tally.actions[std::string(agent->last_action)] += 1;
+        }
+        for (const auto& agent : world.agents()) {  // this turn's deaths, as the world recorded them
+            if (!agent->died_turn || *agent->died_turn != turn) continue;
+            Tally& tally = tallies[static_cast<std::size_t>(agent->species)];
+            ++tally.died;
+            const double infancy = FEEBLE_YOUTH * (agent->species == Species::Predator ? PREDATOR_INFANCY : 1.0) * agent->lifespan;
+            tally.died_infant += agent->species != Species::Plant && agent->age < infancy;
+            tally.died_newborn += agent->age <= NEWBORN_TURNS;
+            tally.death_age += agent->age;
+            const Simulation::DeathRecord* death = world.death_record(agent->identifier);
+            if (!death) {
+                tally.causes["other"] += 1;
+            } else if (death->killer >= 0) {
+                tally.causes["by_" + std::string(species_name(death->killer_species))] += 1;
+            } else {
+                tally.causes[death->cause] += 1;
+            }
+        }
+        const std::size_t grass = world.grass_tufts(), seeds = world.seeds().size();
+        for (std::size_t species = 0; species < tallies.size(); ++species) {
+            const Tally& tally = tallies[species];
+            const auto of = [&](const char* cause) {
+                const auto found = tally.causes.find(cause);
+                return found == tally.causes.end() ? 0 : found->second;
+            };
+            int known = 0;
+            for (const char* cause : KNOWN_CAUSES) known += of(cause);
+            const double mouths = std::max(1, tally.alive);
+            std::vector<std::pair<int, std::string>> ranked;
+            for (const auto& [name, count] : tally.actions) ranked.emplace_back(-count, name);
+            std::sort(ranked.begin(), ranked.end());
+            std::string actions;
+            for (std::size_t index = 0; index < std::min<std::size_t>(4, ranked.size()); ++index) {
+                actions += (index ? "," : "") + ranked[index].second + '=' + std::to_string(-ranked[index].first);
+            }
+            char numbers[128];
+            std::snprintf(numbers, sizeof numbers, "%.1f\t%d\t%.2f", tally.hunger / mouths, tally.starving, tally.health / mouths);
+            file_ << turn << '\t' << SPECIES[species] << '\t' << tally.alive << '\t' << tally.born << '\t' << tally.died;
+            for (const char* cause : KNOWN_CAUSES) file_ << '\t' << of(cause);
+            file_ << '\t' << tally.died - known << '\t' << numbers << '\t' << tally.feeble << '\t' << tally.away << '\t' << tally.ready << '\t'
+                  << tally.well_fed << '\t' << tally.prey_rare << '\t' << tally.pregnant << '\t' << static_cast<int>(tally.age / mouths) << '\t'
+                  << tally.died_infant << '\t' << tally.died_newborn << '\t' << (tally.died ? static_cast<int>(tally.death_age / tally.died) : 0) << '\t'
+                  << grass << '\t' << seeds << '\t' << actions << '\n';
+            // Running totals, and when each species first died out, for the summary.
+            Totals& totals = totals_[species];
+            totals.born += tally.born;
+            totals.died += tally.died;
+            totals.died_infant += tally.died_infant;
+            totals.died_newborn += tally.died_newborn;
+            totals.peak = std::max(totals.peak, tally.alive);
+            for (const auto& [cause, count] : tally.causes) totals.causes[cause] += count;
+            if (tally.alive == 0 && totals.peak > 0 && totals.gone < 0) totals.gone = turn;
+        }
+        file_.flush();
+    }
+
+    std::string summary() const {
+        std::ostringstream text;
+        for (std::size_t species = 0; species < totals_.size(); ++species) {
+            const Totals& totals = totals_[species];
+            text << SPECIES[species] << ": at most " << totals.peak << ", born " << totals.born;
+            if (totals.gone >= 0) text << ", died out at turn " << totals.gone;
+            text << "\n";
+            if (totals.died) {
+                text << "  of " << totals.died << " deaths, " << totals.died_infant << " in infancy (" << 100 * totals.died_infant / totals.died
+                     << "%), " << totals.died_newborn << " within " << NEWBORN_TURNS << " turns of birth (" << 100 * totals.died_newborn / totals.died
+                     << "%)\n";
+            }
+            for (const auto& [cause, count] : totals.causes) text << "  died " << cause << ": " << count << "\n";
+        }
+        return text.str();
+    }
+
+private:
+    static constexpr int NEWBORN_TURNS = 10;  // a death this soon after birth is a newborn's
+    static constexpr std::array<const char*, 10> KNOWN_CAUSES = {"by_grazer", "by_omnivore", "by_predator", "by_plant", "starved", "froze",
+                                                                "overheated", "old age", "exhausted", "eaten"};
+    struct Totals {
+        int peak = 0, born = 0, gone = -1;
+        long long died = 0, died_infant = 0, died_newborn = 0;
+        std::map<std::string, long long> causes;
+    };
+    std::ofstream file_;
+    int first_new_ = 0;
+    std::array<Totals, 4> totals_;
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -308,7 +439,11 @@ int main(int argc, char** argv) {
             trace << trace_line(world) << '\n';
         }
         std::optional<Diagnosis> diagnosis;
-        if (diagnose_path) diagnosis.emplace(*diagnose_path);
+        std::optional<Ecology> ecology;
+        if (diagnose_path) {
+            diagnosis.emplace(*diagnose_path);
+            ecology.emplace(*diagnose_path + ".ecology.tsv");
+        }
         using Clock = std::chrono::steady_clock;
         auto last = Clock::now();
         const auto start = last;
@@ -322,8 +457,10 @@ int main(int argc, char** argv) {
             const auto [from, to] = deployments.equal_range(world.turn());  // as the catalog's DEPLOY does
             for (auto due = from; due != to; ++due) world.deploy(due->second.bitzkeys, due->second.x, due->second.y);
             if (diagnosis) diagnosis->before(world);
+            if (ecology) ecology->before(world);
             world.advance();
             if (diagnosis) diagnosis->after(world);
+            if (ecology) ecology->after(world);
             if (trace) trace << trace_line(world) << '\n';
             const EndReason reason = world.end_reason();
             const bool report = report_every > 0 && world.turn() % report_every == 0;
@@ -348,7 +485,7 @@ int main(int argc, char** argv) {
         const double total = std::chrono::duration<double>(Clock::now() - start).count();
         std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn(), total, total * 1000 / std::max(1, world.turn()));
         if (diagnosis) {
-            const std::string summary = diagnosis->summary();
+            const std::string summary = diagnosis->summary() + "\n" + ecology->summary();
             std::ofstream(*diagnose_path + ".summary.txt") << summary;
             std::printf("%s", summary.c_str());
         }
