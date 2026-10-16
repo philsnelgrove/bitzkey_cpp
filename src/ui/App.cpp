@@ -1572,14 +1572,45 @@ void App::draw_footer(Canvas& canvas) {
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
     const int room = save_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
-        canvas.text(small, fit(message_, room), {238, 183, 110}, left, height - UI(36));
+        footer_lines(canvas, message_, left, room, {238, 183, 110});
         return;
     }
-    canvas.text(small,
-                fit("SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   "
-                    "G  graph   E  export   R  restart   F11  window   ESC  menu",
-                    room),
-                {187, 199, 181}, left, height - UI(36));
+    footer_lines(canvas,
+                 "SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   "
+                 "G  graph   E  export   R  restart   F11  window   ESC  menu",
+                 left, room, {187, 199, 181});
+}
+
+std::vector<std::string> App::wrapped(const std::string& text, int width) const {
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    if (Canvas::text_width(small, text) <= width) return {text};
+    const std::string gap = text.find("   ") != std::string::npos ? "   " : " ";
+    std::vector<std::string> parts;
+    for (std::size_t start = 0;;) {
+        const std::size_t end = text.find(gap, start);
+        parts.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (end == std::string::npos) break;
+        start = end + gap.size();
+    }
+    std::string first = parts[0];
+    std::size_t taken = 1;
+    while (taken < parts.size() && Canvas::text_width(small, first + gap + parts[taken]) <= width) first += gap + parts[taken++];
+    if (taken == parts.size()) return {fit(first, width)};
+    std::string rest = parts[taken];
+    for (std::size_t index = taken + 1; index < parts.size(); ++index) rest += gap + parts[index];
+    return {fit(first, width), fit(rest, width)};
+}
+
+void App::footer_lines(Canvas& canvas, const std::string& text, int left, int width, Color color) const {
+    TTF_Font* small = UI.font(Face::Sans, 12);
+    const int height = canvas.height();
+    const std::vector<std::string> lines = wrapped(text, width);
+    if (lines.size() == 1) {
+        canvas.text(small, lines[0], color, left, height - UI(36));
+        return;
+    }
+    canvas.text(small, lines[0], color, left, height - UI(44));
+    canvas.text(small, lines[1], color, left, height - UI(28));
 }
 
 }  // namespace bitzkey::ui

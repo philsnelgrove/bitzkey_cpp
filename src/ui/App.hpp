@@ -141,6 +141,11 @@ private:
     bool scroll_event(const SDL_Event& event);  // whether the event scrolled the panel
     void draw_footer(Canvas& canvas);
     std::string fit(const std::string& text, int width) const;
+    // Text in the small font in at most two lines of the width, broken between groups (three spaces apart) where it
+    // has them, else between words; each line shortened with an ellipsis only if it still doesn't fit.
+    std::vector<std::string> wrapped(const std::string& text, int width) const;
+    // A footer note or the keys: one line if it fits, else two.
+    void footer_lines(Canvas& canvas, const std::string& text, int left, int width, Color color) const;
 
     Window& window_;
     Simulation::Settings settings_;
