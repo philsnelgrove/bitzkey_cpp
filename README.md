@@ -1,5 +1,11 @@
 # Bitzkey (C++)
 
+The Bitzkey project was started years ago, to teach my best friend programming. He wanted to learn about Python and AI, so it seemed like a natural project. Since then, my friend has passed away. So I finished this to honour him. I open-sourced it for the same reason. So, Sam Bunn, wherever you are, may you live on through Bitzkeys!
+
+This is the Windows desktop version: the same simulation as the Python original, rewritten in C++ to run much faster on your own computer. It is best run on a high-end gaming laptop, whose graphics card can do the Bitzkeys' thinking. For reading the code and researching how Bitzkeys work, see the [Python version](https://github.com/philsnelgrove/bitzkey), the code research version; for larger worlds, the [Linux daemon](https://github.com/philsnelgrove/bitzkey_daemon), the larger-scale version.
+
+Download the installer from the [latest release](https://github.com/philsnelgrove/bitzkey_cpp/releases/latest).
+
 A C++20 port of the Python Bitzkey artificial ecology. The Python project in `../bitzkey` is
 untouched; this is a separate project.
 
