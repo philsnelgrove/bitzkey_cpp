@@ -19,6 +19,7 @@
 #include "core/PyFormat.hpp"
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
+#include "core/WorldFile.hpp"
 
 using namespace bitzkey;
 
@@ -43,6 +44,8 @@ void usage() {
         "                              fares, a line a species a turn (FILE.ecology.tsv); and a summary of both\n"
         "                              beside them (FILE.summary.txt)\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
+        "  --load FILE                 carry on the world saved in FILE, by its own settings and rules, rather than start one\n"
+        "  --save FILE                 save the whole world at the end, to load and carry on\n"
         "  --brain-report FILE         write the brain report at the end\n"
         "  --death-report FILE         write the death report, and the first thinking animal's brain inspected, at the end\n"
         "  --rule KEY=VALUE            change one of the advanced rules; may be repeated\n"
@@ -337,7 +340,7 @@ int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
     bool profile = false;
-    std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path;
+    std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
     rules::Values changes;
     std::map<int, rules::Values> later;  // rules changed once the world reaches a turn, by turn
     struct Deployment {
@@ -380,6 +383,8 @@ int main(int argc, char** argv) {
             else if (flag == "--trace") trace_path = value;
             else if (flag == "--diagnose") diagnose_path = value;
             else if (flag == "--export") export_path = value;
+            else if (flag == "--load") load_path = value;
+            else if (flag == "--save") save_path = value;
             else if (flag == "--brain-report") report_path = value;
             else if (flag == "--death-report") deaths_path = value;
             else if (flag == "--rule" || flag == "--rule-at") {
@@ -431,7 +436,14 @@ int main(int argc, char** argv) {
     rules::apply(changes);
 
     try {
-        Simulation world(settings);
+        std::unique_ptr<Simulation> made;
+        if (load_path) {
+            made = WorldFile::load(*load_path);
+            changes = rules::current();  // the saved world's rules, which changes later in the run build on
+        } else {
+            made = std::make_unique<Simulation>(settings);
+        }
+        Simulation& world = *made;
         if (USE_GPU) std::printf("%s\n", world.gpu_status().c_str());
         std::ofstream trace;
         if (trace_path) {
@@ -499,6 +511,7 @@ int main(int argc, char** argv) {
         }
         world.sync_brains();  // the brains as they now are, when they think on the GPUs
         const auto alive = world.living();
+        if (save_path) WorldFile::save(world, *save_path);
         if (export_path) {
             std::ofstream(*export_path) << export_bitzkeys(std::vector<const Bitzkey*>(alive.begin(), alive.end())) << '\n';
         }

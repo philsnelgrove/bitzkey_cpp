@@ -85,6 +85,48 @@ std::optional<std::filesystem::path> choose_file(const std::filesystem::path& st
     return std::nullopt;
 }
 
+std::optional<std::filesystem::path> choose_world_save(const std::filesystem::path& folder, const std::string& name) {
+    std::filesystem::create_directories(folder);
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768, L'\0');
+    const std::wstring offered = path_from_utf8(name).wstring();
+    std::copy(offered.begin(), offered.end(), buffer.begin());
+    const std::wstring start = folder.wstring();
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof dialog;
+    dialog.lpstrFilter = L"Bitzkey worlds (*.bzworld)\0*.bzworld\0All files (*.*)\0*.*\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    dialog.lpstrInitialDir = start.c_str();
+    dialog.lpstrTitle = L"Save World";
+    dialog.lpstrDefExt = L"bzworld";
+    dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (GetSaveFileNameW(&dialog)) return std::filesystem::path(buffer.data());
+    return std::nullopt;
+#else
+    return folder / path_from_utf8(name);
+#endif
+}
+
+std::optional<std::filesystem::path> choose_world_file(const std::filesystem::path& folder) {
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768, L'\0');
+    const std::wstring start = std::filesystem::exists(folder) ? folder.wstring() : std::wstring();
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof dialog;
+    dialog.lpstrFilter = L"Bitzkey worlds (*.bzworld)\0*.bzworld\0All files (*.*)\0*.*\0";
+    dialog.lpstrFile = buffer.data();
+    dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+    dialog.lpstrInitialDir = start.empty() ? nullptr : start.c_str();
+    dialog.lpstrTitle = L"Load World";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (GetOpenFileNameW(&dialog)) return std::filesystem::path(buffer.data());
+#else
+    (void)folder;
+#endif
+    return std::nullopt;
+}
+
 std::string read_file(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("can't open it");

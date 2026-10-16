@@ -24,7 +24,9 @@ class App {
 public:
     enum class Result { Quit, Configure, Renew };
 
-    App(Window& window, Simulation::Settings settings);
+    // Start a world by these settings, or carry on `loaded`, a world loaded; restarting starts afresh by the settings
+    // either way.
+    App(Window& window, Simulation::Settings settings, std::unique_ptr<Simulation> loaded = nullptr);
     // Run until the window closes or the user leaves for the configuration panel, or for a new world
     // with the Bitzkeys picked on the graph (Renew), which renewal() then holds.
     Result run();
@@ -51,6 +53,9 @@ private:
     void open(const std::string& kind, Dialog dialog);
     bool answer(const std::string& choice);  // true when the user leaves the simulation
     void leave(Dialog dialog);
+    // Pause, and save the whole world to a file of the user's choosing, to load from the configuration panel and
+    // carry on exactly as it would have. Returns whether it saved.
+    bool save_world();
     void ask_to_leave();
     // Close the graph with G or ESC. Before the run's end, that returns to the map; after it, it leaves
     // for the configuration panel, asking first only if Bitzkeys wait on the export list. Returns
@@ -164,6 +169,7 @@ private:
     Rect export_button_;
     Rect open_button_;  // the catalog, to look through
     Rect advanced_button_;  // this world's rules
+    Rect save_button_;      // the whole world, to a file
     std::vector<Imported> deploying_;               // the Bitzkeys to paint onto the map; none when not deploying
     std::optional<std::pair<int, int>> painted_;    // the cell last painted while the button is held
     std::string message_;

@@ -15,6 +15,7 @@
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
 #include "core/Catalog.hpp"
+#include "core/WorldFile.hpp"
 #include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Inspector.hpp"
@@ -164,7 +165,11 @@ nlohmann::ordered_json genome_only(Dna dna) { return genome_record(dna); }
 
 }  // namespace
 
-App::App(Window& window, Simulation::Settings settings) : window_(window), settings_(std::move(settings)) { new_world(); }
+App::App(Window& window, Simulation::Settings settings, std::unique_ptr<Simulation> loaded)
+    : window_(window), settings_(std::move(settings)) {
+    if (loaded) simulation_ = std::move(loaded);
+    else new_world();
+}
 
 // How large the selected Bitzkeys' sights are now: from their size to twice it and back, every RETICLE_PULSE_MS,
 // paused or not.
@@ -375,6 +380,8 @@ void App::click(int x, int y) {
         browse_catalog();
     } else if (advanced_button_.contains(x, y)) {
         edit_rules();
+    } else if (save_button_.contains(x, y)) {
+        save_world();
     } else if (const auto card = std::find_if(exemplar_cards_.begin(), exemplar_cards_.end(),
                                               [&](const auto& entry) { return entry.first.contains(x, y); });
                card != exemplar_cards_.end()) {
@@ -398,7 +405,10 @@ void App::open(const std::string& kind, Dialog dialog) {
 bool App::answer(const std::string& choice) {
     const std::string kind = dialog_kind_;
     dialog_.reset();
-    if (kind == "leave") return choice == "leave";
+    if (kind == "leave") {
+        if (choice == "save") return save_world();  // saved first; if that's cancelled or fails, it stays
+        return choice == "leave";
+    }
     if (choice == "save" || choice == "copy") {
         export_chosen(choice == "save");
     } else if (choice == "catalog") {
@@ -437,11 +447,31 @@ bool App::leave_graph() {
 }
 
 void App::ask_to_leave() {
-    std::vector<std::string> lines = {"You'll return to the configuration panel to set up a new world.", "This world won't be kept."};
+    std::vector<std::string> lines = {"You'll return to the configuration panel to set up a new world.",
+                                      "This world won't be kept unless you save it."};
     if (!export_list_.empty()) {
         lines.push_back(plural(export_list_.size()) + " added to export will be lost unless exported first.");
     }
-    open("leave", Dialog("Leave this simulation?", lines, {{"stay", "STAY"}, {"leave", "LEAVE"}}, "stay"));
+    open("leave", Dialog("Leave this simulation?", lines, {{"stay", "STAY"}, {"save", "SAVE AND LEAVE"}, {"leave", "LEAVE"}}, "stay"));
+}
+
+bool App::save_world() {
+    playing_ = false;
+    const auto path = choose_world_save(data_dir() / "worlds", format("world-turn-%05d", simulation_->turn()) + std::string(WORLD_SUFFIX));
+    if (!path) return false;
+    say("Saving the world, please be patient...");
+    Canvas canvas = window_.frame();
+    draw(canvas);
+    window_.present();
+    SDL_PumpEvents();
+    try {
+        WorldFile::save(*simulation_, *path);
+    } catch (const std::exception& error) {
+        say("Couldn't save the world to " + utf8_name(*path) + ": " + error.what());
+        return false;
+    }
+    say(format("Saved the world at turn %d to ", simulation_->turn()) + utf8_name(*path));
+    return true;
 }
 
 void App::open_export_dialog() {
@@ -1534,8 +1564,13 @@ void App::draw_footer(Canvas& canvas) {
     canvas.rect(advanced_button_, changed ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(6));
     canvas.text_at(button_font, "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211},
                    [&](Rect& box) { box.center_at(advanced_button_.centerx(), advanced_button_.centery()); });
+    save_button_ = Rect{0, 0, Canvas::text_width(button_font, "SAVE WORLD") + UI(32), UI(34)}.midright_at(advanced_button_.x - UI(10),
+                                                                                                       height - UI(26));
+    canvas.rect(save_button_, {44, 57, 52}, 0, UI(6));
+    canvas.text_at(button_font, "SAVE WORLD", {220, 229, 211},
+                   [&](Rect& box) { box.center_at(save_button_.centerx(), save_button_.centery()); });
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
-    const int room = advanced_button_.x - left - UI(16);
+    const int room = save_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
         canvas.text(small, fit(message_, room), {238, 183, 110}, left, height - UI(36));
         return;

@@ -73,8 +73,9 @@ int main(int argc, char** argv) {
         SetupScreen setup(window, options.defaults);
         std::optional<Simulation::Settings> settings = setup.run();
         while (settings) {
-            rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts
-            App app(window, *settings);
+            std::unique_ptr<Simulation> loaded = setup.take_loaded();
+            if (!loaded) rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts; a world loaded brought its own
+            App app(window, *settings, std::move(loaded));
             const App::Result result = app.run();
             if (result == App::Result::Quit) break;
             // A new world with the Bitzkeys picked on the graph starts at once; otherwise, back to the panel.

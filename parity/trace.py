@@ -18,7 +18,7 @@ parser.add_argument("--python-project", type=Path,
 parser.add_argument("--width", type=int, default=100)
 parser.add_argument("--height", type=int, default=100)
 parser.add_argument("--population", type=int, default=90)
-parser.add_argument("--seed", type=int, required=True)
+parser.add_argument("--seed", type=int, default=None)
 parser.add_argument("--grass-density", type=float, default=50)
 parser.add_argument("--population-cap", type=int, default=None)
 parser.add_argument("--mind-mutation", type=float, default=25)
@@ -26,6 +26,8 @@ parser.add_argument("--body-mutation", type=float, default=25)
 parser.add_argument("--year-length", type=int, default=360)
 parser.add_argument("--turns", type=int, default=200)
 parser.add_argument("--out", type=Path, required=True)
+parser.add_argument("--load", type=Path, default=None, help="carry on the world saved in this file, rather than start one")
+parser.add_argument("--save", type=Path, default=None, help="save the whole world at the end, to load and carry on")
 parser.add_argument("--rule", action="append", default=[], metavar="KEY=VALUE",
                     help="change one of the advanced rules; may be repeated")
 parser.add_argument("--rule-at", action="append", default=[], metavar="TURN:KEY=VALUE",
@@ -39,6 +41,7 @@ sys.path.insert(0, str(options.python_project))
 from tools import Rules  # noqa: E402
 from tools.Exchange import import_bitzkeys  # noqa: E402
 from tools.Simulation import Simulation  # noqa: E402
+from tools.WorldFile import load_world, save_world  # noqa: E402
 
 changes = {}
 for rule in options.rule:
@@ -75,8 +78,14 @@ def trace_line(world: Simulation) -> str:
             f"{world.next_identifier} {sum(world.grass.values())} {places} {float(hunger)!r} {float(health)!r}")
 
 
-world = Simulation(options.width, options.height, options.population, options.seed, options.grass_density,
-                   (), options.population_cap, options.mind_mutation, options.body_mutation, options.year_length)
+if options.load:
+    world = load_world(options.load)
+    changes = Rules.current()  # the saved world's rules, which changes later in the run build on
+else:
+    if options.seed is None:
+        parser.error("--seed is needed to start a world")
+    world = Simulation(options.width, options.height, options.population, options.seed, options.grass_density,
+                       (), options.population_cap, options.mind_mutation, options.body_mutation, options.year_length)
 with options.out.open("w") as out:
     out.write(trace_line(world) + "\n")
     for _ in range(options.turns):
@@ -90,3 +99,5 @@ with options.out.open("w") as out:
         out.write(trace_line(world) + "\n")
         if world.end_reason:
             break
+if options.save:
+    save_world(world, options.save)

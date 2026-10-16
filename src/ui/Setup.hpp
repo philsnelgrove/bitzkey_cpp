@@ -85,6 +85,8 @@ public:
     std::optional<Simulation::Settings> start_with(const std::string& text);
     // The advanced rules changed from their defaults, for the worlds started from here.
     const rules::Values& rules() const { return rules_; }
+    // The saved world loaded to carry on, when LOAD WORLD started the run; taken, it is gone.
+    std::unique_ptr<Simulation> take_loaded() { return std::move(loaded_); }
 
 private:
     friend struct Screens;  // the screenshot tool
@@ -93,12 +95,12 @@ private:
     static constexpr int TEXT_LINES = 5;
 
     struct Layout {
-        Rect card, box, catalog, design, paste, load, clear, start, quit, advanced;
+        Rect card, box, catalog, design, paste, load, clear, start, quit, advanced, world;
         std::vector<Rect> rows;
     };
     Layout layout() const;
     static std::array<Rect, 3> buttons(const Rect& row);
-    enum class Click { None, Start, Quit, WindowClosed };
+    enum class Click { None, Start, Quit, WindowClosed, World };
     Click click(int x, int y);
     void key(const SDL_Event& event);
     bool ready();
@@ -110,12 +112,14 @@ private:
     void paste_clipboard();
     void choose_file();
     void load(const std::filesystem::path& path);
+    bool load_world();  // ask for a saved world and load it into `loaded_`; false if cancelled or it can't be read
     void draw(Canvas& canvas);
     void draw_setting(Canvas& canvas, const Setting& setting, const Rect& row, bool focused);
     void draw_import(Canvas& canvas, const Layout& places);
 
     Window& window_;
     SetupForm form_;
+    std::unique_ptr<Simulation> loaded_;
     std::string note_;
     Uint32 note_until_ = 0;
     std::optional<Dialog> dialog_;   // the quit confirmation, while it is open

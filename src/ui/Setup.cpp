@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/PyFormat.hpp"
+#include "core/WorldFile.hpp"
 #include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
@@ -240,6 +241,7 @@ std::optional<Simulation::Settings> SetupScreen::run() {
                 if (action == Click::WindowClosed) return std::nullopt;
                 if (action == Click::Quit) ask_to_quit();
                 if (action == Click::Start && ready()) return form_.values();
+                if (action == Click::World) return form_.values();  // a saved world, loaded in `loaded_`, to carry on
             }
         }
         Canvas canvas = window_.frame();
@@ -347,6 +349,24 @@ void SetupScreen::load(const std::filesystem::path& path) {
     tell("Loaded " + name + ".");
 }
 
+bool SetupScreen::load_world() {
+    const auto path = choose_world_file(data_dir() / "worlds");
+    if (!path) return false;
+    const std::string name = utf8_name(*path);
+    tell("Loading " + name + ", please be patient...");
+    Canvas canvas = window_.frame();
+    draw(canvas);
+    window_.present();
+    SDL_PumpEvents();
+    try {
+        loaded_ = WorldFile::load(*path);
+    } catch (const std::exception& error) {
+        tell("Couldn't load " + name + ": " + error.what());
+        return false;
+    }
+    return true;
+}
+
 SetupScreen::Layout SetupScreen::layout() const {
     Layout places;
     const int settings = static_cast<int>(SETTINGS.size());
@@ -366,6 +386,7 @@ SetupScreen::Layout SetupScreen::layout() const {
     places.start = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
     places.quit = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
     places.advanced = Rect{0, 0, UI(120), UI(28)}.topright_at(card.right() - UI(20), card.y + UI(28));
+    places.world = Rect{0, 0, UI(140), UI(44)}.bottomleft_at(card.x + UI(20), card.bottom() - UI(42));
     return places;
 }
 
@@ -380,6 +401,7 @@ SetupScreen::Click SetupScreen::click(int x, int y) {
     const Layout places = layout();
     if (places.start.contains(x, y)) return Click::Start;
     if (places.quit.contains(x, y)) return Click::Quit;
+    if (places.world.contains(x, y)) return load_world() ? Click::World : Click::None;
     if (places.design.contains(x, y)) return design() ? Click::None : Click::WindowClosed;
     if (places.catalog.contains(x, y)) return catalog() ? Click::None : Click::WindowClosed;
     if (places.advanced.contains(x, y)) return advanced() ? Click::None : Click::WindowClosed;
@@ -432,6 +454,9 @@ void SetupScreen::draw(Canvas& canvas) {
     canvas.text_at(bold, "START", {19, 26, 27}, [&](Rect& box) { box.center_at(places.start.centerx(), places.start.centery()); });
     canvas.rect(places.quit, {44, 57, 52}, 0, UI(6));
     canvas.text_at(bold, "QUIT", {220, 229, 211}, [&](Rect& box) { box.center_at(places.quit.centerx(), places.quit.centery()); });
+    canvas.rect(places.world, {44, 57, 52}, 0, UI(6));
+    canvas.text_at(UI.font(Face::Sans, 13, true), "LOAD WORLD", {220, 229, 211},
+                   [&](Rect& box) { box.center_at(places.world.centerx(), places.world.centery()); });
     const bool noting = SDL_GetTicks() < note_until_;
     canvas.text_at(small,
                    noting ? note_

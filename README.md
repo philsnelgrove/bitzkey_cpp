@@ -31,7 +31,9 @@ Launch options as in the Python version: `--width`, `--height`, `--population`,
 `--year-length`, `--windowed`. The configuration panel's ADVANCED button opens the advanced rules, the same 139
 as in the Python version, with the same keys, limits, steps and panel. The controls are the Python version's, plus `+` and `-` to change the speed: 1x
 (a turn every 0.24 s, as in Python), 2x, 4x, 8x, 16x, 32x, 64x and MAX, which is 128x (the faster speeds run several turns a frame; a world too big to keep up runs as fast as it can, at most 25 ms of turns
-in each frame). `I` opens the insights panel (behaviour, life, temperament and the keenest
+in each frame). SAVE WORLD in the map's footer, SAVE AND LEAVE when `Esc` asks to leave, and LOAD WORLD on the
+configuration panel save and load whole worlds as in the Python version, in the same file format (`src/core/WorldFile.*`), so a
+world saved by either loads in the other and carries on turn for turn the same; saves go in `worlds/` in the data folder. `I` opens the insights panel (behaviour, life, temperament and the keenest
 group for each action, by species); it scrolls with the wheel or its scroll bar, and selecting a
 Bitzkey closes it. Reports and exports are written to `Documents\Bitzkey\reports` and
 `Documents\Bitzkey\exports`. SDL2.dll and SDL2_ttf.dll are copied beside the executable by the
@@ -83,8 +85,10 @@ Options: `--width`, `--height`, `--population`, `--seed`, `--grass-density`, `--
 `--trace FILE`, `--export FILE`, `--brain-report FILE`, `--rule KEY=VALUE` (change an advanced
 rule; repeat it for more), `--rule-at TURN:KEY=VALUE` (change one once the world reaches TURN, as
 the map's ADVANCED button does), `--deploy-at TURN:X,Y:FILE` (deploy the Bitzkeys
-exported in FILE at a cell once the world reaches TURN, as the catalog's DEPLOY does)
-and `--rules` (list them, with their defaults and limits). Run
+exported in FILE at a cell once the world reaches TURN, as the catalog's DEPLOY does),
+`--load FILE` (carry on a saved world, by its own settings and rules), `--save FILE` (save the whole world at the end)
+and `--rules` (list them, with their defaults and limits). `parity/trace.py` takes `--load` and `--save` too, so a world
+saved by one version can be traced on in both. Run
 with `--help` for details.
 
 ```powershell

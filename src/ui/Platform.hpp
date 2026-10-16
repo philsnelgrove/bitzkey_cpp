@@ -19,6 +19,11 @@ bool set_clipboard_text(const std::string& text, std::string& error);
 
 // Ask the user for a Bitzkey file to import; none if they cancel.
 std::optional<std::filesystem::path> choose_file(const std::filesystem::path& start);
+// Ask the user where to save a world, starting in `folder` with `name` offered; `folder`/`name` itself where there
+// is no file picker; none if they cancel.
+std::optional<std::filesystem::path> choose_world_save(const std::filesystem::path& folder, const std::string& name);
+// Ask the user for a saved world to load, starting in `folder`; none if they cancel or there is no file picker.
+std::optional<std::filesystem::path> choose_world_file(const std::filesystem::path& folder);
 
 std::string read_file(const std::filesystem::path& path);                 // throws std::runtime_error
 void write_file(const std::filesystem::path& path, std::string_view text);  // throws std::runtime_error

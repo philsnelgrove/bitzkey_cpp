@@ -55,6 +55,7 @@ add_library(bitzkey_core STATIC
     src/core/Rules.cpp
     src/core/Catalog.cpp
     src/core/GpuBrains.cpp
+    src/core/WorldFile.cpp
 )
 target_include_directories(bitzkey_core PUBLIC src)
 target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json PRIVATE Vulkan::Headers)
@@ -120,6 +121,7 @@ add_executable(bitzkey_tests
     tests/test_climate.cpp
     tests/test_catalog.cpp
     tests/test_gpu.cpp
+    tests/test_worldfile.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_core doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
