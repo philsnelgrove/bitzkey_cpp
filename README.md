@@ -136,6 +136,9 @@ of GPU. The app looks for one as it starts: where it finds one, the advanced rul
 (World group) is on by default; where it finds none, the rule is greyed out, saying why, and the
 brains think on the CPU. The command-line tool thinks on the CPU, the exact reference, unless run
 with `--gpu`. The header says which GPUs are thinking, or why none could and the CPU carries on.
+If the GPUs fail while a world runs, most often by running out of memory as its brains' pools grow, every brain is
+brought back from them as far as it still can be and the world carries on thinking on the CPU, saying so in the
+header, rather than stop. Its rewind history starts again from the next turn.
 
 - Every brain lives in the GPUs' own memory, in pools of one depth, shared out among all the GPUs
   found; each turn only the senses go up and only the values come back. All the brains value
