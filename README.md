@@ -186,3 +186,9 @@ SDK's `glslc`.
 - `tests/`: unit tests (doctest).
 - `parity/`: the Python trace script.
 - `packaging/`: the installer script, the app icon and its generator, and the resource file.
+
+## Licence
+
+Copyright (C) 2026 Phil Snelgrove. Bitzkey is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License, version 3 or (at your option) any later version, as published by the Free
+Software Foundation. It is distributed in the hope that it will be useful, but without any warranty; see `LICENSE`.

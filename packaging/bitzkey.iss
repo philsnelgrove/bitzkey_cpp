@@ -42,6 +42,7 @@ Source: "{#Release}\bitzkey_cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\SDL2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\SDL2_ttf.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#Deps}\sdl2-src\LICENSE.txt"; DestDir: "{app}\licenses"; DestName: "SDL2.txt"; Flags: ignoreversion
 Source: "{#Deps}\sdl2_ttf-src\LICENSE.txt"; DestDir: "{app}\licenses"; DestName: "SDL2_ttf.txt"; Flags: ignoreversion
 
