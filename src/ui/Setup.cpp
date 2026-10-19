@@ -15,6 +15,7 @@
 #include "ui/Designer.hpp"
 #include "ui/Language.hpp"
 #include "ui/Platform.hpp"
+#include "ui/WorkersScreen.hpp"
 
 namespace bitzkey::ui {
 
@@ -190,7 +191,8 @@ std::string import_summary(const std::vector<Imported>& bitzkeys) {
 // ---------------------------------------------------------------------------------------------
 // The screen
 
-SetupScreen::SetupScreen(Window& window, const Defaults& defaults) : window_(window), form_(defaults) {}
+SetupScreen::SetupScreen(Window& window, const Defaults& defaults, net::Pool& pool, net::Worker& worker)
+    : window_(window), pool_(pool), worker_(worker), form_(defaults) {}
 
 std::optional<Simulation::Settings> SetupScreen::start_with(const std::string& text) {
     form_.clear_import();
@@ -200,6 +202,7 @@ std::optional<Simulation::Settings> SetupScreen::start_with(const std::string& t
 }
 
 std::optional<Simulation::Settings> SetupScreen::run() {
+    became_worker_ = false;
     while (true) {
         const Uint32 frame_start = SDL_GetTicks();
         SDL_Event event;
@@ -233,6 +236,10 @@ std::optional<Simulation::Settings> SetupScreen::run() {
                 if (!dialog_ && language_menu_.click(event.button.x, event.button.y)) continue;
                 const Click action = click(event.button.x, event.button.y);
                 if (action == Click::WindowClosed) return std::nullopt;
+                if (action == Click::Worker) {
+                    became_worker_ = true;
+                    return std::nullopt;
+                }
                 if (action == Click::Quit) ask_to_quit();
                 if (action == Click::Start && ready()) return form_.values();
                 if (action == Click::World) return form_.values();  // a saved world, loaded in `loaded_`, to carry on
@@ -377,10 +384,12 @@ SetupScreen::Layout SetupScreen::layout() const {
     places.design = Rect{0, 0, UI(80), UI(28)}.topright_at(places.paste.x - UI(8), section.y);
     places.catalog = Rect{0, 0, UI(122), UI(28)}.topright_at(places.design.x - UI(8), section.y);
     places.box = {section.x, section.y + UI(36), section.w, UI(16 * TEXT_LINES + 12)};
-    places.start = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
-    places.quit = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
     places.advanced = Rect{0, 0, UI(120), UI(28)}.topright_at(card.right() - UI(20), card.y + UI(28));
     places.world = Rect{0, 0, UI(140), UI(44)}.bottomleft_at(card.x + UI(20), card.bottom() - UI(42));
+    places.worker = Rect{0, 0, UI(150), UI(44)}.bottomright_at(card.right() - UI(20), card.bottom() - UI(42));
+    const int middle = (places.world.right() + places.worker.x) / 2;  // QUIT and START between them
+    places.quit = Rect{0, 0, UI(110), UI(44)}.bottomright_at(middle - UI(5), card.bottom() - UI(42));
+    places.start = Rect{0, 0, UI(140), UI(44)}.bottomleft_at(middle + UI(5), card.bottom() - UI(42));
     return places;
 }
 
@@ -396,6 +405,11 @@ SetupScreen::Click SetupScreen::click(int x, int y) {
     if (places.start.contains(x, y)) return Click::Start;
     if (places.quit.contains(x, y)) return Click::Quit;
     if (places.world.contains(x, y)) return load_world() ? Click::World : Click::None;
+    if (places.worker.contains(x, y)) {
+        const auto outcome = WorkersScreen(window_, pool_, worker_, nullptr).run();
+        if (outcome == WorkersScreen::Outcome::Quit) return Click::WindowClosed;
+        return outcome == WorkersScreen::Outcome::Worker ? Click::Worker : Click::None;
+    }
     if (places.design.contains(x, y)) return design() ? Click::None : Click::WindowClosed;
     if (places.catalog.contains(x, y)) return catalog() ? Click::None : Click::WindowClosed;
     if (places.advanced.contains(x, y)) return advanced() ? Click::None : Click::WindowClosed;
@@ -449,6 +463,8 @@ void SetupScreen::draw(Canvas& canvas) {
     canvas.label(bold, "QUIT", {220, 229, 211}, places.quit);
     canvas.rect(places.world, {44, 57, 52}, 0, UI(6));
     canvas.label(UI.font(Face::Sans, 13, true), "LOAD WORLD", {220, 229, 211}, places.world);
+    canvas.rect(places.worker, {44, 57, 52}, 0, UI(6));
+    canvas.label(UI.font(Face::Sans, 13, true), "BECOME A WORKER", {220, 229, 211}, places.worker);
     const bool noting = SDL_GetTicks() < note_until_;
     canvas.text_at(small,
                    noting ? note_

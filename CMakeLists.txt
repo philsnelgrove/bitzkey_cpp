@@ -60,6 +60,24 @@ add_library(bitzkey_core STATIC
 target_include_directories(bitzkey_core PUBLIC src)
 target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json PRIVATE Vulkan::Headers)
 
+# Workers: sharing a world's thinking with other Bitzkeys (this app or the Linux daemon) over the network, as their
+# main service or as one of their workers. src/net is copied to and from bitzkey_daemon, as the core is. HTTP is one
+# header.
+FetchContent_Declare(httplib
+    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.18.3.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_USE_ZLIB_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(httplib)
+add_library(bitzkey_net STATIC
+    src/net/Brains.cpp
+    src/net/Pool.cpp
+    src/net/Worker.cpp
+)
+target_compile_definitions(bitzkey_net PRIVATE BITZKEY_VERSION="${BITZKEY_VERSION}")
+target_link_libraries(bitzkey_net PUBLIC bitzkey_core httplib::httplib)
+
 # The window app: SDL2 for the window, input and clipboard, SDL_ttf for text. The official
 # prebuilt Visual C++ packages are fetched; their DLLs are copied beside the executable.
 FetchContent_Declare(sdl2
@@ -94,8 +112,11 @@ add_executable(bitzkey WIN32
     src/ui/Platform.cpp
     src/ui/Language.cpp
     src/ui/LanguageMenu.cpp
+    src/ui/Fields.cpp
+    src/ui/WorkersScreen.cpp
+    src/ui/WorkerScreen.cpp
 )
-target_link_libraries(bitzkey PRIVATE bitzkey_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
+target_link_libraries(bitzkey PRIVATE bitzkey_net SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 add_custom_command(TARGET bitzkey POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:bitzkey> $<TARGET_FILE_DIR:bitzkey>
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/i18n $<TARGET_FILE_DIR:bitzkey>/i18n
@@ -105,11 +126,11 @@ add_custom_command(TARGET bitzkey POST_BUILD
 add_executable(bitzkey_screens tools/screens.cpp
     src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Report.cpp src/ui/Setup.cpp
     src/ui/Advanced.cpp src/ui/Inspector.cpp src/ui/Designer.cpp src/ui/CatalogScreen.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp
-    src/ui/Language.cpp src/ui/LanguageMenu.cpp)
+    src/ui/Language.cpp src/ui/LanguageMenu.cpp src/ui/Fields.cpp src/ui/WorkersScreen.cpp src/ui/WorkerScreen.cpp)
 target_include_directories(bitzkey_screens PRIVATE src)
 add_custom_command(TARGET bitzkey_screens POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/i18n $<TARGET_FILE_DIR:bitzkey_screens>/i18n)
-target_link_libraries(bitzkey_screens PRIVATE bitzkey_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
+target_link_libraries(bitzkey_screens PRIVATE bitzkey_net SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 
 # A command-line runner: run worlds headless, benchmark, trace, export.
 add_executable(bitzkey_cli src/cli/main.cpp)
@@ -128,8 +149,9 @@ add_executable(bitzkey_tests
     tests/test_catalog.cpp
     tests/test_gpu.cpp
     tests/test_worldfile.cpp
+    tests/test_net.cpp
 )
-target_link_libraries(bitzkey_tests PRIVATE bitzkey_core doctest::doctest)
+target_link_libraries(bitzkey_tests PRIVATE bitzkey_net doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 
 enable_testing()

@@ -18,6 +18,8 @@
 #include "ui/Language.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Window.hpp"
+#include "ui/WorkerScreen.hpp"
+#include "ui/WorkersScreen.hpp"
 
 namespace bitzkey::ui {
 
@@ -31,7 +33,12 @@ struct Screens {
         Defaults defaults = {{"width", 100}, {"height", 100}, {"population", 90}, {"grass_density", 50},
                              {"seed", std::nullopt}, {"population_cap", std::nullopt}, {"mind_mutation", 50},
                              {"body_mutation", 50}, {"year_length", 360}};
-        SetupScreen setup(window, defaults);
+        // Workers: a pool and a worker of its own, in a scratch folder, so the user's own are left alone.
+        const auto scratch = std::filesystem::temp_directory_path() / "bitzkey-screens-workers";
+        std::filesystem::remove_all(scratch);
+        net::Pool pool(scratch / "main" / "workers.json");
+        net::Worker worker(scratch / "worker" / "worker.json");
+        SetupScreen setup(window, defaults, pool, worker);
         Canvas canvas = window.frame();
         setup.draw(canvas);
         save(canvas, folder / "setup.bmp");
@@ -70,9 +77,56 @@ struct Screens {
         designer.draw(canvas);
         save(canvas, folder / "designer.bmp");
 
+        WorkersScreen becoming(window, pool, worker, nullptr);  // from the configuration panel
+        becoming.draw(canvas);
+        save(canvas, folder / "setup-worker.bmp");
+
+        int port = 0;
+        for (int tries = 0; tries < 40 && !port; ++tries) {
+            try {
+                worker.start(53100 + tries, net::Resources{2, std::uint64_t{1024} << 20, {}});
+                port = 53100 + tries;
+            } catch (const std::invalid_argument&) {
+            }
+        }
+        {
+            Simulation::Settings small;
+            small.seed = 7;
+            Simulation pooled(small);
+            pool.add("127.0.0.1", port, "Thank you for thinking for us! The world: https://bitzkey.barriegamersociety.com/");
+            pool.add("192.168.1.77", net::DEFAULT_WORKER_PORT, "");
+            pool.adopt(pooled);
+            for (int frame = 0; frame < 100; ++frame) {
+                pool.tend(pooled);
+                if (pool.list()["workers"][0]["state"] == "working") break;
+                SDL_Delay(50);
+            }
+            for (int turn = 0; turn < 10; ++turn) {
+                pooled.advance();
+                pool.tend(pooled);
+            }
+            WorkersScreen workers(window, pool, worker, &pooled);
+            workers.list_ = pool.list();
+            workers.draw(canvas);
+            save(canvas, folder / "workers.bmp");
+            workers.share_.emplace(net::scan_machine(), net::Resources{4, std::uint64_t{8192} << 20, {0}});
+            workers.draw(canvas);
+            save(canvas, folder / "workers-become.bmp");
+            WorkerScreen panel(window, worker);
+            panel.status_ = worker.status();
+            panel.share_.emplace(net::scan_machine(), net::Resources{2, std::uint64_t{1024} << 20, {}});
+            panel.port_.text = std::to_string(port);
+            panel.draw(canvas);
+            save(canvas, folder / "worker.bmp");
+            pool.remove("127.0.0.1", port);
+            pool.remove("192.168.1.77", net::DEFAULT_WORKER_PORT);
+            pool.adopt(pooled);
+        }
+        worker.stop(true, std::chrono::seconds(0));
+
         Simulation::Settings settings;
         settings.seed = 42;
-        App app(window, settings);
+        App app(window, settings, pool, worker);
         for (int turn = 0; turn < 150; ++turn) app.simulation_->advance();
         for (const auto& agent : app.simulation_->agents()) {
             if (agent->brain && agent->odds_offered) {

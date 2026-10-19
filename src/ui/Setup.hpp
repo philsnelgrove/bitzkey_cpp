@@ -12,6 +12,8 @@
 #include "core/Exchange.hpp"
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
+#include "net/Pool.hpp"
+#include "net/Worker.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/Dialog.hpp"
 #include "ui/LanguageMenu.hpp"
@@ -77,10 +79,11 @@ std::string import_summary(const std::vector<Imported>& bitzkeys);
 // Draws the form and handles input until the user starts a world or quits.
 class SetupScreen {
 public:
-    SetupScreen(Window& window, const Defaults& defaults);
-    // The chosen settings, or none if the user quit. Running it again, after a simulation, starts
-    // from the same values.
+    SetupScreen(Window& window, const Defaults& defaults, net::Pool& pool, net::Worker& worker);
+    // The chosen settings, or none if the user quit or became a worker. Running it again, after a simulation,
+    // starts from the same values.
     std::optional<Simulation::Settings> run();
+    bool became_worker() const { return became_worker_; }  // whether run() ended so
     // Start a new world at once, with the settings as they were and these Bitzkeys alone in the import
     // box, as if pasted there; if they can't be read, wait on the panel as usual.
     std::optional<Simulation::Settings> start_with(const std::string& text);
@@ -96,12 +99,12 @@ private:
     static constexpr int TEXT_LINES = 5;
 
     struct Layout {
-        Rect card, box, catalog, design, paste, load, clear, start, quit, advanced, world;
+        Rect card, box, catalog, design, paste, load, clear, start, quit, advanced, world, worker;
         std::vector<Rect> rows;
     };
     Layout layout() const;
     static std::array<Rect, 3> buttons(const Rect& row);
-    enum class Click { None, Start, Quit, WindowClosed, World };
+    enum class Click { None, Start, Quit, WindowClosed, World, Worker };
     Click click(int x, int y);
     void key(const SDL_Event& event);
     bool ready();
@@ -119,6 +122,9 @@ private:
     void draw_import(Canvas& canvas, const Layout& places);
 
     Window& window_;
+    net::Pool& pool_;
+    net::Worker& worker_;
+    bool became_worker_ = false;
     SetupForm form_;
     std::unique_ptr<Simulation> loaded_;
     std::string note_;

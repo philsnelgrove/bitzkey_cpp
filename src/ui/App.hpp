@@ -10,6 +10,8 @@
 #include <nlohmann/json.hpp>
 
 #include "core/Simulation.hpp"
+#include "net/Pool.hpp"
+#include "net/Worker.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/ColourGraph.hpp"
 #include "ui/Dialog.hpp"
@@ -23,11 +25,11 @@ struct Screens;
 
 class App {
 public:
-    enum class Result { Quit, Configure, Renew };
+    enum class Result { Quit, Configure, Renew, Worker };  // Worker: the app became a worker, from WORKERS
 
     // Start a world by these settings, or carry on `loaded`, a world loaded; restarting starts afresh by the settings
-    // either way.
-    App(Window& window, Simulation::Settings settings, std::unique_ptr<Simulation> loaded = nullptr);
+    // either way. The world thinks through the pool while it lists workers.
+    App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded = nullptr);
     // Run until the window closes or the user leaves for the configuration panel, or for a new world
     // with the Bitzkeys picked on the graph (Renew), which renewal() then holds.
     Result run();
@@ -117,6 +119,7 @@ private:
     void inspect_brains();     // pause, and show the selected Bitzkey's choices in each standard situation
     void browse_catalog();  // look through the catalog, importing and exporting nothing
     void edit_rules();      // pause, and change the rules this world plays by
+    bool open_workers();    // the workers it shares its thinking with; true when the app became a worker there
     // Deploy mode: the cursor becomes a target, and each click on the map, or each step of a drag, puts DEPLOY_GROUP
     // of each Bitzkey there; a right-click or ESC stops.
     void start_deploying(std::vector<Imported> bitzkeys);
@@ -150,6 +153,8 @@ private:
 
     Window& window_;
     Simulation::Settings settings_;
+    net::Pool& pool_;
+    net::Worker& worker_;
     std::unique_ptr<Simulation> simulation_;
     std::optional<int> selected_id_;
     bool show_insights_ = false;
@@ -177,6 +182,7 @@ private:
     Rect open_button_;  // the catalog, to look through
     Rect advanced_button_;  // this world's rules
     Rect save_button_;      // the whole world, to a file
+    Rect workers_button_;   // the other Bitzkeys it shares its thinking with
     std::vector<Imported> deploying_;               // the Bitzkeys to paint onto the map; none when not deploying
     std::optional<std::pair<int, int>> painted_;    // the cell last painted while the button is held
     std::string message_;

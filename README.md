@@ -176,8 +176,35 @@ The shaders are in `shaders/`, and are compiled ahead of time into `src/core/sha
 building needs no Vulkan SDK; after changing one, run `.\tools\compile_shaders.ps1`, which needs the
 SDK's `glslc`.
 
+## Workers
+
+A world's thinking can be shared with other computers. The computer running the world is the main service. The others are **workers**, which hold some of its brains and do their deciding and learning, the costliest part of a turn. Either role can be filled by this app or by the [Linux daemon](https://github.com/philsnelgrove/bitzkey_daemon), in any mix: they share the same code for this, in `src/net/`.
+
+**Using workers.** While a world runs, **WORKERS** (in the footer, green while workers are sharing) lists each worker with:
+
+- its state;
+- its ping time;
+- the cores, memory and GPUs it shares;
+- its measured speed;
+- how many brains it holds.
+
+Add a worker by its IP address, with its port if it isn't 50000 (in the port box, or as `192.168.1.20:50001`), and optionally a message for its screen. A link in the message can be clicked there. The world's brains are shared out by each worker's speed, and this app keeps a share. Every 100 turns (set under Checkpoints) every brain is brought back. If a worker fails, its brains go to the others as they were then. A worker that is removed, or that stops, hands its brains back first, and saving the world gathers them all. As on the GPU, a world thinking through workers keeps no history to rewind.
+
+**Being a worker.** **BECOME A WORKER**, on the configuration panel (or **BECOME A WORKER...** on the WORKERS screen), asks for:
+
+- the port to listen on;
+- the cores to share;
+- the memory to share;
+- the GPUs to share.
+
+The world is let go, and the app shows only a gray worker screen. That screen gives the main service's address and message, and lets you change the port and the shares at any time. **STOP BEING A WORKER** hands the brains back and returns to the configuration panel. Closing the window hands them back too, and the app opens as a worker again next time.
+
+**The firewall.** Becoming a worker, changing its port, and stopping each ask Windows for approval (the usual administrator prompt). Once approved, Windows' firewall lets the main service in on that port, under a rule named "Bitzkey worker". A router in front of the computer needs the port forwarded by hand. The main service needs no open port: it connects out to its workers.
+
 ## Layout
 
+- `src/net/`: workers: a main service's pool (`Pool`), worker mode (`Worker`), the brains a worker holds and the batches
+  it is sent (`Brains`), and their binary form (`Wire`). Copied to and from the daemon, as the core is.
 - `src/core/`: the simulation: `PyRandom` (Python's generator), `PyFormat` (Python's number
   conventions), `Genome`, `Brain`, `Insights`, `Census`, `Exchange`, `Simulation`, `Rules` (the
   advanced rules), `GpuBrains` (brains on the GPUs, through Vulkan).
@@ -186,7 +213,8 @@ SDK's `glslc`.
 - `src/cli/`: the command-line runner.
 - `src/ui/`: the window app: `Canvas` (software drawing with pygame's shapes), `Window`, `Ui`
   (scaling and fonts), `Look`, `Dialog`, `Setup`, `Advanced`, `Inspector` (a Bitzkey's details, for the
-  sidebar and the graph's tooltip), `Designer`, `ColourGraph`, `App`.
+  sidebar and the graph's tooltip), `Designer`, `ColourGraph`, `App`, `WorkersScreen` and `WorkerScreen` (with
+  `Fields`, their text boxes and share form).
 - `src/ui/Icons.cpp`: the species icons (tree, leaf, apple, drumstick), drawn from shapes.
 - `tools/screens.cpp`: draws every screen off-screen to BMP files, for checking the interface.
 - `tests/`: unit tests (doctest).

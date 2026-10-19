@@ -11,11 +11,15 @@
 #include "core/GpuBrains.hpp"
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
+#include "net/Pool.hpp"
+#include "net/Worker.hpp"
 #include "ui/App.hpp"
 #include "ui/Language.hpp"
+#include "ui/Platform.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Ui.hpp"
 #include "ui/Window.hpp"
+#include "ui/WorkerScreen.hpp"
 
 using namespace bitzkey;
 using namespace bitzkey::ui;
@@ -71,17 +75,40 @@ int main(int argc, char** argv) {
         start_language();
         remove_stale_histories();  // left behind by a run that ended without closing its world
         if (gpu::available()) USE_GPU = 1;  // with a GPU, thinking on it is the default; before the rules' defaults are taken
+        // Workers: those this app shares its worlds' thinking with, and worker mode, kept beside the reports.
+        net::Pool pool(data_dir() / "workers.json");
+        net::Worker worker(data_dir() / "worker.json");
+        worker.on_ports = open_worker_ports;  // in Windows' firewall, as the user changes them
+        worker.resume();                      // a worker when last closed: a worker again
         Window window(!options.windowed);
-        SetupScreen setup(window, options.defaults);
-        std::optional<Simulation::Settings> settings = setup.run();
-        while (settings) {
-            std::unique_ptr<Simulation> loaded = setup.take_loaded();
-            if (!loaded) rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts; a world loaded brought its own
-            App app(window, *settings, std::move(loaded));
-            const App::Result result = app.run();
-            if (result == App::Result::Quit) break;
-            // A new world with the Bitzkeys picked on the graph starts at once; otherwise, back to the panel.
-            settings = result == App::Result::Renew ? setup.start_with(app.renewal()) : setup.run();
+        // While a worker, the app shows only that; stopping, it comes back to the configuration panel.
+        const auto working = [&] { return !worker.on() || WorkerScreen(window, worker).run() == WorkerScreen::Outcome::Stopped; };
+        if (working()) {
+            SetupScreen setup(window, options.defaults, pool, worker);
+            // The panel, until the user starts a world or quits; becoming a worker there, the worker screen meanwhile.
+            const auto configure = [&]() -> std::optional<Simulation::Settings> {
+                for (;;) {
+                    auto chosen = setup.run();
+                    if (chosen || !setup.became_worker()) return chosen;
+                    if (!working()) return std::nullopt;
+                }
+            };
+            std::optional<Simulation::Settings> settings = configure();
+            while (settings) {
+                std::unique_ptr<Simulation> loaded = setup.take_loaded();
+                if (!loaded) rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts; a world loaded brought its own
+                App::Result result;
+                std::string renewal;
+                {
+                    App app(window, *settings, pool, worker, std::move(loaded));
+                    result = app.run();
+                    renewal = app.renewal();
+                }  // the world let go, before it becomes a worker
+                if (result == App::Result::Quit) break;
+                if (result == App::Result::Worker && !working()) break;
+                // A new world with the Bitzkeys picked on the graph starts at once; otherwise, back to the panel.
+                settings = result == App::Result::Renew ? setup.start_with(renewal) : configure();
+            }
         }
     } catch (const std::exception& error) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Bitzkey", error.what(), nullptr);

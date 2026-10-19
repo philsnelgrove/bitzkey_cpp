@@ -18,6 +18,7 @@
 #include "core/WorldFile.hpp"
 #include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
+#include "ui/WorkersScreen.hpp"
 #include "ui/Inspector.hpp"
 #include "ui/Language.hpp"
 #include "ui/Look.hpp"
@@ -166,10 +167,14 @@ nlohmann::ordered_json genome_only(Dna dna) { return genome_record(dna); }
 
 }  // namespace
 
-App::App(Window& window, Simulation::Settings settings, std::unique_ptr<Simulation> loaded)
-    : window_(window), settings_(std::move(settings)) {
-    if (loaded) simulation_ = std::move(loaded);
-    else new_world();
+App::App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded)
+    : window_(window), settings_(std::move(settings)), pool_(pool), worker_(worker) {
+    if (loaded) {
+        simulation_ = std::move(loaded);
+        pool_.adopt(*simulation_);
+    } else {
+        new_world();
+    }
 }
 
 // How large the selected Bitzkeys' sights are now: from their size to twice it and back, every RETICLE_PULSE_MS,
@@ -179,7 +184,10 @@ double reticle_pulse() {
     return 1.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * SDL_GetTicks() / RETICLE_PULSE_MS);
 }
 
-void App::new_world() { simulation_ = std::make_unique<Simulation>(settings_); }
+void App::new_world() {
+    simulation_ = std::make_unique<Simulation>(settings_);
+    pool_.adopt(*simulation_);  // its brains shared with the workers, if any are listed
+}
 
 App::Result App::run() {
     Uint32 last = SDL_GetTicks();
@@ -282,6 +290,8 @@ App::Result App::run() {
                 Canvas canvas = window_.frame();
                 if (language_menu_.click(event.button.x, event.button.y)) {
                     // the language menu opened, closed or chose
+                } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
+                    if (open_workers()) return Result::Worker;
                 } else if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     marquee_from_ = std::tuple{event.button.x, event.button.y, (SDL_GetModState() & KMOD_CTRL) != 0};
                 } else {
@@ -305,6 +315,7 @@ App::Result App::run() {
 void App::tick(double seconds) {
     // While playing, advance at the chosen speed, and stop to show the graph once the run has ended.
     elapsed_ = std::min(elapsed_ + seconds, TURN_INTERVALS.front() + 0.01);  // time paused isn't made up for
+    pool_.tend(*simulation_);  // workers come and go, paused or not
     if (!playing_ || dialog_ || report_) return;
     if (simulation_->ended()) {
         finish();
@@ -605,6 +616,18 @@ void App::edit_rules() {
         say(format("This world now plays by %zu rule%s changed from the defaults. Paused: SPACE plays on.", changed->size(),
                    changed->size() != 1 ? "s" : ""));
     }
+}
+
+bool App::open_workers() {
+    // The world waits meanwhile; workers still join, and the brains are shared out. Closing the window from there
+    // closes the program.
+    const WorkersScreen::Outcome outcome = WorkersScreen(window_, pool_, worker_, simulation_.get()).run();
+    if (outcome == WorkersScreen::Outcome::Quit) {
+        SDL_Event quit{};
+        quit.type = SDL_QUIT;
+        SDL_PushEvent(&quit);
+    }
+    return outcome == WorkersScreen::Outcome::Worker;
 }
 
 void App::browse_catalog() {
@@ -1175,8 +1198,9 @@ void App::draw_header(Canvas& canvas) {
         box.y = UI(23);
         speed_box = box;
     });
-    if (!simulation_->gpu_status().empty()) {  // where the brains think, when the GPU was asked for
-        const std::string where = upper(simulation_->gpu_status());
+    const std::string thinking = pool_.bound() ? pool_.status() : simulation_->gpu_status();
+    if (!thinking.empty()) {  // where the brains think, when the GPU was asked for or workers share it
+        const std::string where = upper(thinking);
         canvas.text_at(UI.font(Face::Sans, 12), fit(where, UI(420)), simulation_->on_gpu() ? Color{131, 205, 143} : Color{238, 183, 110},
                        [&](Rect& box) {
                            box.x = speed_box.x - box.w - UI(24);
@@ -1569,8 +1593,13 @@ void App::draw_footer(Canvas& canvas) {
                                                                                                        height - UI(26));
     canvas.rect(save_button_, {44, 57, 52}, 0, UI(6));
     canvas.label(button_font, "SAVE WORLD", {220, 229, 211}, save_button_);
+    const bool pooled = pool_.bound();  // green while workers share its thinking
+    workers_button_ = Rect{0, 0, Canvas::text_width(button_font, "WORKERS") + UI(32), UI(34)}.midright_at(save_button_.x - UI(10),
+                                                                                                     height - UI(26));
+    canvas.rect(workers_button_, pooled ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
+    canvas.label(button_font, "WORKERS", pooled ? Color{19, 26, 27} : Color{220, 229, 211}, workers_button_);
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
-    const int room = save_button_.x - left - UI(16);
+    const int room = workers_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
         footer_lines(canvas, message_, left, room, {238, 183, 110});
         return;
