@@ -39,6 +39,15 @@ def main():
         for key in keys:
             if key in own and key not in bad:
                 catalog[key] = own[key]
+        # Key hints are drawn whole, or (in the Python version) a group at a time: each group of a
+        # hint, three spaces apart, has its own key, taken from the whole hint's translation.
+        for key, text in list(catalog.items()):
+            groups, translated = key.split("   "), text.split("   ")
+            if len(groups) > 2 and len(groups) == len(translated):
+                for group, shown in zip(groups, translated):
+                    group, shown = group.strip(), shown.strip()
+                    if group and group not in catalog and blanks(group) == blanks(shown) and re.search("[A-Za-z]", group):
+                        catalog[group] = shown
         json.dump(catalog, open(OUT / f"{lang}.json", "w", encoding="utf8", newline="\n"), ensure_ascii=False, indent=0)
         print(f"{lang}: {len(catalog)} in all, desktop {len(keys) - len(missing)}/{len(keys)}  "
               f"missing {len(missing)}  bad {len(bad)}  stale {len(stale)}")
