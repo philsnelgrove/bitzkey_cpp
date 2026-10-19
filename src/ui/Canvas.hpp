@@ -11,6 +11,7 @@
 #include <utility>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <SDL.h>
 
@@ -82,6 +83,9 @@ public:
         text(font, words, color, box.x, box.y);
     }
 
+    // A button's label, centred in it, and smaller if it must be to fit.
+    void label(TTF_Font* font, std::string_view words, Color color, const Rect& button);
+
     static Rect text_box(TTF_Font* font, std::string_view text);  // at (0, 0)
     static int text_width(TTF_Font* font, std::string_view text) { return text_box(font, text).w; }
 
@@ -92,5 +96,9 @@ private:
     SDL_Surface* target_;
     Rect clip_;
 };
+
+// Text in the language shown, broken into lines no wider than `width`: between words, or between
+// any two characters in Chinese and Japanese.
+std::vector<std::string> wrapped_lines(TTF_Font* font, std::string_view text, int width);
 
 }  // namespace bitzkey::ui

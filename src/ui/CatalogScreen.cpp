@@ -216,9 +216,12 @@ void CatalogScreen::draw(Canvas& canvas) {
     canvas.rect(list, {22, 30, 30}, 0, UI(6));
     if (entries_.empty()) {
         canvas.text(font, "The catalog is empty.", {157, 177, 159}, list.x + UI(16), list.y + UI(16));
-        canvas.text(small, "Add Bitzkeys from a running world: ADD TO CATALOG in the sidebar,", {116, 139, 124}, list.x + UI(16),
-                    list.y + UI(44));
-        canvas.text(small, "the export list or the colour graph, or press K.", {116, 139, 124}, list.x + UI(16), list.y + UI(62));
+        const std::vector<std::string> lines = wrapped_lines(
+            small, "Add Bitzkeys from a running world: ADD TO CATALOG in the sidebar, the export list or the colour graph, or press K.",
+            list.w - UI(32));
+        for (std::size_t index = 0; index < lines.size(); ++index) {
+            canvas.text(small, lines[index], {116, 139, 124}, list.x + UI(16), list.y + UI(44 + 18 * static_cast<int>(index)));
+        }
     }
     const int last = std::min(static_cast<int>(entries_.size()), scroll_ + rows_shown());
     for (int index = scroll_; index < last; ++index) {
@@ -253,8 +256,7 @@ void CatalogScreen::draw(Canvas& canvas) {
                                             std::tuple{places.close, std::string("CLOSE"), false}}) {
         const bool active = lit && !chosen_.empty();
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
-        canvas.text_at(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211},
-                       [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+        canvas.label(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
     const std::string hint = !note_.empty() ? note_
                              : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  deploy    DELETE  remove    ESC  close"

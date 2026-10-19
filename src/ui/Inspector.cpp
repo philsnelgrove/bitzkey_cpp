@@ -10,6 +10,7 @@
 
 #include "core/PyFormat.hpp"
 #include "ui/Icons.hpp"
+#include "ui/Language.hpp"
 #include "ui/Look.hpp"
 
 namespace bitzkey::ui {
@@ -80,37 +81,52 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     canvas.text(mono_small, format("DOT %08X RING %08X SOCIAL %08X", mind_word(agent.dna), body_word(agent.dna), social_word(agent.dna)),
                 {211, 219, 201}, x, at(26));
 
-    // Temperament: the mind's traits on the left, the social background's on the right.
-    const int right = x + std::min(UI(168), width / 2 + UI(18));
+    // Temperament: the mind's traits on the left, the social background's on the right. Names are
+    // in the language shown, and the numbers stand in columns after the longest of them.
+    const auto widest = [&](int first, int count) {
+        int widest_name = Canvas::text_width(mono_small, "neurodiv.");
+        for (int trait = first; trait < first + count; ++trait) widest_name = std::max(widest_name, Canvas::text_width(mono_small, TEMPERAMENT[trait]));
+        return widest_name + UI(6);
+    };
+    const int digits = Canvas::text_width(mono_small, "00");
+    const int column_width = widest(0, DOT_TRAIT_COUNT) + digits + Canvas::text_width(mono_small, " 0.0") + UI(10);
+    const int right = x + std::max(std::min(UI(168), width / 2 + UI(18)), column_width);
     for (const auto& [left, heading, first, count] : {std::tuple{x, "MIND", 0, DOT_TRAIT_COUNT},
                                                      std::tuple{right, "SOCIAL", DOT_TRAIT_COUNT, SOCIAL_TRAIT_COUNT}}) {
-        canvas.text(mono_small, format("%-10sborn", heading) + (known ? " now" : ""), {149, 170, 150}, left, at(46));
+        const int numbers = left + widest(first, count);
+        canvas.text(mono_small, heading, {149, 170, 150}, left, at(46));
+        const int born_at = numbers + digits - Canvas::text_width(mono_small, "born");
+        canvas.text(mono_small, "born", {149, 170, 150}, std::max(born_at, left + Canvas::text_width(mono_small, heading) + UI(6)), at(46));
+        if (known) canvas.text(mono_small, "now", {149, 170, 150}, numbers + digits + UI(8), at(46));
         for (int index = 0; index < count; ++index) {
             const int trait = first + index;
             const int born = agent.inborn[trait];
             const double now = agent.mind[trait];
-            const std::string name(TEMPERAMENT[trait]);
-            if (!known) {
-                canvas.text(mono_small, format("%-11s%2d", name.c_str(), born), {175, 192, 172}, left, at(62 + index * 14));
-                continue;
-            }
-            const Color colour = std::abs(now - born) < 0.25 ? Color{175, 192, 172}
-                                 : now > born               ? Color{131, 205, 143}
-                                                            : Color{238, 183, 110};
-            canvas.text(mono_small, format("%-11s%2d%5.1f", name.c_str(), born, now), colour, left, at(62 + index * 14));
+            const Color colour = !known || std::abs(now - born) < 0.25 ? Color{175, 192, 172}
+                                 : now > born                       ? Color{131, 205, 143}
+                                                                    : Color{238, 183, 110};
+            canvas.text(mono_small, TEMPERAMENT[trait], colour, left, at(62 + index * 14));
+            canvas.text(mono_small, format("%2d", born), colour, numbers, at(62 + index * 14));
+            if (known) canvas.text(mono_small, format("%5.1f", now), colour, numbers + digits, at(62 + index * 14));
+        }
+        if (first == DOT_TRAIT_COUNT) {
+            canvas.text(mono_small, "neurodiv.", {175, 192, 172}, left, at(62 + SOCIAL_TRAIT_COUNT * 14));
+            canvas.text(mono_small, format("%2d", decode_neurodivergence(agent.dna)), {175, 192, 172}, numbers,
+                        at(62 + SOCIAL_TRAIT_COUNT * 14));
         }
     }
-    canvas.text(mono_small, format("%-11s%2d", "neurodiv.", decode_neurodivergence(agent.dna)), {175, 192, 172}, right,
-                at(62 + SOCIAL_TRAIT_COUNT * 14));
 
-    // The body, three to a row.
+    // The body, three to a row: each name, and its number at the cell's right.
     canvas.text(mono_small, "BODY", {149, 170, 150}, x, at(206));
     for (int index = 0; index < BODY_TRAIT_COUNT; ++index) {
         const int row = index / 3, column = index % 3;
-        const std::string cell = index < BODY_TRAIT_COUNT - 1
-                                     ? format("%-10s%2d", std::string(BODY_TRAITS[index + 1]).c_str(), agent.body[index + 1])
-                                     : format("%-7s%5.2f", "burn", agent.burn);
-        canvas.text(mono_small, cell, {175, 192, 172}, x + column * width / 3, at(222 + row * 14));
+        const bool last = index == BODY_TRAIT_COUNT - 1;
+        const std::string name = last ? std::string("burn") : std::string(BODY_TRAITS[index + 1]);
+        const std::string number = last ? format("%5.2f", agent.burn) : format("%2d", agent.body[index + 1]);
+        const int cell = x + column * width / 3;
+        const int number_at = cell + width / 3 - UI(10) - Canvas::text_width(mono_small, number);
+        canvas.text(mono_small, name, {175, 192, 172}, cell, at(222 + row * 14));
+        canvas.text(mono_small, number, {175, 192, 172}, number_at, at(222 + row * 14));
     }
     draw_climate(canvas, agent, x, at(280), width, known ? here : std::nullopt);
 
@@ -139,12 +155,12 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
             if (agent.odds_offered & (1U << action)) odds.emplace_back(action, agent.odds[static_cast<std::size_t>(action)]);
         }
         std::stable_sort(odds.begin(), odds.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-        std::string line = "CHANCES  ";
+        std::string line = tr("CHANCES") + "  ";  // each action in the language shown
         for (std::size_t index = 0; index < std::min<std::size_t>(3, odds.size()); ++index) {
             if (index) line += "   ";
-            line += std::string(ACTIONS[static_cast<std::size_t>(odds[index].first)]) + " " + py_percent(odds[index].second, 0);
+            line += tr(ACTIONS[static_cast<std::size_t>(odds[index].first)]) + " " + py_percent(odds[index].second, 0);
         }
-        canvas.text(small, line, {175, 192, 172}, x, at(366));
+        canvas.text(small, as_shown(line), {175, 192, 172}, x, at(366));
     }
 }
 

@@ -318,7 +318,8 @@ void Designer::draw(Canvas& canvas) {
         facts.push_back("At home where it is " + temperature + "." + hardy[static_cast<std::size_t>(hardiness)]);
     }
     for (std::size_t index = 0; index < facts.size(); ++index) {
-        canvas.text(small, facts[index], {187, 199, 181}, preview.x, places.codes[2].bottom() + UI(16 + 20 * static_cast<int>(index)));
+        canvas.text(UI.fitting(small, facts[index], preview.w), facts[index], {187, 199, 181}, preview.x,
+                    places.codes[2].bottom() + UI(16 + 20 * static_cast<int>(index)));
     }
 
     // The trait rows: mind on the left, body on the right, and the social background beneath.
@@ -335,8 +336,7 @@ void Designer::draw(Canvas& canvas) {
         std::tuple{places.random, "RANDOM", false}, std::tuple{places.cancel, "CANCEL", false}, std::tuple{places.apply, "APPLY", true}};
     for (const auto& [button, label, filled] : buttons) {
         canvas.rect(button, filled ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
-        canvas.text_at(bold, label, filled ? Color{19, 26, 27} : Color{220, 229, 211},
-                       [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+        canvas.label(bold, label, filled ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
     canvas.text_at(small,
                    "UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x5)   type a value or hex code   ENTER  apply   "
@@ -362,8 +362,7 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
                      {131, 205, 143});
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(UI.font(Face::Sans, 22, true), sign, {220, 229, 211},
-                       [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
+        canvas.label(UI.font(Face::Sans, 22, true), sign, {220, 229, 211}, button);
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));

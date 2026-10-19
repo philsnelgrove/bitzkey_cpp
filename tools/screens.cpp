@@ -1,5 +1,5 @@
 // Draw every screen off-screen and save it as a BMP, to check the interface without a person at
-// the keyboard:  bitzkey_screens OUTPUT_FOLDER [WIDTH HEIGHT]
+// the keyboard:  bitzkey_screens OUTPUT_FOLDER [LANGUAGE]
 
 #include <algorithm>
 #include <cstdlib>
@@ -15,6 +15,7 @@
 #include "ui/App.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
+#include "ui/Language.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Window.hpp"
 
@@ -38,6 +39,10 @@ struct Screens {
         setup.draw(canvas);
         save(canvas, folder / "setup-quit.bmp");
         setup.dialog_.reset();
+        setup.language_menu_.click(setup.language_menu_.button().centerx(), setup.language_menu_.button().centery());
+        setup.draw(canvas);
+        save(canvas, folder / "setup-languages.bmp");
+        setup.language_menu_.click(0, 0);  // closed again
         setup.rules_ = {{"CORPSE_TURNS", 60}};
         setup.draw(canvas);
         save(canvas, folder / "setup-advanced.bmp");
@@ -81,6 +86,13 @@ struct Screens {
         const double ms = (SDL_GetPerformanceCounter() - start) * 1000.0 / SDL_GetPerformanceFrequency() / 20;
         std::cout << "drawing a frame with " << app.simulation_->living().size() << " alive: " << ms << " ms\n";
         save(canvas, folder / "app-inspector.bmp");
+        app.open_death_report();
+        app.draw(canvas);
+        save(canvas, folder / "app-deaths.bmp");
+        app.inspect_brains();
+        app.draw(canvas);
+        save(canvas, folder / "app-brains.bmp");
+        app.report_.reset();
         app.exemplar_menu_ = 6;  // the right column's second card, its menu of statistics open
         app.draw(canvas);
         save(canvas, folder / "app-exemplar-menu.bmp");
@@ -175,7 +187,7 @@ struct Screens {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "usage: bitzkey_screens OUTPUT_FOLDER\n";
+        std::cerr << "usage: bitzkey_screens OUTPUT_FOLDER [LANGUAGE]\n";
         return 2;
     }
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
@@ -183,6 +195,7 @@ int main(int argc, char** argv) {
         std::cerr << SDL_GetError() << "\n";
         return 1;
     }
+    if (argc > 2) bitzkey::ui::set_language(argv[2], false);  // the user's own choice left alone
     {
         bitzkey::ui::Window window(false);
         bitzkey::ui::Screens::run(window, argv[1]);

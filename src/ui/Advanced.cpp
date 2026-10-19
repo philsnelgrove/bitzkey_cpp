@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "core/PyFormat.hpp"
+#include "ui/Language.hpp"
 
 namespace bitzkey::ui {
 
@@ -20,10 +21,12 @@ std::string upper(std::string_view text) {
 
 // Shorten text, with an ellipsis, to fit the width.
 std::string fit(TTF_Font* font, std::string text, int width) {
-    if (Canvas::text_width(font, text) <= width) return text;
-    while (!text.empty() && Canvas::text_width(font, text + "...") > width) text.pop_back();
+    text = tr(text);  // shortened in the language it is shown in
+    const AsShown measuring;
+    if (Canvas::text_width(font, text) <= width) return as_shown(text);
+    while (!text.empty() && Canvas::text_width(font, text + "...") > width) pop_character(text);
     while (!text.empty() && text.back() == ' ') text.pop_back();
-    return text + "...";
+    return as_shown(text + "...");
 }
 
 int rule_count() { return static_cast<int>(rules::all().size()); }
@@ -199,21 +202,28 @@ std::vector<std::string> law_lines(int width) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     std::vector<std::string> lines;
     std::string line, word;
-    const std::string text = NATURAL_LAW;
+    const std::string text = tr(NATURAL_LAW);
+    const AsShown measuring;
+    const bool spaced = language() != "zh" && language() != "ja";  // Chinese and Japanese break between any characters
     std::size_t at = 0;
     while (at <= text.size()) {
-        const std::size_t space = std::min(text.find(' ', at), text.size());
+        std::size_t space = std::min(text.find(' ', at), text.size());
+        if (!spaced && at < text.size()) {
+            space = at + 1;
+            while (space < text.size() && (static_cast<unsigned char>(text[space]) & 0xC0) == 0x80) ++space;
+        }
         word = text.substr(at, space - at);
-        const std::string trial = line.empty() ? word : line + " " + word;
+        const std::string trial = line.empty() ? word : line + (spaced ? " " : "") + word;
         if (!line.empty() && Canvas::text_width(font, trial) > width) {
             lines.push_back(line);
             line = word;
         } else {
             line = trial;
         }
-        at = space + 1;
+        at = spaced || space >= text.size() ? space + 1 : space;
     }
     lines.push_back(line);
+    for (const std::string& each : lines) as_shown(each);
     return lines;
 }
 }  // namespace
@@ -310,15 +320,12 @@ void AdvancedScreen::draw(Canvas& canvas) {
     for (std::size_t index = 0; index < lines.size(); ++index) {
         canvas.text(UI.font(Face::Sans, 15), lines[index], {229, 239, 220}, card.x + UI(28), card.y + UI(66) + static_cast<int>(index) * UI(LAW_LINE));
     }
-    canvas.text(UI.font(Face::Sans, 15),
-                std::string(form_.running ? "This world plays by these from its next turn. " : "The rules the world plays by. ") +
-                    std::to_string(form_.changed().size()) +
-                    " changed from the defaults; changed values show in amber.",
-                {157, 177, 159}, card.x + UI(28), card.y + UI(66) + static_cast<int>(lines.size()) * UI(LAW_LINE) + UI(6));
+    const std::string changed = std::string(form_.running ? "This world plays by these from its next turn. " : "The rules the world plays by. ") +
+                                std::to_string(form_.changed().size()) + " changed from the defaults; changed values show in amber.";
+    canvas.text(UI.fitting(UI.font(Face::Sans, 15), changed, card.w - UI(56)), changed, {157, 177, 159}, card.x + UI(28), card.y + UI(66) + static_cast<int>(lines.size()) * UI(LAW_LINE) + UI(6));
     for (const auto& [button, label] : {std::pair{places.reset, "RESET"}, std::pair{places.reset_all, "RESET ALL"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(button_font, label, {220, 229, 211},
-                       [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
+        canvas.label(button_font, label, {220, 229, 211}, button);
     }
 
     const Rect& view = places.view;
@@ -336,10 +343,9 @@ void AdvancedScreen::draw(Canvas& canvas) {
     draw_scroll_bar(canvas, view);
 
     canvas.rect(places.apply, {131, 205, 143}, 0, UI(6));
-    canvas.text_at(bold, "APPLY", {19, 26, 27}, [&](Rect& box) { box.center_at(places.apply.centerx(), places.apply.centery()); });
+    canvas.label(bold, "APPLY", {19, 26, 27}, places.apply);
     canvas.rect(places.cancel, {44, 57, 52}, 0, UI(6));
-    canvas.text_at(bold, "CANCEL", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(places.cancel.centerx(), places.cancel.centery()); });
+    canvas.label(bold, "CANCEL", {220, 229, 211}, places.cancel);
     const bool noting = SDL_GetTicks() < note_until_;
     const std::string_view warning = rules::warning(form_.focused().key);  // the chosen rule's, in full
     canvas.text_at(small,
@@ -363,8 +369,7 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
                 !lock.empty() ? Color{96, 110, 100} : warned ? Color{238, 183, 110} : Color{130, 152, 136}, row.x + UI(14), row.y + UI(21));
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, lock.empty() ? Color{44, 57, 52} : Color{34, 44, 42}, 0, UI(4));
-        canvas.text_at(UI.font(Face::Sans, 22, true), sign, lock.empty() ? Color{220, 229, 211} : Color{96, 110, 100},
-                       [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
+        canvas.label(UI.font(Face::Sans, 22, true), sign, lock.empty() ? Color{220, 229, 211} : Color{96, 110, 100}, button);
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));

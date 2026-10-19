@@ -19,6 +19,7 @@
 #include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Inspector.hpp"
+#include "ui/Language.hpp"
 #include "ui/Look.hpp"
 #include "ui/Platform.hpp"
 
@@ -279,7 +280,9 @@ App::Result App::run() {
                 else if (action != ColourGraph::Action::None) export_graph(action == ColourGraph::Action::Save);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
                 Canvas canvas = window_.frame();
-                if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
+                if (language_menu_.click(event.button.x, event.button.y)) {
+                    // the language menu opened, closed or chose
+                } else if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     marquee_from_ = std::tuple{event.button.x, event.button.y, (SDL_GetModState() & KMOD_CTRL) != 0};
                 } else {
                     click(event.button.x, event.button.y);
@@ -1123,6 +1126,7 @@ void App::draw(Canvas& canvas) {
     draw_footer(canvas);
     draw_square(canvas);
     draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
+    language_menu_.draw_list(canvas);
     if (show_census_) {
         const std::optional<std::string> note =
             SDL_GetTicks() < message_until_ ? std::optional<std::string>(message_) : std::nullopt;
@@ -1136,7 +1140,7 @@ void App::open_death_report() {
     report_.emplace("Death report",
                     format("Every death in this world up to turn %d: %d in all, by cause and species, who killed whom and what "
                            "the killers were doing, and the deadliest killers.", simulation_->turn(), simulation_->deaths()),
-                    death_report_lines(simulation_->deaths_so_far()));
+                    death_report_table(simulation_->deaths_so_far()));
 }
 
 void App::inspect_brains() {
@@ -1150,7 +1154,7 @@ void App::inspect_brains() {
     report_.emplace(format("Brains of #%03d, %s", agent->identifier, std::string(species_name(agent->species)).c_str()),
                     "Its chance of choosing each action open to it, in each standard situation, with its temperament now. "
                     "* marks the likeliest; \u00b7 an action not open.",
-                    brain_matrix_lines(*agent));
+                    brain_matrix_table(*agent));
 }
 
 void App::draw_header(Canvas& canvas) {
@@ -1160,8 +1164,9 @@ void App::draw_header(Canvas& canvas) {
     const std::string status = playing_ ? "RUNNING" : simulation_->ended() ? "ENDED" : "PAUSED";
     const Color colour = playing_ ? Color{131, 205, 143} : Color{238, 183, 110};
     TTF_Font* font = UI.font(Face::Sans, 15);
+    const int menu_left = language_menu_.draw_button(canvas, canvas.width() - UI(24), UI(31));
     Rect label = Canvas::text_box(font, status);
-    label.x = canvas.width() - label.w - UI(24);
+    label.x = menu_left - label.w - UI(20);
     canvas.text(font, status, colour, label.x, UI(20));
     const std::string speed = std::string("SPEED ") + SPEED_LABELS[static_cast<std::size_t>(speed_)];
     Rect speed_box{};
@@ -1284,7 +1289,7 @@ void App::draw_sidebar(Canvas& canvas) {
         draw_insights(canvas, x, width);
         return;
     }
-    canvas.text(font, "SELECTED BITZKEY", {220, 229, 211}, x, UI(301));
+    canvas.text(UI.fitting(font, "SELECTED BITZKEY", width - UI(140)), "SELECTED BITZKEY", {220, 229, 211}, x, UI(301));  // beside INSPECT BRAINS
     const Bitzkey* agent = selected();
     if (!agent) {
         canvas.text(small, "Click a dot to inspect its genome.", {146, 165, 149}, x, UI(332));
@@ -1300,8 +1305,7 @@ void App::draw_sidebar(Canvas& canvas) {
     if (agent->brain) {  // a living animal: its brain can be inspected, beside the heading
         brains_button_ = Rect{x + width - UI(130), UI(299), UI(130), UI(26)};
         canvas.rect(*brains_button_, {44, 57, 52}, 0, UI(5));
-        canvas.text_at(UI.font(Face::Sans, 13, true), "INSPECT BRAINS", {220, 229, 211},
-                       [&](Rect& box) { box.center_at(brains_button_->centerx(), brains_button_->centery()); });
+        canvas.label(UI.font(Face::Sans, 13, true), "INSPECT BRAINS", {220, 229, 211}, *brains_button_);
     }
     canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(719));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
@@ -1409,8 +1413,7 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
         if (button.bottom() > view.y && button.y < view.bottom()) {
             deaths_button_ = button.clip(view);
             canvas.rect(button, {44, 57, 52}, 0, UI(5));
-            canvas.text_at(UI.font(Face::Sans, 13, true), "DEATH REPORT", {220, 229, 211},
-                           [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+            canvas.label(UI.font(Face::Sans, 13, true), "DEATH REPORT", {220, 229, 211}, button);
         }
     }
     double y = heading("BEHAVIOUR", "% of chances taken, recent turns", INSIGHTS_TOP + 11);
@@ -1532,11 +1535,12 @@ std::string App::fit(const std::string& text, int width) const {
     // Shorten text in the small font, with an ellipsis, to fit the width: footer notes, and group
     // names in the insights panel.
     TTF_Font* small = UI.font(Face::Sans, 12);
-    if (Canvas::text_width(small, text) <= width) return text;
-    std::string shortened = text;
-    while (!shortened.empty() && Canvas::text_width(small, shortened + "...") > width) shortened.pop_back();
+    std::string shortened = tr(text);  // shortened in the language it is shown in
+    const AsShown measuring;
+    if (Canvas::text_width(small, shortened) <= width) return as_shown(shortened);
+    while (!shortened.empty() && Canvas::text_width(small, shortened + "...") > width) pop_character(shortened);
     while (!shortened.empty() && shortened.back() == ' ') shortened.pop_back();
-    return shortened + "...";
+    return as_shown(shortened + "...");
 }
 
 void App::draw_footer(Canvas& canvas) {
@@ -1551,24 +1555,20 @@ void App::draw_footer(Canvas& canvas) {
     const bool any = !export_list_.empty();
     export_button_ = Rect{0, 0, Canvas::text_width(button_font, label) + UI(32), UI(34)}.midright_at(canvas.width() - UI(20), height - UI(26));
     canvas.rect(export_button_, any ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(6));
-    canvas.text_at(button_font, label, any ? Color{19, 26, 27} : Color{220, 229, 211},
-                   [&](Rect& box) { box.center_at(export_button_.centerx(), export_button_.centery()); });
+    canvas.label(button_font, label, any ? Color{19, 26, 27} : Color{220, 229, 211}, export_button_);
     open_button_ = Rect{0, 0, Canvas::text_width(button_font, "OPEN CATALOG") + UI(32), UI(34)}.midright_at(export_button_.x - UI(10),
                                                                                                          height - UI(26));
     canvas.rect(open_button_, {44, 57, 52}, 0, UI(6));
-    canvas.text_at(button_font, "OPEN CATALOG", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(open_button_.centerx(), open_button_.centery()); });
+    canvas.label(button_font, "OPEN CATALOG", {220, 229, 211}, open_button_);
     const bool changed = !rules::changed(rules::current()).empty();  // amber while this world plays by changed rules
     advanced_button_ = Rect{0, 0, Canvas::text_width(button_font, "ADVANCED") + UI(32), UI(34)}.midright_at(open_button_.x - UI(10),
                                                                                                         height - UI(26));
     canvas.rect(advanced_button_, changed ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(6));
-    canvas.text_at(button_font, "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211},
-                   [&](Rect& box) { box.center_at(advanced_button_.centerx(), advanced_button_.centery()); });
+    canvas.label(button_font, "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211}, advanced_button_);
     save_button_ = Rect{0, 0, Canvas::text_width(button_font, "SAVE WORLD") + UI(32), UI(34)}.midright_at(advanced_button_.x - UI(10),
                                                                                                        height - UI(26));
     canvas.rect(save_button_, {44, 57, 52}, 0, UI(6));
-    canvas.text_at(button_font, "SAVE WORLD", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(save_button_.centerx(), save_button_.centery()); });
+    canvas.label(button_font, "SAVE WORLD", {220, 229, 211}, save_button_);
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
     const int room = save_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
@@ -1581,8 +1581,10 @@ void App::draw_footer(Canvas& canvas) {
                  left, room, {187, 199, 181});
 }
 
-std::vector<std::string> App::wrapped(const std::string& text, int width) const {
+std::vector<std::string> App::wrapped(const std::string& english, int width) const {
     TTF_Font* small = UI.font(Face::Sans, 12);
+    const std::string text = tr(english);  // wrapped in the language it is shown in
+    const AsShown measuring;
     if (Canvas::text_width(small, text) <= width) return {text};
     const std::string gap = text.find("   ") != std::string::npos ? "   " : " ";
     std::vector<std::string> parts;

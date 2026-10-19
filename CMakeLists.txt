@@ -92,17 +92,23 @@ add_executable(bitzkey WIN32
     src/ui/ColourGraph.cpp
     src/ui/App.cpp
     src/ui/Platform.cpp
+    src/ui/Language.cpp
+    src/ui/LanguageMenu.cpp
 )
 target_link_libraries(bitzkey PRIVATE bitzkey_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 add_custom_command(TARGET bitzkey POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:bitzkey> $<TARGET_FILE_DIR:bitzkey>
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/i18n $<TARGET_FILE_DIR:bitzkey>/i18n
     COMMAND_EXPAND_LISTS)
 
 # Screenshots of every screen, drawn off-screen, for checking the interface.
 add_executable(bitzkey_screens tools/screens.cpp
     src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Report.cpp src/ui/Setup.cpp
-    src/ui/Advanced.cpp src/ui/Inspector.cpp src/ui/Designer.cpp src/ui/CatalogScreen.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp)
+    src/ui/Advanced.cpp src/ui/Inspector.cpp src/ui/Designer.cpp src/ui/CatalogScreen.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp
+    src/ui/Language.cpp src/ui/LanguageMenu.cpp)
 target_include_directories(bitzkey_screens PRIVATE src)
+add_custom_command(TARGET bitzkey_screens POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/i18n $<TARGET_FILE_DIR:bitzkey_screens>/i18n)
 target_link_libraries(bitzkey_screens PRIVATE bitzkey_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 
 # A command-line runner: run worlds headless, benchmark, trace, export.

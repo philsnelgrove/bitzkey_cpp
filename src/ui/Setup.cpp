@@ -13,6 +13,7 @@
 #include "ui/Advanced.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
+#include "ui/Language.hpp"
 #include "ui/Platform.hpp"
 
 namespace bitzkey::ui {
@@ -37,14 +38,6 @@ std::string upper(std::string_view text) {
     return result;
 }
 
-// Drop the last character of UTF-8 text, however many bytes it takes.
-void pop_character(std::string& text) {
-    while (!text.empty()) {
-        const unsigned char last = static_cast<unsigned char>(text.back());
-        text.pop_back();
-        if ((last & 0xC0) != 0x80) break;
-    }
-}
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------
@@ -237,6 +230,7 @@ std::optional<Simulation::Settings> SetupScreen::run() {
             } else if (event.type == SDL_TEXTINPUT) {
                 form_.type_text(event.text.text);
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+                if (!dialog_ && language_menu_.click(event.button.x, event.button.y)) continue;
                 const Click action = click(event.button.x, event.button.y);
                 if (action == Click::WindowClosed) return std::nullopt;
                 if (action == Click::Quit) ask_to_quit();
@@ -439,8 +433,7 @@ void SetupScreen::draw(Canvas& canvas) {
                 card.y + UI(66));
     const bool changed = !rules_.empty();
     canvas.rect(places.advanced, changed ? Color{238, 183, 110} : Color{44, 57, 52}, 0, UI(4));
-    canvas.text_at(UI.font(Face::Sans, 13, true), "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211},
-                   [&](Rect& box) { box.center_at(places.advanced.centerx(), places.advanced.centery()); });
+    canvas.label(UI.font(Face::Sans, 13, true), "ADVANCED", changed ? Color{19, 26, 27} : Color{220, 229, 211}, places.advanced);
     if (changed) {
         canvas.text_at(small, std::to_string(rules_.size()) + " rule" + (rules_.size() != 1 ? "s" : "") + " changed",
                        {238, 183, 110}, [&](Rect& box) { box.midtop_at(places.advanced.centerx(), places.advanced.bottom() + UI(4)); });
@@ -451,12 +444,11 @@ void SetupScreen::draw(Canvas& canvas) {
     draw_import(canvas, places);
 
     canvas.rect(places.start, form_.can_start() ? Color{131, 205, 143} : Color{70, 88, 76}, 0, UI(6));
-    canvas.text_at(bold, "START", {19, 26, 27}, [&](Rect& box) { box.center_at(places.start.centerx(), places.start.centery()); });
+    canvas.label(bold, "START", {19, 26, 27}, places.start);
     canvas.rect(places.quit, {44, 57, 52}, 0, UI(6));
-    canvas.text_at(bold, "QUIT", {220, 229, 211}, [&](Rect& box) { box.center_at(places.quit.centerx(), places.quit.centery()); });
+    canvas.label(bold, "QUIT", {220, 229, 211}, places.quit);
     canvas.rect(places.world, {44, 57, 52}, 0, UI(6));
-    canvas.text_at(UI.font(Face::Sans, 13, true), "LOAD WORLD", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(places.world.centerx(), places.world.centery()); });
+    canvas.label(UI.font(Face::Sans, 13, true), "LOAD WORLD", {220, 229, 211}, places.world);
     const bool noting = SDL_GetTicks() < note_until_;
     canvas.text_at(small,
                    noting ? note_
@@ -464,19 +456,22 @@ void SetupScreen::draw(Canvas& canvas) {
                             "ESC  quit",
                    noting ? Color{238, 183, 110} : Color{130, 152, 136},
                    [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(14)); });
+    language_menu_.draw_button(canvas, canvas.width() - UI(24), UI(31));
+    language_menu_.draw_list(canvas);
     if (dialog_) dialog_->draw(canvas);
 }
 
 void SetupScreen::draw_setting(Canvas& canvas, const Setting& setting, const Rect& row, bool focused) {
     canvas.rect(row, focused ? Color{36, 49, 47} : Color{31, 42, 41}, 0, UI(5));
     if (focused) canvas.rect(row, {131, 205, 143}, 1, UI(5));
-    canvas.text(UI.font(Face::Sans, 15), upper(setting.label), {232, 236, 219}, row.x + UI(16), row.y + UI(3));
-    canvas.text(UI.font(Face::Sans, 12), setting.hint, {130, 152, 136}, row.x + UI(16), row.y + UI(22));
     const auto [minus, box, plus] = buttons(row);
+    const int room = minus.x - row.x - UI(24);  // the label and hint stay clear of the buttons
+    canvas.text(UI.fitting(UI.font(Face::Sans, 15), upper(setting.label), room), upper(setting.label), {232, 236, 219}, row.x + UI(16),
+                row.y + UI(3));
+    canvas.text(UI.fitting(UI.font(Face::Sans, 12), setting.hint, room), setting.hint, {130, 152, 136}, row.x + UI(16), row.y + UI(22));
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(UI.font(Face::Sans, 22, true), sign, {220, 229, 211},
-                       [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
+        canvas.label(UI.font(Face::Sans, 22, true), sign, {220, 229, 211}, button);
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
@@ -491,22 +486,25 @@ void SetupScreen::draw_import(Canvas& canvas, const Layout& places) {
     const Rect& box = places.box;
     const bool focused = form_.on_import();
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
-    canvas.text(UI.font(Face::Sans, 15), "IMPORT BITZKEYS", {232, 236, 219}, box.x, places.paste.y + UI(5));
+    canvas.text(UI.fitting(UI.font(Face::Sans, 15), "IMPORT BITZKEYS", places.catalog.x - box.x - UI(8)), "IMPORT BITZKEYS",
+                {232, 236, 219}, box.x, places.paste.y + UI(5));
     for (const auto& [button, label] : {std::pair{places.catalog, "FROM CATALOG"}, std::pair{places.design, "DESIGN"},
                                         std::pair{places.paste, "PASTE"},
                                         std::pair{places.load, "LOAD FILE"}, std::pair{places.clear, "CLEAR"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(UI.font(Face::Sans, 13, true), label, {220, 229, 211},
-                       [&](Rect& text_box) { text_box.center_at(button.centerx(), button.centery()); });
+        canvas.label(UI.font(Face::Sans, 13, true), label, {220, 229, 211}, button);
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
 
     std::vector<std::string> lines;
     Color color{187, 199, 181};
-    if (form_.import_text.empty() && !focused) {
-        lines = {"Paste exported genomes here (CTRL+V), drop a file onto the window,",
-                 "load one, pick one FROM CATALOG, or DESIGN your own. Imported", "Bitzkeys join the ones spawned above."};
+    const bool placeholder = form_.import_text.empty() && !focused;  // wrapped to the box already
+    if (placeholder) {
+        lines = wrapped_lines(mono_small,
+                              "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, "
+                              "or DESIGN your own. Imported Bitzkeys join the ones spawned above.",
+                              box.w - UI(20));
         color = {116, 139, 124};
     } else {
         std::size_t start = 0;
@@ -522,8 +520,8 @@ void SetupScreen::draw_import(Canvas& canvas, const Layout& places) {
     const int columns = (box.w - UI(20)) / std::max(1, Canvas::text_width(mono_small, "M"));
     for (std::size_t index = 0; index < lines.size(); ++index) {
         std::string shown = lines[index];
-        if (static_cast<int>(shown.size()) > columns) shown = shown.substr(0, static_cast<std::size_t>(std::max(0, columns - 1))) + "~";
-        canvas.text(mono_small, shown, color, box.x + UI(10), box.y + UI(7 + 16 * static_cast<int>(index)));
+        if (!placeholder && static_cast<int>(shown.size()) > columns) shown = shown.substr(0, static_cast<std::size_t>(std::max(0, columns - 1))) + "~";
+        canvas.text(mono_small, as_shown(shown), color, box.x + UI(10), box.y + UI(7 + 16 * static_cast<int>(index)));  // as typed
     }
 
     std::string error;

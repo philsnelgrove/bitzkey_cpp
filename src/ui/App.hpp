@@ -13,6 +13,7 @@
 #include "ui/Canvas.hpp"
 #include "ui/ColourGraph.hpp"
 #include "ui/Dialog.hpp"
+#include "ui/LanguageMenu.hpp"
 #include "ui/Report.hpp"
 #include "ui/Window.hpp"
 
@@ -156,6 +157,7 @@ private:
     ColourGraph graph_;
     std::vector<ExportEntry> export_list_;
     std::optional<Dialog> dialog_;
+    LanguageMenu language_menu_;
     std::optional<Report> report_;        // the death report or a brain inspected, while open
     std::optional<Rect> deaths_button_;   // on the insights panel
     std::optional<Rect> brains_button_;   // beside the selected Bitzkey's heading

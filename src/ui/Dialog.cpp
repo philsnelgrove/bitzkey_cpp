@@ -68,7 +68,7 @@ void Dialog::draw(Canvas& canvas) const {
         for (const auto& [name, shown] : buttons) {
             if (name == choice) label = shown;
         }
-        canvas.text_at(UI.font(Face::Sans, 13, true), label, ink, [&](Rect& box) { box.center_at(rect.centerx(), rect.centery()); });
+        canvas.label(UI.font(Face::Sans, 13, true), label, ink, rect);
     }
     if (busy && !caption.empty()) {
         canvas.text_at(UI.font(Face::Sans, 16), caption, {144, 170, 151},

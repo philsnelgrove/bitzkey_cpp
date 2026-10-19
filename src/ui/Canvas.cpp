@@ -6,6 +6,8 @@
 
 #include <SDL_ttf.h>
 
+#include "ui/Language.hpp"
+
 namespace bitzkey::ui {
 
 Rect Rect::clip(const Rect& other) const {
@@ -226,18 +228,54 @@ void Canvas::blit(SDL_Surface* source, int x, int y, std::uint8_t alpha) {
     SDL_SetSurfaceAlphaMod(source, 255);
 }
 
+void Canvas::label(TTF_Font* font, std::string_view words, Color color, const Rect& button) {
+    TTF_Font* fitting = UI.fitting(font, words, button.w - UI(10));
+    text_at(fitting, words, color, [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+}
+
 Rect Canvas::text_box(TTF_Font* font, std::string_view text) {
     int width = 0, height = TTF_FontHeight(font);
-    if (!text.empty()) TTF_SizeUTF8(font, std::string(text).c_str(), &width, &height);
+    if (!text.empty()) TTF_SizeUTF8(font, tr(text).c_str(), &width, &height);
     return {0, 0, width, height};
 }
 
 int Canvas::text(TTF_Font* font, std::string_view words, Color color, int x, int y) {
     if (words.empty()) return 0;
-    Surface rendered(TTF_RenderUTF8_Blended(font, std::string(words).c_str(), SDL_Color{color.r, color.g, color.b, 255}));
+    std::string shown = tr(words);  // in the chosen language
+    if (has_right_to_left(shown)) shown = visual_order(shown);
+    Surface rendered(TTF_RenderUTF8_Blended(font, shown.c_str(), SDL_Color{color.r, color.g, color.b, 255}));
     if (!rendered) return 0;
     blit(rendered.get(), x, y);
     return rendered->w;
+}
+
+std::vector<std::string> wrapped_lines(TTF_Font* font, std::string_view english, int width) {
+    const std::string text = tr(english);
+    const bool spaced = language() != "zh" && language() != "ja";
+    const AsShown measuring;
+    std::vector<std::string> lines;
+    std::string line;
+    for (std::size_t at = 0; at < text.size();) {
+        std::size_t end = at;
+        if (spaced) {
+            end = std::min(text.find(' ', at), text.size());
+        } else {
+            do ++end;
+            while (end < text.size() && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80);
+        }
+        const std::string word = text.substr(at, end - at);
+        const std::string trial = line.empty() ? word : line + (spaced ? " " : "") + word;
+        if (!line.empty() && Canvas::text_width(font, trial) > width) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = trial;
+        }
+        at = spaced ? end + 1 : end;
+    }
+    if (!line.empty()) lines.push_back(line);
+    for (const std::string& each : lines) as_shown(each);
+    return lines;
 }
 
 }  // namespace bitzkey::ui

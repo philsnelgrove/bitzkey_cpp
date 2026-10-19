@@ -14,6 +14,7 @@
 #include "core/Simulation.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/Dialog.hpp"
+#include "ui/LanguageMenu.hpp"
 #include "ui/Window.hpp"
 
 namespace bitzkey::ui {
@@ -123,6 +124,7 @@ private:
     std::string note_;
     Uint32 note_until_ = 0;
     std::optional<Dialog> dialog_;   // the quit confirmation, while it is open
+    LanguageMenu language_menu_;
     std::optional<Dna> last_design_;  // the designer reopens on the last design applied
     rules::Values rules_;             // the advanced rules changed from their defaults
 };

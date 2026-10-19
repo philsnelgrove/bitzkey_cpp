@@ -11,6 +11,7 @@
 #include "core/PyFormat.hpp"
 #include "ui/Icons.hpp"
 #include "ui/Inspector.hpp"
+#include "ui/Language.hpp"
 #include "ui/Look.hpp"
 
 namespace bitzkey::ui {
@@ -31,11 +32,12 @@ constexpr int FIRST_CLIMATE_SORT = SORT_COUNT - static_cast<int>(CLIMATE_SORTS.s
 
 // The text, cut short with an ellipsis if it is wider than `width`.
 std::string fit_text(const std::string& text, TTF_Font* font, int width) {
-    if (Canvas::text_width(font, text) <= width) return text;
-    std::string shortened = text;
-    while (!shortened.empty() && Canvas::text_width(font, shortened + "...") > width) shortened.pop_back();
+    std::string shortened = tr(text);  // shortened in the language it is shown in
+    const AsShown measuring;
+    if (Canvas::text_width(font, shortened) <= width) return as_shown(shortened);
+    while (!shortened.empty() && Canvas::text_width(font, shortened + "...") > width) pop_character(shortened);
     while (!shortened.empty() && shortened.back() == ' ') shortened.pop_back();
-    return shortened + "...";
+    return as_shown(shortened + "...");
 }
 
 // The genome's word for a part: 0 the ring, 1 the dot, 2 the social background.
@@ -496,8 +498,9 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.fill_rect({0, 0, width_, height_}, {8, 12, 12, 175});
     canvas.rect(panel, BACKGROUND, 0, UI(6));
     canvas.rect(panel, {80, 99, 85}, 1, UI(6));
-    canvas.text(UI.font(Face::Sans, 22, true), std::string("COLOUR GRAPH  /  ") + TITLES[static_cast<std::size_t>(part_)],
-                {229, 239, 220}, panel.x + UI(24), panel.y + UI(18));
+    const std::string title = tr("COLOUR GRAPH  /  " + std::string(TITLES[static_cast<std::size_t>(part_)]));  // clear of the buttons
+    canvas.text(UI.fitting(UI.font(Face::Sans, 22, true), title, places.sort.x - panel.x - UI(36)), title, {229, 239, 220},
+                panel.x + UI(24), panel.y + UI(18));
     canvas.text(small,
                 std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social    C  copy    S  save    K  catalog    "
                             "G or ESC  ") + (ended_ ? "new world" : "close"),
@@ -505,7 +508,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     for (const auto& [button, name] : {std::pair{places.clear, "CLEAR"}, std::pair{places.copy, "COPY"},
                                        std::pair{places.save, "SAVE"}}) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
-        canvas.text_at(font, name, {220, 229, 211}, [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
+        canvas.label(font, name, {220, 229, 211}, button);
     }
     draw_sort_button(canvas, places.sort);
     if (note) canvas.text_at(small, *note, {238, 183, 110}, [&](Rect& box) { box.topright_at(panel.right() - UI(24), panel.y + UI(58)); });
@@ -559,17 +562,15 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         canvas.text_at(font, "RETURN TO MAP", {19, 26, 27}, [&](Rect& box) { box.center_at(places.map->centerx(), places.map->centery()); });
     }
     canvas.rect(places.catalog, {44, 57, 52}, 0, UI(4));
-    canvas.text_at(font, "ADD TO CATALOG", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(places.catalog.centerx(), places.catalog.centery()); });
+    canvas.label(font, "ADD TO CATALOG", {220, 229, 211}, places.catalog);
     canvas.rect(places.renew, {44, 57, 52}, 0, UI(4));
-    canvas.text_at(font, "START A NEW WORLD WITH THE SELECTED", {220, 229, 211},
-                   [&](Rect& box) { box.center_at(places.renew.centerx(), places.renew.centery()); });
+    canvas.label(font, "START A NEW WORLD WITH THE SELECTED", {220, 229, 211}, places.renew);
     canvas.rect(places.open, {44, 57, 52}, 0, UI(4));
-    canvas.text_at(font, "OPEN CATALOG", {220, 229, 211}, [&](Rect& box) { box.center_at(places.open.centerx(), places.open.centery()); });
-    canvas.text(small,
-                "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
-                "Zoom: wheel    Pan: right-drag    Z: all",
-                {144, 170, 151}, panel.x + UI(24), panel.bottom() - UI(28));
+    canvas.label(font, "OPEN CATALOG", {220, 229, 211}, places.open);
+    const std::string hint = "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
+                             "Zoom: wheel    Pan: right-drag    Z: all";
+    canvas.text(UI.fitting(small, hint, places.open.x - panel.x - UI(36)), hint, {144, 170, 151}, panel.x + UI(24),
+                panel.bottom() - UI(28));
     if (menu_open_) {
         draw_menu(canvas);
     } else if (hovered && alive_.contains(*hovered) && !press_) {
