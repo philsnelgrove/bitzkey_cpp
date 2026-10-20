@@ -33,7 +33,7 @@ constexpr std::array<std::string_view, 4> SHORT_TEMPERATURES = {"hot", "medium",
 
 // What its tolerance flags spare it, in a word or two.
 std::string hardiness(bool heat, bool cold) {
-    return heat && cold ? "HEAT & COLD-HARDY" : heat ? "HEAT-HARDY" : cold ? "COLD-HARDY" : "";
+    return heat ? "HEAT-HARDY" : cold ? "COLD-HARDY" : "";
 }
 
 // Its home temperature, the temperature where it is (coloured by how far that is from home, as it

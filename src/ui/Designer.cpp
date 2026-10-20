@@ -14,7 +14,7 @@ namespace bitzkey::ui {
 
 namespace {
 constexpr int PREVIEW_ZOOM = 16;  // the preview is the in-world look, this many times larger
-constexpr std::array<std::string_view, 4> HARDINESS = {"none", "heat", "cold", "both"};
+constexpr std::array<std::string_view, 4> HARDINESS = {"none", "heat", "cold", "none"};  // both flags cancel out
 constexpr std::array<const char*, 3> LABELS = {"RING / BODY", "DOT / MIND", "SOCIAL"};
 
 // Where a field lies in its word: the social fields in the social background, the rest in the dot and ring.
@@ -26,6 +26,7 @@ int shift_of(Field field) {
 
 int largest(Field field) {
     if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT}) return NEURODIVERGENCE_MAX;
+    if (field == Field{FieldKind::Climate, 0}) return 2;  // none, heat or cold
     return field.kind == FieldKind::Climate ? 3 : TRAIT_MAX;
 }
 
@@ -314,7 +315,7 @@ void Designer::draw(Canvas& canvas) {
     if (sample.species == Species::Plant) {
         facts.push_back("At home where it is " + temperature + "; elsewhere it withers.");
     } else {
-        constexpr std::array<const char*, 4> hardy = {"", "  Tolerates heat.", "  Tolerates cold.", "  Tolerates heat and cold."};
+        constexpr std::array<const char*, 4> hardy = {"", "  Tolerates heat.", "  Tolerates cold.", ""};
         facts.push_back("At home where it is " + temperature + "." + hardy[static_cast<std::size_t>(hardiness)]);
     }
     for (std::size_t index = 0; index < facts.size(); ++index) {
