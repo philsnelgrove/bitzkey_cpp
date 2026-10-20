@@ -815,7 +815,7 @@ void App::export_graph(bool to_file) {
             if (found != agents.end()) {
                 records.push_back(bitzkey_record(*found->second));
                 dead += !found->second->alive();
-            } else {
+            } else if (simulation_->remembered(identifier)) {
                 records.push_back(genome_only(simulation_->lineage(identifier)));
                 ++dead;
             }
