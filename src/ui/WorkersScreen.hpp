@@ -53,14 +53,14 @@ private:
     Simulation* simulation_;  // none from the configuration panel
     net::Json list_;
     std::vector<Row> rows_;
-    TextField host_, port_, message_, checkpoint_, worker_port_;
+    TextField host_, port_, message_, checkpoint_, host_share_, worker_port_;
     TextField* focus_ = nullptr;
     std::optional<ShareForm> share_;  // while becoming a worker
     std::optional<Dialog> dialog_;
     std::string dialog_kind_;
     std::optional<std::pair<std::string, int>> removing_;
     LanguageMenu language_menu_;
-    Rect add_button_{}, set_button_{}, become_button_{}, close_button_{}, start_button_{}, cancel_button_{};
+    Rect add_button_{}, set_button_{}, share_button_{}, become_button_{}, close_button_{}, start_button_{}, cancel_button_{};
     std::string note_;
     Uint32 note_until_ = 0;
 };

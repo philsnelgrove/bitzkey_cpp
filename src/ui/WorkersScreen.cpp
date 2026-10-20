@@ -67,6 +67,9 @@ WorkersScreen::WorkersScreen(Window& window, net::Pool& pool, net::Worker& worke
     checkpoint_.digits = true;
     checkpoint_.max = 6;
     checkpoint_.text = std::to_string(pool_.checkpoint());
+    host_share_.digits = true;
+    host_share_.max = 3;
+    host_share_.text = std::to_string(pool_.host_share());
     worker_port_.digits = true;
     worker_port_.max = 5;
     worker_port_.text = std::to_string(net::DEFAULT_WORKER_PORT);
@@ -90,7 +93,7 @@ std::vector<TextField*> WorkersScreen::fields() {
         for (TextField* field : share_->fields()) all.push_back(field);
         return all;
     }
-    return {&host_, &port_, &message_, &checkpoint_};
+    return {&host_, &port_, &message_, &checkpoint_, &host_share_};
 }
 
 void WorkersScreen::tell(const std::string& note) {
@@ -130,6 +133,7 @@ WorkersScreen::Outcome WorkersScreen::run() {
                     focus_->backspace();
                 } else if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && !share_) {
                     if (focus_ == &checkpoint_) click(set_button_.centerx(), set_button_.centery());
+                    else if (focus_ == &host_share_) click(share_button_.centerx(), share_button_.centery());
                     else add();
                 } else if (key == SDLK_v && (event.key.keysym.mod & KMOD_CTRL) && focus_) {
                     if (char* pasted = SDL_GetClipboardText()) {
@@ -208,6 +212,14 @@ std::optional<WorkersScreen::Outcome> WorkersScreen::click(int x, int y) {
         try {
             pool_.set_checkpoint(checkpoint_.number().value_or(0));
             tell("Every brain is brought back every " + checkpoint_.text + " turns.");
+        } catch (const std::invalid_argument& error) {
+            tell(error.what());
+        }
+    } else if (share_button_.contains(x, y)) {
+        try {
+            pool_.set_host_share(host_share_.number().value_or(-1));
+            tell(pool_.host_share() ? "This computer thinks at " + host_share_.text + "% of its pace; the workers take the rest."
+                                    : "This computer thinks for none: its brains go to the workers.");
         } catch (const std::invalid_argument& error) {
             tell(error.what());
         }
@@ -314,7 +326,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
     canvas.text(cell, "This service", INK, columns[0], y);
     canvas.text(cell, "WORKING", GREEN, columns[1], y);
     canvas.text(cell, clip(local.value("description", std::string()), columns[3], columns[4]), INK, columns[3], y);
-    canvas.text(cell, speed_text(local.value("speed", 0.0)), INK, columns[4], y);
+    canvas.text(cell, speed_text(local.value("pace", 0.0) > 0 ? local.value("pace", 0.0) : local.value("speed", 0.0)), INK, columns[4], y);
     canvas.text(cell, std::to_string(local.value("brains", 0)), INK, columns[5], y);
     y += UI(30);
     rows_.clear();
@@ -339,7 +351,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
         }
         if (working) {
             canvas.text(cell, clip(shares(worker), columns[3], columns[4]), INK, columns[3], y);
-            canvas.text(cell, speed_text(worker.value("speed", 0.0)), INK, columns[4], y);
+            canvas.text(cell, speed_text(worker.value("pace", 0.0) > 0 ? worker.value("pace", 0.0) : worker.value("speed", 0.0)), INK, columns[4], y);
         }
         canvas.text(cell, std::to_string(worker.value("brains", 0)), INK, columns[5], y);
         const Rect remove{columns[6], y - UI(3), UI(84), UI(24)};
@@ -355,7 +367,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
         y += UI(30);
     }
 
-    y = std::max(y + UI(10), area.bottom() - UI(232));
+    y = std::max(y + UI(10), area.bottom() - UI(318));
     canvas.text(heading, "ADD A WORKER", GREEN, left, y);
     y += UI(24);
     host_.rect = {left, y, UI(200), UI(32)};
@@ -375,6 +387,17 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
     draw_button(canvas, set_button_, "SET");
     y += UI(38);
     canvas.text(small, "Should a worker fail, its brains go to the others as they were at the last checkpoint.", FAINT, left, y);
+    y += UI(30);
+    canvas.text(heading, "HOST SHARE", GREEN, left, y);
+    y += UI(24);
+    const int thinks = canvas.text(text, "This computer thinks at", SOFT, left, y + UI(5));
+    host_share_.rect = {left + thinks + UI(10), y, UI(70), UI(32)};
+    host_share_.draw(canvas, focus_ == &host_share_);
+    const int pace = canvas.text(text, "% of its pace", SOFT, host_share_.rect.right() + UI(10), y + UI(5));
+    share_button_ = {host_share_.rect.right() + UI(20) + pace, y, UI(70), UI(32)};
+    draw_button(canvas, share_button_, "SET");
+    y += UI(38);
+    canvas.text(small, "Brains are shared out by the pace each machine keeps on real turns. At 0, this computer only runs the world.", FAINT, left, y);
 
     close_button_ = Rect{0, 0, UI(120), UI(40)}.bottomright_at(area.right() - UI(28), area.bottom() - UI(24));
     become_button_ = Rect{0, 0, std::max(UI(190), Canvas::text_width(heading, "BECOME A WORKER...") + UI(32)), UI(40)}.bottomright_at(

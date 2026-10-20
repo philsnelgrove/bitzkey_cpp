@@ -192,7 +192,7 @@ A world's thinking can be shared with other computers. The computer running the 
 - its measured speed;
 - how many brains it holds.
 
-Add a worker by its IP address, with its port if it isn't 50000 (in the port box, or as `192.168.1.20:50001`), and optionally a message for its screen. A link in the message can be clicked there. The world's brains are shared out by each worker's speed, and this app keeps a share. Every 100 turns (set under Checkpoints) every brain is brought back. If a worker fails, its brains go to the others as they were then. A worker that is removed, or that stops, hands its brains back first, and saving the world gathers them all. As on the GPU, a world thinking through workers keeps no history to rewind.
+Add a worker by its IP address, with its port if it isn't 50000 (in the port box, or as `192.168.1.20:50001`), and optionally a message for its screen. A link in the message can be clicked there. The world's brains are shared out by the pace each machine keeps on real turns, its network included, and this app keeps a share: as much as its pace earns, scaled by the host share (100% by default, set under Host share; at 0 this computer only runs the world). Every brain is brought back once every 100 turns (set under Checkpoints), a share of them each turn. If a worker fails, its brains go to the others as they were then. A worker that is removed, or that stops, hands its brains back first, and saving the world gathers them all. As on the GPU, a world thinking through workers keeps no history to rewind.
 
 **Being a worker.** **BECOME A WORKER**, on the configuration panel (or **BECOME A WORKER...** on the WORKERS screen), asks for:
 
