@@ -90,7 +90,7 @@ TEST_CASE("a batch and its answer cross the wire unchanged, but for floats") {
     PyRandom random(3);
     Batch batch;
     batch.session = 0x1234567890ABCDEFULL;
-    batch.attaches.emplace_back(7, Brain::random(random, 3));
+    batch.attaches.emplace_back(7, Brain::random(random, 3, 43));
     Batch::Lesson lesson{7, 4, true, 0.5f, 0.01f, 0.8f, -1, {}};
     for (float& sense : lesson.senses) sense = static_cast<float>(random.random());
     batch.lessons.push_back(lesson);
@@ -102,7 +102,7 @@ TEST_CASE("a batch and its answer cross the wire unchanged, but for floats") {
     CHECK(back.session == batch.session);
     REQUIRE(back.attaches.size() == 1);
     CHECK(back.attaches[0].first == 7);
-    CHECK(back.attaches[0].second.depth() == 3);
+    CHECK((back.attaches[0].second.depth() == 3 && back.attaches[0].second.width() == 43));
     CHECK(back.attaches[0].second.layers[1].weights[5] == doctest::Approx(batch.attaches[0].second.layers[1].weights[5]).epsilon(1e-6));
     REQUIRE(back.lessons.size() == 2);
     CHECK(back.lessons[0].senses == lesson.senses);
