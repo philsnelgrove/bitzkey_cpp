@@ -1594,7 +1594,10 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent, bool surveyed) {
     const HerdView view = herd(agent);
     const double here = in_bounds(agent.x, agent.y) ? temperature(agent.y) : Medium;
     const double discomfort = agent.climate_steps(here);
-    const std::optional<Cell> comfort = discomfort > 0 ? comfort_row(agent, sight) : std::nullopt;
+    // The nearest row it would feel at home in, however far, and the same only if within sight.
+    const std::optional<Cell> home = discomfort > 0 ? comfort_row(agent, height_) : std::nullopt;
+    const std::optional<Cell> comfort = home && std::abs(home->y - agent.y) <= sight ? home : std::nullopt;
+    const double home_distance = discomfort <= 0 ? 0.0 : home ? std::min(1.0, std::abs(home->y - agent.y) / (0.5 * height_)) : 1.0;
     Bitzkey* const seen_hunter = s.hunter;  // what it sees itself, to alert its herd to
     bool alarmed = false;
     if (agent.alarm) {
@@ -1715,6 +1718,8 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent, bool surveyed) {
         std::max(0.0, closeness(agent, agent.danger_memory ? std::optional<Cell>(Cell{agent.danger_memory->x, agent.danger_memory->y})
                                                            : std::nullopt, sight));
     senses[SenseHomeFood] = home_food_sense(agent);
+    senses[SenseHomeDirection] = home ? (home->y > agent.y ? 1.0 : -1.0) : 0.0;
+    senses[SenseHomeDistance] = home_distance;
     for (int trait = 0; trait < TEMPERAMENT_COUNT; ++trait) senses[SenseMind + trait] = agent.feeling(trait);
     gene_senses(agent.dna, senses);
 
@@ -1724,6 +1729,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent, bool surveyed) {
     s.herd_near = view.close;
     s.herd_middle = view.middle;
     s.exposure = std::min(2.0, discomfort) / 2 * agent.exposure_share(here);
+    s.home_distance = home_distance * agent.exposure_share(here);
     return sensed;
 }
 
@@ -1747,7 +1753,8 @@ double Simulation::comfort(const Bitzkey& agent, const Situation& s) const {
     if (!s.herd && !solitary(agent.species)) herding -= HERD_LONELINESS * instinct;  // a loner misses no herd
     herding *= 0.5 + agent.fearfulness();  // the fearful feel their herd, and its absence, most
     // Out of its home temperature, it is uneasy, the more so the further, and less if hardy to it.
-    const double exposed = CLIMATE_UNEASE * s.exposure;
+    // and more the further home lies, so every step toward it is felt, not only the last.
+    const double exposed = CLIMATE_UNEASE * s.exposure + HOMEWARD_UNEASE * s.home_distance;
     return company - dread - unease - crowded + herding - exposed;
 }
 

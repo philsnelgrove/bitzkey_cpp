@@ -43,6 +43,7 @@ void usage() {
         "  --diagnose FILE             write how the predators fare, a line a turn, saved as it goes; how every species\n"
         "                              fares, a line a species a turn (FILE.ecology.tsv); and a summary of both\n"
         "                              beside them (FILE.summary.txt)\n"
+        "  --migration FILE            write, each season, whether animals moved ahead of the coming weather, and a summary\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
         "  --load FILE                 carry on the world saved in FILE, by its own settings and rules, rather than start one\n"
         "  --save FILE                 save the whole world at the end, to load and carry on\n"
@@ -334,13 +335,151 @@ private:
     std::array<Totals, 4> totals_;
 };
 
+// Whether animals move with the weather, in two windows a season. In the wave, from the season's
+// first turn until its weather settles, each animal is marked exposed if the season will leave its
+// row away from its home temperature, and at the end those still alive are looked at again: an
+// animal that was exposed and no longer is has moved out of a change it can feel. In the calm, from
+// the settling to the season's last turn, the same is done for the next season's weather: one that
+// gets clear has moved ahead of a change it cannot yet feel.
+class Migration {
+public:
+    explicit Migration(const std::string& path) : file_(path) {
+        file_ << "turn\tquarter\twindow\tspecies\ttracked\texposed_start\texposed_end\tfled\tstrayed\n";
+        file_.flush();
+    }
+
+    void after(const Simulation& world) {
+        const int turn = world.turn(), quarter = season(turn);
+        if (turn < YEAR_LENGTH) return;  // the first season starts settled, with no wave
+        if (quarter != quarter_) {  // the wave begins, toward this season's weather
+            quarter_ = quarter;
+            settled_ = false;
+            mark(world, Wave, quarter);
+        }
+        if (!settled_ && season_progress(turn) >= 1) {  // the calm begins, before the next season's weather
+            settled_ = true;
+            if (window_ == Wave) report(world);
+            mark(world, Calm, (quarter + 1) % 4);
+        }
+        if (window_ == Calm && season(turn + 1) != quarter) report(world);
+    }
+
+    std::string summary() const {
+        std::ostringstream text;
+        text << "in the later half of the run (exposed: away from home in the season looked to):\n";
+        text << " as each winter's wave washes in, of those it will leave away from home:\n";
+        summarise(text, waves_);
+        text << " in the calm ahead of each winter, of those the winter will leave away from home:\n";
+        summarise(text, calms_);
+        return text.str();
+    }
+
+private:
+    enum Window { None, Wave, Calm };
+    struct Reach {  // of those exposed as a window begins
+        long long exposed = 0, rows = 0, sight = 0, in_sight = 0;
+    };
+    struct Tally {
+        long long tracked = 0, before = 0, now = 0, fled = 0, strayed = 0;
+        Reach reach;
+    };
+
+    void mark(const Simulation& world, Window window, int looked_to) {
+        window_ = window;
+        looked_to_ = looked_to;
+        marked_.clear();
+        reach_ = {};
+        for (const Bitzkey* agent : world.living()) {
+            if (agent->species == Species::Plant) continue;
+            const bool out = exposed(world, *agent);
+            marked_[agent->identifier] = {static_cast<int>(agent->species), out};
+            if (!out) continue;
+            // How far the nearest row it will be at home in lies, and whether it can see so far.
+            Reach& reach = reach_[static_cast<std::size_t>(agent->species)];
+            int rows = world.height();
+            for (int y = 0; y < world.height(); ++y) {
+                if (season_temperature(y, world.height(), looked_to_) == agent->climate.temperature) rows = std::min(rows, std::abs(y - agent->y));
+            }
+            ++reach.exposed;
+            reach.rows += rows;
+            reach.sight += agent->sight;
+            reach.in_sight += rows <= agent->sight;
+        }
+    }
+
+    bool exposed(const Simulation& world, const Bitzkey& agent) const {
+        return season_temperature(agent.y, world.height(), looked_to_) != agent.climate.temperature;
+    }
+
+    void report(const Simulation& world) {
+        std::array<Tally, 4> tallies;
+        for (const Bitzkey* agent : world.living()) {
+            const auto found = marked_.find(agent->identifier);
+            if (found == marked_.end()) continue;
+            Tally& tally = tallies[static_cast<std::size_t>(found->second.first)];
+            const bool before = found->second.second, now = exposed(world, *agent);
+            ++tally.tracked;
+            tally.before += before;            tally.now += now;
+            tally.fled += before && !now;
+            tally.strayed += !before && now;
+        }
+        // The summary is of the winters: their waves (the second and fourth quarters), and the calms ahead of them.
+        const bool winter = looked_to_ % 2 == 1;
+        for (std::size_t species = 1; species < tallies.size(); ++species) {
+            Tally& tally = tallies[species];
+            tally.reach = reach_[species];
+            file_ << world.turn() << '\t' << quarter_ << '\t' << (window_ == Wave ? "wave" : "calm") << '\t' << SPECIES[species] << '\t'
+                  << tally.tracked << '\t' << tally.before << '\t' << tally.now << '\t' << tally.fled << '\t' << tally.strayed << '\n';
+            if (winter) (window_ == Wave ? waves_ : calms_)[species].push_back(tally);
+        }
+        file_.flush();
+        window_ = None;
+    }
+
+    static void summarise(std::ostringstream& text, const std::array<std::vector<Tally>, 4>& totals) {
+        for (std::size_t species = 1; species < totals.size(); ++species) {
+            const auto& seasons = totals[species];
+            Tally sum;
+            for (std::size_t index = seasons.size() / 2; index < seasons.size(); ++index) {
+                sum.tracked += seasons[index].tracked;
+                sum.before += seasons[index].before;
+                sum.now += seasons[index].now;
+                sum.fled += seasons[index].fled;
+                sum.strayed += seasons[index].strayed;
+                sum.reach.exposed += seasons[index].reach.exposed;
+                sum.reach.rows += seasons[index].reach.rows;
+                sum.reach.sight += seasons[index].reach.sight;
+                sum.reach.in_sight += seasons[index].reach.in_sight;
+            }
+            char line[256];
+            std::snprintf(line, sizeof line, "  %-9s tracked %7lld  exposed %5.1f%% -> %5.1f%%  fled %5.1f%% of exposed  strayed %5.1f%% of safe\n",
+                          std::string(SPECIES[species]).c_str(), sum.tracked, 100.0 * sum.before / std::max(1LL, sum.tracked),
+                          100.0 * sum.now / std::max(1LL, sum.tracked), 100.0 * sum.fled / std::max(1LL, sum.before),
+                          100.0 * sum.strayed / std::max(1LL, sum.tracked - sum.before));
+            text << line;
+            const double exposed = std::max(1LL, sum.reach.exposed);
+            std::snprintf(line, sizeof line, "            home lay %5.1f rows away on average, with sight %4.1f; %5.1f%% could see it\n",
+                          sum.reach.rows / exposed, sum.reach.sight / exposed, 100.0 * sum.reach.in_sight / exposed);
+            text << line;
+        }
+    }
+
+    std::ofstream file_;
+    int quarter_ = -1, looked_to_ = 0;
+    bool settled_ = false;
+    Window window_ = None;
+    std::map<int, std::pair<int, bool>> marked_;  // by identifier: species, and whether exposed as the window began
+    std::array<std::vector<Tally>, 4> waves_, calms_;
+    std::array<Reach, 4> reach_;  // by species, for the window under way
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
-    bool profile = false;
-    std::optional<std::string> trace_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
+    bool profile = false, year_length_given = false;
+    std::optional<std::string> trace_path, migration_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
     rules::Values changes;
     std::map<int, rules::Values> later;  // rules changed once the world reaches a turn, by turn
     struct Deployment {
@@ -377,11 +516,15 @@ int main(int argc, char** argv) {
             else if (flag == "--population-cap") settings.population_cap = std::stoi(value);
             else if (flag == "--mind-mutation") settings.mind_mutation = std::stod(value);
             else if (flag == "--body-mutation") settings.body_mutation = std::stod(value);
-            else if (flag == "--year-length") settings.year_length = std::stoi(value);
+            else if (flag == "--year-length") {
+                settings.year_length = std::stoi(value);
+                year_length_given = true;
+            }
             else if (flag == "--turns") turns = std::stoi(value);
             else if (flag == "--report-every") report_every = std::stoi(value);
             else if (flag == "--trace") trace_path = value;
             else if (flag == "--diagnose") diagnose_path = value;
+            else if (flag == "--migration") migration_path = value;
             else if (flag == "--export") export_path = value;
             else if (flag == "--load") load_path = value;
             else if (flag == "--save") save_path = value;
@@ -440,6 +583,7 @@ int main(int argc, char** argv) {
         if (load_path) {
             made = WorldFile::load(*load_path);
             changes = rules::current();  // the saved world's rules, which changes later in the run build on
+            if (year_length_given) YEAR_LENGTH = settings.year_length;  // a loaded world's seasons, retimed
         } else {
             made = std::make_unique<Simulation>(settings);
         }
@@ -456,6 +600,8 @@ int main(int argc, char** argv) {
             diagnosis.emplace(*diagnose_path);
             ecology.emplace(*diagnose_path + ".ecology.tsv");
         }
+        std::optional<Migration> migration;
+        if (migration_path) migration.emplace(*migration_path);
         using Clock = std::chrono::steady_clock;
         auto last = Clock::now();
         const auto start = last;
@@ -473,6 +619,7 @@ int main(int argc, char** argv) {
             world.advance();
             if (diagnosis) diagnosis->after(world);
             if (ecology) ecology->after(world);
+            if (migration) migration->after(world);
             if (trace) trace << trace_line(world) << '\n';
             const EndReason reason = world.end_reason();
             const bool report = report_every > 0 && world.turn() % report_every == 0;
@@ -499,6 +646,12 @@ int main(int argc, char** argv) {
         if (diagnosis) {
             const std::string summary = diagnosis->summary() + "\n" + ecology->summary();
             std::ofstream(*diagnose_path + ".summary.txt") << summary;
+            std::printf("%s", summary.c_str());
+        }
+
+        if (migration) {
+            const std::string summary = migration->summary();
+            std::ofstream(*migration_path + ".summary.txt") << summary;
             std::printf("%s", summary.c_str());
         }
 

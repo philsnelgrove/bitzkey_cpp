@@ -115,6 +115,7 @@ inline double GO_EFFORT = 0.25;
 inline double FEAR_DREAD = 0.3;
 inline double UNEASE = 0.1;
 inline double CLIMATE_UNEASE = 1.5;  // discomfort two or more steps from home, half that one step; less for the hardy
+inline double HOMEWARD_UNEASE = 1.0;  // more discomfort away from home, rising with the distance to home to this at half the map's height
 inline double EMPATHY_PAIN = 0.15;
 // Society: an animal sees what happens to its herd-mates (its pack, for a predator) within its sight. A
 // herd-mate's kill is a success, its death (but of old age) a failure; the witness learns from it as
@@ -713,6 +714,7 @@ public:
         int herd_near = 0;
         std::optional<Cell> herd_middle;
         double exposure = 0.0;  // how far from home it is, 0.5 a step to 1, times the share of exposure it suffers
+        double home_distance = 0.0;  // how far the nearest row it is at home in lies, as sensed, times the same share
         bool panic = false;
         bool frozen = false;  // in primal fear, frozen: it does nothing this turn
     };
@@ -759,7 +761,7 @@ public:
     double comfort(const Bitzkey& agent, const Situation& situation) const;
     double wellbeing(const Bitzkey& agent) const;
     // How much the future counts against the present: more for the patient.
-    static double discount(const Bitzkey& agent) { return 0.7 + 0.27 * agent.feeling(Patience); }
+    static double discount(const Bitzkey& agent) { return 0.7 + (PATIENT_DISCOUNT - 0.7) * agent.feeling(Patience); }
     // How much warmer than home a row feels, as a sense: 0.5 a step, from -1 (two or more steps too
     // cold) to 1 (two or more too hot).
     double warmth(const Bitzkey& agent, int y) const;
