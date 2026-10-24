@@ -1495,10 +1495,21 @@ void Simulation::think_all(const std::vector<Bitzkey*>& agents) {
     }
     timings.choose += lap(clock);
     for (std::size_t index = 0; index < agents.size(); ++index) {  // each in turn, in the world as those before it left it
-        if (agents[index]->alive()) act(*agents[index], choices[index], plans[index].situation);
+        if (!agents[index]->alive()) continue;
+        act(*agents[index], choices[index], plans[index].situation);
+        const double took = lap(clock);
+        timings.actions[static_cast<std::size_t>(choices[index])] += took;
+        timings.taken[static_cast<std::size_t>(choices[index])] += 1;
+        timings.act += took;
     }
+    conceive();  // before any parent learns again, which would copy the brain the young are made from
+    const double conceiving = lap(clock);
+    timings.actions[Breed] += conceiving;
+    timings.act += conceiving;
     learn_witnessed();
-    timings.act += lap(clock);
+    const double witnessed = lap(clock);
+    timings.witnessed += witnessed;
+    timings.act += witnessed;
 }
 
 void Simulation::learn_witnessed() {
@@ -2269,15 +2280,9 @@ void Simulation::breed(Bitzkey& first, Bitzkey& second) {
             dna = predator_dna(dna);  // a predator's young are predators, whatever crossing over or a mutation made
         }
         const auto [depth, width] = brain_shape(dna);
-        auto brain = std::make_shared<Brain>(Brain::inherit(*first.brain, *second.brain, random_, depth, width));
-        if (static_cast<Species>(decode_body(dna)[SpeciesTrait]) == Species::Predator && first.species != Species::Predator) {
-            // Born a predator of other parents: what they learnt of eating and uprooting it brings to
-            // hunting and feasting.
-            for (const auto& [learnt, now] : {std::pair{Eat, Hunt}, std::pair{Uproot, Feast}}) {
-                brain->output_weights[static_cast<std::size_t>(now)] = brain->output_weights[static_cast<std::size_t>(learnt)];
-                brain->output_biases[static_cast<std::size_t>(now)] = brain->output_biases[static_cast<std::size_t>(learnt)];
-            }
-        }
+        auto brain = std::make_shared<Brain>();  // made in conceive(), with the turn's other young
+        const bool born_hunter = static_cast<Species>(decode_body(dna)[SpeciesTrait]) == Species::Predator && first.species != Species::Predator;
+        conceptions_.push_back({brain, first.brain, second.brain, random_.getrandbits(64), depth, width, born_hunter});
         first.womb.push_back({dna, mind, std::move(brain), given / litter, generation});
     }
     first.due_turn = turn_ + gestation(first.trait(Size));
@@ -2329,7 +2334,24 @@ int Simulation::crowding(const Bitzkey& agent, const Bitzkey& partner, bool own_
     return count;
 }
 
+void Simulation::conceive() {
+    std::for_each(std::execution::par, conceptions_.begin(), conceptions_.end(), [](const Conception& young) {
+        Brain& brain = *young.into;
+        brain = Brain::inherit(*young.first, *young.second, young.seed, young.depth, young.width);
+        if (young.born_hunter) {
+            // Born a predator of other parents: what they learnt of eating and uprooting it brings to
+            // hunting and feasting.
+            for (const auto& [learnt, now] : {std::pair{Eat, Hunt}, std::pair{Uproot, Feast}}) {
+                brain.output_weights[static_cast<std::size_t>(now)] = brain.output_weights[static_cast<std::size_t>(learnt)];
+                brain.output_biases[static_cast<std::size_t>(now)] = brain.output_biases[static_cast<std::size_t>(learnt)];
+            }
+        }
+    });
+    conceptions_.clear();
+}
+
 void Simulation::give_birth(Bitzkey& mother) {
+    conceive();  // young conceived outside a turn's thinking, as in a test
     // In the squares nearest it with room for each, its own first and several to a square while there is room, as many
     // as the population cap allows; the rest are lost.
     int born = 0;

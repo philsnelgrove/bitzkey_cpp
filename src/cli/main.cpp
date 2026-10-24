@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -605,7 +606,8 @@ int main(int argc, char** argv) {
         using Clock = std::chrono::steady_clock;
         auto last = Clock::now();
         const auto start = last;
-        int last_turn = 0;
+        const int first_turn = world.turn();  // a loaded world starts part way
+        int last_turn = first_turn;
         for (int step = 1; step <= turns; ++step) {
             if (const auto due = later.find(world.turn()); due != later.end()) {  // as the map's ADVANCED does
                 for (const auto& [key, value] : due->second) changes[key] = value;
@@ -642,7 +644,7 @@ int main(int argc, char** argv) {
             }
         }
         const double total = std::chrono::duration<double>(Clock::now() - start).count();
-        std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn(), total, total * 1000 / std::max(1, world.turn()));
+        std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn() - first_turn, total, total * 1000 / std::max(1, world.turn() - first_turn));
         if (diagnosis) {
             const std::string summary = diagnosis->summary() + "\n" + ecology->summary();
             std::ofstream(*diagnose_path + ".summary.txt") << summary;
@@ -657,10 +659,21 @@ int main(int argc, char** argv) {
 
         if (profile) {
             const Simulation::Timings& took = world.timings;
-            const double each = 1.0 / std::max(1, world.turn());
+            const double each = 1.0 / std::max(1, world.turn() - first_turn);
             std::printf("ms a turn: upkeep %.2f  sense %.2f  think %.2f  learn %.2f  choose %.2f  act %.2f  after %.2f  record %.2f\n",
                         took.upkeep * each, took.sense * each, took.think * each, took.learn * each, took.choose * each,
                         took.act * each, took.after * each, took.record * each);
+            // Within acting, the costliest actions first: ms a turn, how many took it a turn, and µs each.
+            std::vector<int> order(ACTION_COUNT);
+            std::iota(order.begin(), order.end(), 0);
+            std::sort(order.begin(), order.end(), [&](int a, int b) { return took.actions[a] > took.actions[b]; });
+            std::printf("acting: witnessed %.2f", took.witnessed * each);
+            for (const int action : order) {
+                if (took.taken[action] == 0) continue;
+                std::printf("  %s %.2f (%.0f, %.1f us)", std::string(ACTIONS[action]).c_str(), took.actions[action] * each,
+                            took.taken[action] * each, 1000 * took.actions[action] / took.taken[action]);
+            }
+            std::printf("\n");
         }
         world.sync_brains();  // the brains as they now are, when they think on the GPUs
         const auto alive = world.living();

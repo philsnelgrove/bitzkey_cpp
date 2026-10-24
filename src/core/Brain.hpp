@@ -174,6 +174,9 @@ public:
     // from one parent or the other. Then it mutates.
     static Brain inherit(const Brain& first, const Brain& second, PyRandom& rng, int depth = 1, int width = BASE_WIDTH,
                          double mutation = MUTATION);
+    // The same from a seed drawn already: every choice and mutation comes from the child's own stream.
+    static Brain inherit(const Brain& first, const Brain& second, std::uint64_t seed, int depth = 1, int width = BASE_WIDTH,
+                         double mutation = MUTATION);
     // A copy `depth` layers of `width` neurons: deeper with layers that pass their input on, or
     // shallower without its last layers, and each layer fitted (see Layer::fitted).
     Brain resized(int depth, int width) const;

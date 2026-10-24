@@ -734,6 +734,7 @@ public:
     // it. What herd-mates learn from watching is learnt last, all together.
     void think_all(const std::vector<Bitzkey*>& agents);
     void learn_witnessed();  // herd-mates learn from what they saw this turn, each brain in the order it saw it
+    void conceive();  // make the brains of the young conceived since it last did, all at once
     // Bring the living's brains back from the GPUs into their CPU copies, before anything reads their
     // weights: an export, the catalog, the brain report. Nothing to do on the CPU.
     void sync_brains();
@@ -743,6 +744,10 @@ public:
     // Milliseconds spent on each part of the turns so far, for finding where the time goes.
     struct Timings {
         double upkeep = 0, sense = 0, think = 0, learn = 0, choose = 0, act = 0, after = 0, record = 0;
+        // Within acting: each action's share, how often it was taken, and the lessons of what herds saw.
+        std::array<double, ACTION_COUNT> actions{};
+        std::array<long long, ACTION_COUNT> taken{};
+        double witnessed = 0;
     };
     Timings timings;
     const std::string& gpu_status() const { return gpu_status_; }  // which GPUs think, or why none do
@@ -1008,6 +1013,15 @@ private:
         double outcome, rate;
     };
     std::vector<Witnessed> witnessed_;
+    // The brains of young conceived this turn, each made from its parents' and its own seed once the turn's
+    // matings are done, on every core at once, into the brain its womb already holds.
+    struct Conception {
+        std::shared_ptr<Brain> into, first, second;
+        std::uint64_t seed;
+        int depth, width;
+        bool born_hunter;  // a predator of other parents, bringing eating to hunting and uprooting to feasting
+    };
+    std::vector<Conception> conceptions_;
     std::unique_ptr<gpu::BrainEngine> gpu_;  // the GPUs every brain lives on, when the world thinks there
     std::string gpu_status_;
     std::deque<Senses> lesson_senses_;  // what each queued lesson sensed, kept still while it waits
