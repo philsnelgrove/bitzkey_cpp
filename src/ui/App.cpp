@@ -395,7 +395,7 @@ void App::click(int x, int y) {
     } else if (advanced_button_.contains(x, y)) {
         edit_rules();
     } else if (save_button_.contains(x, y)) {
-        save_world();
+        if (save_world() && !simulation_->ended()) playing_ = true;  // saved: it plays on
     } else if (const auto card = std::find_if(exemplar_cards_.begin(), exemplar_cards_.end(),
                                               [&](const auto& entry) { return entry.first.contains(x, y); });
                card != exemplar_cards_.end()) {
