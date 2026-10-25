@@ -217,7 +217,7 @@ It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 
 | `GET /probe/animals?species=&x=&y=&r=&limit=` | living Bitzkeys in brief, of a species, or within `r` steps of a cell |
 | `GET /probe/animal/ID` | one Bitzkey in full: what it sensed and the odds it chose by at its last choice, its mind, home and the temperature where it stands, its parents, and its herd |
 | `GET /probe/family/ID` | its parents and theirs, as far as the world still holds them, and its living young and theirs |
-| `GET /probe/herds?species=&members=1` | the herds as they stand: herd-mates within one another's sight, and theirs, each herd's size, middle, spread and mean home temperature. A herd keeps its number from one look to the next while most of it holds together, with how far it has drifted, and which herds it split from or which merged into it |
+| `GET /probe/herds?species=&members=1&reach=` | the herds as they stand: herd-mates within two steps of one another (or `reach`), and theirs, each herd's size, middle, spread and mean home temperature. A herd keeps its number from one look to the next while most of it holds together, with how far it has drifted, and which herds it split from or which merged into it |
 | `POST /probe/watch` `{"ids": [...], "keep": turns}` | watch these Bitzkeys: each turn, where each is, what it did, its health, hunger and how far from home |
 | `GET /probe/watch` | the tracks of those watched, until they die (720 turns of each kept, unless told otherwise) |
 | `DELETE /probe/watch?ids=` | stop watching these, or all |
