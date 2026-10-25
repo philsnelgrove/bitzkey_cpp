@@ -167,14 +167,20 @@ nlohmann::ordered_json genome_only(Dna dna) { return genome_record(dna); }
 
 }  // namespace
 
-App::App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded)
-    : window_(window), settings_(std::move(settings)), pool_(pool), worker_(worker) {
+App::App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded,
+         net::ProbeServer* probe)
+    : window_(window), settings_(std::move(settings)), pool_(pool), worker_(worker), probe_(probe) {
     if (loaded) {
         simulation_ = std::move(loaded);
         pool_.adopt(*simulation_);
+        if (probe_) probe_->attach(*simulation_);
     } else {
         new_world();
     }
+}
+
+App::~App() {
+    if (probe_) probe_->detach();  // looks waiting fail, as the world goes
 }
 
 // How large the selected Bitzkeys' sights are now: from their size to twice it and back, every RETICLE_PULSE_MS,
@@ -187,6 +193,7 @@ double reticle_pulse() {
 void App::new_world() {
     simulation_ = std::make_unique<Simulation>(settings_);
     pool_.adopt(*simulation_);  // its brains shared with the workers, if any are listed
+    if (probe_) probe_->attach(*simulation_);
 }
 
 App::Result App::run() {
@@ -304,6 +311,7 @@ App::Result App::run() {
             }
         }
         tick(seconds);
+        if (probe_) probe_->serve(*simulation_);  // between turns: the probe's looks at the world
         Canvas canvas = window_.frame();
         draw(canvas);
         window_.present();

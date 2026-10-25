@@ -205,6 +205,25 @@ The world is let go, and the app shows only a gray worker screen. That screen gi
 
 **The firewall.** Becoming a worker, changing its port, and stopping each ask Windows for approval (the usual administrator prompt). Once approved, Windows' firewall lets the main service in on that port, under a rule named "Bitzkey worker". A router in front of the computer needs the port forwarded by hand. The main service needs no open port: it connects out to its workers.
 
+## The probe
+
+The probe lets a program, or an assistant, look at the world while it runs: any Bitzkey, the herds, and the turn-by-turn tracks of the Bitzkeys it is asked to watch. It only reads the world, never changes it, and answers between turns, so it never slows a turn part way.
+
+It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 49200}` in `probe.json` in the Bitzkey folder in Documents (beside `settings.json`). It listens on that port of this computer only (127.0.0.1), and answers JSON:
+
+| Route | What it shows |
+|---|---|
+| `GET /probe/state` | the turn, season, map size and how many of each species live |
+| `GET /probe/animals?species=&x=&y=&r=&limit=` | living Bitzkeys in brief, of a species, or within `r` steps of a cell |
+| `GET /probe/animal/ID` | one Bitzkey in full: what it sensed and the odds it chose by at its last choice, its mind, home and the temperature where it stands, its parents, and its herd |
+| `GET /probe/family/ID` | its parents and theirs, as far as the world still holds them, and its living young and theirs |
+| `GET /probe/herds?species=&members=1` | the herds as they stand: herd-mates within one another's sight, and theirs, each herd's size, middle, spread and mean home temperature. A herd keeps its number from one look to the next while most of it holds together, with how far it has drifted, and which herds it split from or which merged into it |
+| `POST /probe/watch` `{"ids": [...], "keep": turns}` | watch these Bitzkeys: each turn, where each is, what it did, its health, hunger and how far from home |
+| `GET /probe/watch` | the tracks of those watched, until they die (720 turns of each kept, unless told otherwise) |
+| `DELETE /probe/watch?ids=` | stop watching these, or all |
+
+For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemon serves the same probe at `/api/probe/...`.
+
 ## Layout
 
 - `src/net/`: workers: a main service's pool (`Pool`), worker mode (`Worker`), the brains a worker holds and the batches

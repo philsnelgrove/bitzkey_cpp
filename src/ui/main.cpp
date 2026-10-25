@@ -12,6 +12,7 @@
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 #include "net/Pool.hpp"
+#include "net/ProbeServer.hpp"
 #include "net/Worker.hpp"
 #include "ui/App.hpp"
 #include "ui/Language.hpp"
@@ -37,6 +38,7 @@ struct Options {
                          {"body_mutation", static_cast<int>(100 * BODY_MUTATION_CHANCE)},
                          {"year_length", DEFAULT_YEAR_LENGTH}};
     bool windowed = false;
+    std::optional<int> probe;  // --probe PORT: serve the probe on this port of this computer
 };
 
 Options parse(int argc, char** argv) {
@@ -48,6 +50,13 @@ Options parse(int argc, char** argv) {
             continue;
         }
         if (index + 1 >= argc || flag.rfind("--", 0) != 0) continue;
+        if (flag == "--probe") {
+            try {
+                options.probe = std::stoi(argv[++index]);
+            } catch (const std::exception&) {
+            }
+            continue;
+        }
         std::string key = flag.substr(2);
         for (char& c : key) {
             if (c == '-') c = '_';
@@ -80,6 +89,16 @@ int main(int argc, char** argv) {
         net::Worker worker(data_dir() / "worker.json");
         worker.on_ports = open_worker_ports;  // in Windows' firewall, as the user changes them
         worker.resume();                      // a worker when last closed: a worker again
+        // The probe, a read-only window onto the running world for analysing it, when asked for: by --probe PORT, or
+        // by probe.json beside the reports ({"port": N}). Off otherwise, and on this computer only.
+        std::unique_ptr<net::ProbeServer> probe;
+        if (const auto port = options.probe ? options.probe : net::ProbeServer::configured(data_dir() / "probe.json")) {
+            try {
+                probe = std::make_unique<net::ProbeServer>(*port);
+            } catch (const std::exception& error) {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Bitzkey", error.what(), nullptr);
+            }
+        }
         Window window(!options.windowed);
         // While a worker, the app shows only that; stopping, it comes back to the configuration panel.
         const auto working = [&] { return !worker.on() || WorkerScreen(window, worker).run() == WorkerScreen::Outcome::Stopped; };
@@ -100,7 +119,7 @@ int main(int argc, char** argv) {
                 App::Result result;
                 std::string renewal;
                 {
-                    App app(window, *settings, pool, worker, std::move(loaded));
+                    App app(window, *settings, pool, worker, std::move(loaded), probe.get());
                     result = app.run();
                     renewal = app.renewal();
                 }  // the world let go, before it becomes a worker

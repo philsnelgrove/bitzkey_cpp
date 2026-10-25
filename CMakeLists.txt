@@ -73,6 +73,8 @@ FetchContent_MakeAvailable(httplib)
 add_library(bitzkey_net STATIC
     src/net/Brains.cpp
     src/net/Pool.cpp
+    src/net/Probe.cpp
+    src/net/ProbeServer.cpp
     src/net/Worker.cpp
 )
 target_compile_definitions(bitzkey_net PRIVATE BITZKEY_VERSION="${BITZKEY_VERSION}")
@@ -150,6 +152,7 @@ add_executable(bitzkey_tests
     tests/test_gpu.cpp
     tests/test_worldfile.cpp
     tests/test_net.cpp
+    tests/test_probe.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_net doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)

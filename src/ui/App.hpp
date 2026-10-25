@@ -11,6 +11,7 @@
 
 #include "core/Simulation.hpp"
 #include "net/Pool.hpp"
+#include "net/ProbeServer.hpp"
 #include "net/Worker.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/ColourGraph.hpp"
@@ -29,7 +30,12 @@ public:
 
     // Start a world by these settings, or carry on `loaded`, a world loaded; restarting starts afresh by the settings
     // either way. The world thinks through the pool while it lists workers.
-    App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded = nullptr);
+    // With a probe, its looks at the world are answered between turns.
+    App(Window& window, Simulation::Settings settings, net::Pool& pool, net::Worker& worker, std::unique_ptr<Simulation> loaded = nullptr,
+        net::ProbeServer* probe = nullptr);
+    ~App();
+    App(const App&) = delete;
+    App& operator=(const App&) = delete;
     // Run until the window closes or the user leaves for the configuration panel, or for a new world
     // with the Bitzkeys picked on the graph (Renew), which renewal() then holds.
     Result run();
@@ -156,6 +162,7 @@ private:
     net::Pool& pool_;
     net::Worker& worker_;
     std::unique_ptr<Simulation> simulation_;
+    net::ProbeServer* probe_ = nullptr;
     std::optional<int> selected_id_;
     bool show_insights_ = false;
     bool show_census_ = false;
