@@ -1246,6 +1246,16 @@ void App::draw_world(Canvas& canvas) {
             x = end;
         }
     }
+    {  // the night, a shadow over half the map's columns, wrapping round east to west
+        const int first = simulation_->night_start(), columns = simulation_->width() / 2;
+        for (const auto& [from, count] : {std::pair{first, std::min(columns, simulation_->width() - first)},
+                                          std::pair{0, std::max(0, first + columns - simulation_->width())}}) {
+            if (count <= 0) continue;
+            const int left = static_cast<int>(py_round(rect.x + from * board.cell_width));
+            const int right = static_cast<int>(py_round(rect.x + (from + count) * board.cell_width));
+            canvas.fill_rect({left, rect.y, right - left, rect.h}, NIGHT);
+        }
+    }
     const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
     for (int y = 0; y < simulation_->height(); ++y) {
         for (int x = 0; x < simulation_->width(); ++x) {

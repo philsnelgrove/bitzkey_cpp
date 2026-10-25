@@ -76,7 +76,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     draw_bitzkey(canvas, agent.dna, x + UI(10), at(11), dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), RING_WIDTH,
                  agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
-    canvas.text(font, format("#%03d  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str()),
+    canvas.text(font, format("#%03d  %s  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str(),
+                             agent.nocturnal ? "NOCTURNAL" : "DIURNAL"),
                 {238, 238, 220}, x + UI(28), at(0));
     canvas.text(mono_small, format("DOT %08X RING %08X SOCIAL %08X", mind_word(agent.dna), body_word(agent.dna), social_word(agent.dna)),
                 {211, 219, 201}, x, at(26));

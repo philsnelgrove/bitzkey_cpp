@@ -373,7 +373,7 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
     std::string shown = std::to_string(value);
-    if (field == Field{FieldKind::Body, SpeciesTrait}) shown = std::string(SPECIES[value % 4]) + " " + shown;
+    if (field == Field{FieldKind::Body, SpeciesTrait}) shown = std::string(SPECIES[value % 4]) + (value & 4 ? " nocturnal " : " diurnal ") + shown;
     if (field == Field{FieldKind::Climate, 1}) shown = std::string(TEMPERATURES[static_cast<std::size_t>(value)]);
     if (field == Field{FieldKind::Climate, 0}) shown = std::string(HARDINESS[static_cast<std::size_t>(value)]);
     if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT + 1}) shown = std::string(TERRAINS[static_cast<std::size_t>(value)]);

@@ -28,6 +28,7 @@ constexpr Color GRASS{62, 122, 52};
 constexpr Color SEA{38, 84, 140};
 constexpr double SEA_TINT = 0.6;
 constexpr Color SEA_GRASS{58, 150, 120};
+constexpr Color NIGHT{10, 16, 40, 90};  // the shadow over the night's half of the map
 constexpr Color GRID{140, 146, 142};
 constexpr Color SELECTED{25, 32, 32};     // the ring round the selected Bitzkey and those picked on the colour graph
 constexpr Color EXPORTING{205, 120, 30};  // the ring round Bitzkeys on the export list

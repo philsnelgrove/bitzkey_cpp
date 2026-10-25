@@ -154,6 +154,7 @@ add_executable(bitzkey_tests
     tests/test_net.cpp
     tests/test_probe.cpp
     tests/test_sea.cpp
+    tests/test_day.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_net doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
