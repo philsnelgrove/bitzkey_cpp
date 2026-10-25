@@ -228,7 +228,7 @@ public:
             int died_infant = 0, died_newborn = 0;  // deaths in infancy (the feeble start of life), and within NEWBORN_TURNS of birth
             double death_age = 0;
             double hunger = 0, health = 0, age = 0;
-            std::map<std::string, int> causes, actions;
+            std::map<std::string, int> causes, infant_causes, actions;
         };
         std::array<Tally, 4> tallies;
         for (const Bitzkey* agent : world.living()) {
@@ -255,17 +255,16 @@ public:
             Tally& tally = tallies[static_cast<std::size_t>(agent->species)];
             ++tally.died;
             const double infancy = FEEBLE_YOUTH * (agent->species == Species::Predator ? PREDATOR_INFANCY : 1.0) * agent->lifespan;
-            tally.died_infant += agent->species != Species::Plant && agent->age < infancy;
+            const bool infant = agent->species != Species::Plant && agent->age < infancy;
+            tally.died_infant += infant;
             tally.died_newborn += agent->age <= NEWBORN_TURNS;
             tally.death_age += agent->age;
             const Simulation::DeathRecord* death = world.death_record(agent->identifier);
-            if (!death) {
-                tally.causes["other"] += 1;
-            } else if (death->killer >= 0) {
-                tally.causes["by_" + std::string(species_name(death->killer_species))] += 1;
-            } else {
-                tally.causes[death->cause] += 1;
-            }
+            const std::string cause = !death              ? std::string("other")
+                                      : death->killer >= 0 ? "by_" + std::string(species_name(death->killer_species))
+                                                           : death->cause;
+            tally.causes[cause] += 1;
+            if (infant) tally.infant_causes[cause] += 1;
         }
         const std::size_t grass = world.grass_tufts(), seeds = world.seeds().size();
         for (std::size_t species = 0; species < tallies.size(); ++species) {
@@ -300,6 +299,7 @@ public:
             totals.died_newborn += tally.died_newborn;
             totals.peak = std::max(totals.peak, tally.alive);
             for (const auto& [cause, count] : tally.causes) totals.causes[cause] += count;
+            for (const auto& [cause, count] : tally.infant_causes) totals.infant_causes[cause] += count;
             if (tally.alive == 0 && totals.peak > 0 && totals.gone < 0) totals.gone = turn;
         }
         file_.flush();
@@ -318,6 +318,9 @@ public:
                      << "%)\n";
             }
             for (const auto& [cause, count] : totals.causes) text << "  died " << cause << ": " << count << "\n";
+            for (const auto& [cause, count] : totals.infant_causes) {
+                text << "  infants died " << cause << ": " << count << " (" << 100 * count / std::max(1LL, totals.died_infant) << "% of infant deaths)\n";
+            }
         }
         return text.str();
     }
@@ -329,7 +332,7 @@ private:
     struct Totals {
         int peak = 0, born = 0, gone = -1;
         long long died = 0, died_infant = 0, died_newborn = 0;
-        std::map<std::string, long long> causes;
+        std::map<std::string, long long> causes, infant_causes;
     };
     std::ofstream file_;
     int first_new_ = 0;
