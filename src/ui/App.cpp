@@ -11,6 +11,7 @@
 #include <set>
 #include <unordered_map>
 
+#include "core/About.hpp"
 #include "core/Exchange.hpp"
 #include "core/Insights.hpp"
 #include "core/PyFormat.hpp"
@@ -1192,7 +1193,8 @@ void App::inspect_brains() {
 void App::draw_header(Canvas& canvas) {
     canvas.fill_rect({0, 0, canvas.width(), UI(62)}, {27, 37, 37});
     const int title = canvas.text(UI.font(Face::Sans, 22, true), "BITZKEY", {229, 239, 220}, UI(24), UI(11));
-    canvas.text(UI.font(Face::Sans, 12), "ARTIFICIAL ECOLOGY  /  RESEARCH BUILD", {144, 170, 151}, UI(48) + title, UI(20));
+    const int subtitle = canvas.text(UI.font(Face::Sans, 12), "ARTIFICIAL ECOLOGY  /  RESEARCH BUILD", {144, 170, 151}, UI(48) + title, UI(20));
+    canvas.text(UI.font(Face::Sans, 12), "/  " + about(), {144, 170, 151}, UI(56) + title + subtitle, UI(20));  // the version, and the cores
     const std::string status = playing_ ? "RUNNING" : simulation_->ended() ? "ENDED" : "PAUSED";
     const Color colour = playing_ ? Color{131, 205, 143} : Color{238, 183, 110};
     TTF_Font* font = UI.font(Face::Sans, 15);

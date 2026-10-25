@@ -59,6 +59,7 @@ add_library(bitzkey_core STATIC
 )
 target_include_directories(bitzkey_core PUBLIC src)
 target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json PRIVATE Vulkan::Headers)
+target_compile_definitions(bitzkey_core PUBLIC BITZKEY_VERSION="${BITZKEY_VERSION}")  # for every screen's header
 
 # Workers: sharing a world's thinking with other Bitzkeys (this app or the Linux daemon) over the network, as their
 # main service or as one of their workers. src/net is copied to and from bitzkey_daemon, as the core is. HTTP is one
@@ -77,7 +78,6 @@ add_library(bitzkey_net STATIC
     src/net/ProbeServer.cpp
     src/net/Worker.cpp
 )
-target_compile_definitions(bitzkey_net PRIVATE BITZKEY_VERSION="${BITZKEY_VERSION}")
 target_link_libraries(bitzkey_net PUBLIC bitzkey_core httplib::httplib)
 
 # The window app: SDL2 for the window, input and clipboard, SDL_ttf for text. The official

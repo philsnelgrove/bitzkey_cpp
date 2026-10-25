@@ -13,6 +13,7 @@
 #include <shellapi.h>
 #endif
 
+#include "core/About.hpp"
 #include "ui/Language.hpp"
 
 namespace bitzkey::ui {
@@ -203,7 +204,8 @@ void WorkerScreen::draw(Canvas& canvas) {
     TTF_Font* small = UI.font(Face::Sans, 13);
     const int left = card.x + UI(28), width = card.w - UI(56);
     int y = card.y + UI(24);
-    canvas.text(UI.font(Face::Sans, 26, true), "WORKER", BRIGHT, left, y);
+    const int title = canvas.text(UI.font(Face::Sans, 26, true), "WORKER", BRIGHT, left, y);
+    canvas.text(UI.font(Face::Sans, 12), about(), DIM, left + title + UI(16), y + UI(12));
     language_menu_.draw_button(canvas, card.right() - UI(24), y + UI(16));
     y += UI(50);
 

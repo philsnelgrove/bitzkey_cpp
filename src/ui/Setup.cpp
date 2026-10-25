@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "core/About.hpp"
 #include "core/PyFormat.hpp"
 #include "core/WorldFile.hpp"
 #include "ui/Advanced.hpp"
@@ -444,7 +445,8 @@ void SetupScreen::draw(Canvas& canvas) {
     canvas.rect(card, {27, 37, 37}, 0, UI(8));
     canvas.rect(card, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(bold, "BITZKEY", {229, 239, 220}, card.x + UI(28), card.y + UI(24));
-    canvas.text(small, "NEW WORLD  /  CONFIGURATION", {144, 170, 151}, card.x + UI(52) + title, card.y + UI(33));
+    const int subtitle = canvas.text(small, "NEW WORLD  /  CONFIGURATION", {144, 170, 151}, card.x + UI(52) + title, card.y + UI(33));
+    canvas.text(small, "/  " + about(), {144, 170, 151}, card.x + UI(60) + title + subtitle, card.y + UI(33));  // the version, and the cores
     canvas.text(UI.font(Face::Sans, 15), "Set up the world, then start the simulation.", {157, 177, 159}, card.x + UI(28),
                 card.y + UI(66));
     const bool changed = !rules_.empty();

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+#include "core/About.hpp"
 #include "ui/Language.hpp"
 
 namespace bitzkey::ui {
@@ -286,8 +287,11 @@ void WorkersScreen::draw(Canvas& canvas) {
     canvas.rect(area, {27, 37, 37}, 0, UI(8));
     canvas.rect(area, {80, 99, 85}, 1, UI(8));
     const int title = canvas.text(UI.font(Face::Sans, 22, true), "BITZKEY", TITLE, area.x + UI(28), area.y + UI(24));
-    canvas.text(UI.font(Face::Sans, 12), !simulation_ ? "NEW WORLD  /  BECOME A WORKER" : share_ ? "THIS WORLD  /  WORKERS  /  BECOME A WORKER" : "THIS WORLD  /  WORKERS", {144, 170, 151},
+    const int subtitle = canvas.text(UI.font(Face::Sans, 12),
+                !simulation_ ? "NEW WORLD  /  BECOME A WORKER" : share_ ? "THIS WORLD  /  WORKERS  /  BECOME A WORKER" : "THIS WORLD  /  WORKERS",
+                {144, 170, 151},
                 area.x + UI(52) + title, area.y + UI(33));
+    canvas.text(UI.font(Face::Sans, 12), "/  " + about(), {144, 170, 151}, area.x + UI(60) + title + subtitle, area.y + UI(33));  // the version, and the cores
     language_menu_.draw_button(canvas, area.right() - UI(24), area.y + UI(36));
     int y = area.y + UI(70);
     if (share_) draw_becoming(canvas, area, y);
