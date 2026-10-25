@@ -207,7 +207,7 @@ The world is let go, and the app shows only a gray worker screen. That screen gi
 
 ## The probe
 
-The probe lets a program, or an assistant, look at the world while it runs: any Bitzkey, the herds, and the turn-by-turn tracks of the Bitzkeys it is asked to watch. It only reads the world, never changes it, and answers between turns, so it never slows a turn part way.
+The probe lets a program, or an assistant, read anything about the world while it runs: any Bitzkey and its brain, the herds, the turn-by-turn tracks of the Bitzkeys it is asked to watch, and the rules, climate, grass, bodies, seeds, deaths, history and reports. It only reads the world, never changes it, and answers between turns, so it never slows a turn part way.
 
 It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 49200}` in `probe.json` in the Bitzkey folder in Documents (beside `settings.json`). It listens on that port of this computer only (127.0.0.1), and answers JSON:
 
@@ -221,6 +221,20 @@ It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 
 | `POST /probe/watch` `{"ids": [...], "keep": turns}` | watch these Bitzkeys: each turn, where each is, what it did, its health, hunger and how far from home |
 | `GET /probe/watch` | the tracks of those watched, until they die (720 turns of each kept, unless told otherwise) |
 | `DELETE /probe/watch?ids=` | stop watching these, or all |
+| `GET /probe/rules` | every advanced rule: its value, group, label, hint and limits |
+| `GET /probe/settings` | the world's settings, the turns it keeps, its GPUs and its totals |
+| `GET /probe/climate` | each row: its temperature now, how its grass grows, and its grass |
+| `GET /probe/grass?map=1` | the grass row by row, and cell by cell if asked |
+| `GET /probe/cell?x=&y=` | one square: its grass, its Bitzkeys living and dead, its seeds |
+| `GET /probe/bodies?limit=` | the bodies still lying in the world, fresh kills or carrion |
+| `GET /probe/seeds?limit=` | the seeds waiting in the ground |
+| `GET /probe/deaths?since=&species=&cause=&limit=` | the deaths the world remembers, latest first, and every death's cause counted since the start |
+| `GET /probe/history?points=` | each species' numbers over the run, as the graph remembers it |
+| `GET /probe/insights` | how often each species took each action when it could, lately |
+| `GET /probe/brain/ID?weights=1` | a brain: its shape, what it makes of what it last sensed, and its weights if asked |
+| `GET /probe/reports/brain` | the brain report, as text |
+| `GET /probe/reports/deaths` | the death report, as text |
+| `GET /probe/timings` | where each turn's time has gone, part by part and action by action |
 
 For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemon serves the same probe at `/api/probe/...`.
 
