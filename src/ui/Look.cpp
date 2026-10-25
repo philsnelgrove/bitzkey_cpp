@@ -24,6 +24,12 @@ Color zone_colour(double temperature) {
     return {blend(WORLD_GREY.r, low.r, high.r), blend(WORLD_GREY.g, low.g, high.g), blend(WORLD_GREY.b, low.b, high.b)};
 }
 
+Color sea_colour(double temperature) {
+    const Color zone = zone_colour(temperature);
+    const auto blend = [](int from, int to) { return static_cast<std::uint8_t>(py_round(from + (to - from) * SEA_TINT)); };
+    return {blend(zone.r, SEA.r), blend(zone.g, SEA.g), blend(zone.b, SEA.b)};
+}
+
 int dot_radius(int size, int largest, int smallest) {
     return static_cast<int>(py_round(smallest + static_cast<double>(largest - smallest) * size / TRAIT_MAX));
 }

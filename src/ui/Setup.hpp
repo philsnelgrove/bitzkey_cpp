@@ -35,7 +35,7 @@ struct Setting {
     bool optional = false;     // may be left blank, meaning "none"
     std::string_view blank;    // what a blank optional setting shows
 };
-extern const std::array<Setting, 9> SETTINGS;
+extern const std::array<Setting, 10> SETTINGS;
 
 using Defaults = std::map<std::string, std::optional<int>, std::less<>>;
 

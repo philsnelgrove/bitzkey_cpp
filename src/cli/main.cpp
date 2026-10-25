@@ -517,6 +517,7 @@ int main(int argc, char** argv) {
             else if (flag == "--population") settings.population = std::stoi(value);
             else if (flag == "--seed") settings.seed = std::stoull(value);
             else if (flag == "--grass-density") settings.grass_density = std::stod(value);
+            else if (flag == "--ocean") settings.ocean = std::stod(value);
             else if (flag == "--population-cap") settings.population_cap = std::stoi(value);
             else if (flag == "--mind-mutation") settings.mind_mutation = std::stod(value);
             else if (flag == "--body-mutation") settings.body_mutation = std::stod(value);
@@ -636,6 +637,16 @@ int main(int argc, char** argv) {
                 for (const Bitzkey* agent : world.living()) counts[static_cast<int>(agent->species)] += 1;
                 std::printf("turn %5d  plants %4d  grazers %5d  omnivores %5d  predators %5d  %7.2f ms/turn\n",
                             world.turn(), counts[0], counts[1], counts[2], counts[3], ms);
+                if (world.has_sea()) {  // and each species by terrain: land, sea, air, both
+                    int terrains[4][4] = {};
+                    for (const Bitzkey* agent : world.living()) terrains[static_cast<int>(agent->species)][static_cast<int>(agent->terrain)] += 1;
+                    std::printf("           by terrain (land/sea/air/both):");
+                    for (int species = 0; species < 4; ++species) {
+                        std::printf("  %s %d/%d/%d/%d", std::string(SPECIES[static_cast<std::size_t>(species)]).c_str(), terrains[species][0],
+                                    terrains[species][1], terrains[species][2], terrains[species][3]);
+                    }
+                    std::printf("\n");
+                }
                 std::fflush(stdout);  // seen at once, even written to a file
                 last = now;
                 last_turn = world.turn();

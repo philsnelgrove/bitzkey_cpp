@@ -744,7 +744,8 @@ void App::draw_square(Canvas& canvas) {
     int mouse_x = 0, mouse_y = 0;
     SDL_GetMouseState(&mouse_x, &mouse_y);
     TTF_Font* small = UI.font(Face::Sans, 12);
-    canvas.text(small, format("SQUARE (%d, %d)   %d/%d SPACES", square_->first, square_->second, used, CELL_SPACE),
+    canvas.text(small, format("%s (%d, %d)   %d/%d SPACES", simulation_->sea(square_->first, square_->second) ? "SEA" : "SQUARE",
+                              square_->first, square_->second, used, CELL_SPACE),
                 {144, 170, 151}, panel.x + UI(10), panel.y + UI(6));
     for (std::size_t index = 0; index < here.size(); ++index) {
         const Bitzkey& agent = *here[index];
@@ -1228,6 +1229,20 @@ void App::draw_world(Canvas& canvas) {
         const int top = static_cast<int>(py_round(rect.y + y * board.cell_height));
         const int bottom = static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height));
         canvas.fill_rect({rect.x, top, rect.w, bottom - top}, zone_colour(simulation_->temperature(y)));
+        if (!simulation_->has_sea()) continue;
+        const Color sea = sea_colour(simulation_->temperature(y));
+        for (int x = 0; x < simulation_->width();) {  // each stretch of sea along the row at once
+            if (!simulation_->sea(x, y)) {
+                ++x;
+                continue;
+            }
+            int end = x;
+            while (end < simulation_->width() && simulation_->sea(end, y)) ++end;
+            const int left = static_cast<int>(py_round(rect.x + x * board.cell_width));
+            const int right = static_cast<int>(py_round(rect.x + end * board.cell_width));
+            canvas.fill_rect({left, top, right - left, bottom - top}, sea);
+            x = end;
+        }
     }
     const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
     for (int y = 0; y < simulation_->height(); ++y) {
@@ -1235,7 +1250,7 @@ void App::draw_world(Canvas& canvas) {
             if (simulation_->grass_at(x, y) <= 0) continue;
             const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
-            if (reach.contains(px, py)) canvas.circle(px, py, grass_radius, GRASS);
+            if (reach.contains(px, py)) canvas.circle(px, py, grass_radius, simulation_->sea(x, y) ? SEA_GRASS : GRASS);
         }
     }
     const auto [smallest, largest] = map_dot_radii(std::min(board.cell_width, board.cell_height));  // zoomed with the map

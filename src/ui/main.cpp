@@ -32,6 +32,7 @@ struct Options {
                          {"height", GRID_SIZE},
                          {"population", INITIAL_POPULATION},
                          {"grass_density", static_cast<int>(GRASS_DENSITY)},
+                         {"ocean", static_cast<int>(DEFAULT_OCEAN + 0.5)},
                          {"seed", std::nullopt},
                          {"population_cap", std::nullopt},
                          {"mind_mutation", static_cast<int>(100 * MIND_MUTATION_CHANCE)},

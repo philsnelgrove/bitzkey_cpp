@@ -18,7 +18,7 @@ struct Screens;
 
 // The climate fields: 0 the hardiness (the tolerance flags, the dot's top two bits, as one value:
 // 1 heat, 2 cold, 3 both), 1 the home temperature (the ring's top two bits). The social fields: its
-// traits, then its neurodivergence.
+// traits, then its neurodivergence, then its terrain.
 enum class FieldKind { Mind, Body, Climate, Social, Hex };
 struct Field {
     FieldKind kind;
@@ -26,7 +26,7 @@ struct Field {
     bool operator==(const Field&) const = default;
 };
 constexpr int COLUMN_ROWS = DOT_TRAIT_COUNT + 1;  // a column each for the dot and ring: its traits, then its climate field
-constexpr int SOCIAL_FIELDS = SOCIAL_TRAIT_COUNT + 1;  // beneath them both, in two columns
+constexpr int SOCIAL_FIELDS = SOCIAL_TRAIT_COUNT + 2;  // beneath them both, in two columns
 constexpr int SOCIAL_ROWS = (SOCIAL_FIELDS + 1) / 2;
 constexpr int ROW_COUNT = 2 * COLUMN_ROWS + SOCIAL_FIELDS;  // every field but the hex codes
 constexpr int FIELD_COUNT = ROW_COUNT + 3;
@@ -39,7 +39,7 @@ public:
     explicit DesignerForm(Dna dna) : dna(dna) {}
 
     Field focused() const { return field_at(focus); }
-    int value(Field field) const;  // 0 to 7; for species, the raw value that picks it (mod 4); neurodivergence to 15
+    int value(Field field) const;  // 0 to 7; for species, the raw value that picks it (mod 4); neurodivergence to 15; terrain to 3
     void set_value(Field field, int value);
     std::uint32_t word(int part) const { return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna); }
     std::string code(int part) const;  // what is being typed into a word, else its value

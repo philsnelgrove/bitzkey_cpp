@@ -76,8 +76,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     draw_bitzkey(canvas, agent.dna, x + UI(10), at(11), dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), RING_WIDTH,
                  agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
-    canvas.text(font, format("#%03d  %s", agent.identifier, upper(species_name(agent.species)).c_str()), {238, 238, 220},
-                x + UI(28), at(0));
+    canvas.text(font, format("#%03d  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str()),
+                {238, 238, 220}, x + UI(28), at(0));
     canvas.text(mono_small, format("DOT %08X RING %08X SOCIAL %08X", mind_word(agent.dna), body_word(agent.dna), social_word(agent.dna)),
                 {211, 219, 201}, x, at(26));
 
@@ -136,13 +136,16 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
                     at(318));
         return;
     }
-    const int half = (width - UI(12)) / 2;
-    canvas.text(mono_small, format("HUNGER %5.1f%%", std::min(100.0, agent.hunger)), {224, 177, 118}, x, at(302));
-    bar(canvas, x, at(320), half, agent.hunger / 100, {224, 150, 94});
-    const int health = x + width - half;
-    canvas.text(mono_small, format("HEALTH %5.1f/%.0f", std::max(0.0, agent.health), agent.max_health), {161, 207, 162}, health,
+    const int third = (width - UI(24)) / 3;  // hunger, stamina and health side by side
+    canvas.text(mono_small, format("HUNGER %.0f%%", std::min(100.0, agent.hunger)), {224, 177, 118}, x, at(302));
+    bar(canvas, x, at(320), third, agent.hunger / 100, {224, 150, 94});
+    const int stamina = x + third + UI(12);
+    canvas.text(mono_small, format("STAMINA %.0f", agent.stamina), {150, 190, 230}, stamina, at(302));
+    bar(canvas, stamina, at(320), third, agent.stamina / FULL_STAMINA, {110, 160, 220});
+    const int health = x + width - third;
+    canvas.text(mono_small, format("HEALTH %.0f/%.0f", std::max(0.0, agent.health), agent.max_health), {161, 207, 162}, health,
                 at(302));
-    bar(canvas, health, at(320), half, agent.health / agent.max_health, {124, 190, 131});
+    bar(canvas, health, at(320), third, agent.health / agent.max_health, {124, 190, 131});
     canvas.text(small, format("AGE %d / ~%.0f%s    GENERATION %d    CHILDREN %d", agent.age, agent.lifespan,
                               agent.feeble ? " FEEBLE" : "", agent.generation, agent.children),
                 {145, 164, 146}, x, at(334));

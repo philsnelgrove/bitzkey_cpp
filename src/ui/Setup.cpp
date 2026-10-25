@@ -19,11 +19,12 @@
 
 namespace bitzkey::ui {
 
-const std::array<Setting, 9> SETTINGS = {{
+const std::array<Setting, 10> SETTINGS = {{
     {"width", "Grid width", "cells across the world", 10, MAX_GRID, 10},
     {"height", "Grid height", "cells down the world", 10, MAX_GRID, 10},
     {"population", "Bitzkeys", "spawned at the start, a random mix of species", 0, MAX_POPULATION, 10},
     {"grass_density", "Grass density", "percent of cells with grass at the start; regrowth scales too", 0, 100, 1},
+    {"ocean", "Sea", "percent of the map under the sea, laid out by the seed; 0 for land alone", 0, 100, 1},
     {"seed", "Random seed", "the same seed replays the same world; blank for a new one", 0, 999'999'999, 1, true, "random"},
     {"population_cap", "Population cap", "most animals alive at once; blank lets crowding alone decide", 10, 99'999, 100, true,
      "no limit"},
@@ -88,6 +89,7 @@ Simulation::Settings SetupForm::values() const {
     settings.height = *at("height");
     settings.population = *at("population");
     settings.grass_density = *at("grass_density");
+    settings.ocean = *at("ocean");
     if (const auto seed = at("seed")) settings.seed = static_cast<std::uint64_t>(*seed);
     settings.population_cap = at("population_cap");
     settings.mind_mutation = *at("mind_mutation");

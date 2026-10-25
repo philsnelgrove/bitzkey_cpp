@@ -23,12 +23,18 @@ constexpr Color WORLD_GREY{196, 198, 196};
 constexpr std::array<Color, 4> ZONE_TINTS = {{{150, 85, 55}, {110, 170, 90}, {255, 255, 255}, {170, 210, 250}}};
 constexpr double ZONE_TINT = 0.45;  // how far toward its tint a zone's grey goes
 constexpr Color GRASS{62, 122, 52};
+// The sea: its row's temperature tint drawn this far toward deep blue, so the climate's bands show through, and its
+// grass, sea grass, in kelp green.
+constexpr Color SEA{38, 84, 140};
+constexpr double SEA_TINT = 0.6;
+constexpr Color SEA_GRASS{58, 150, 120};
 constexpr Color GRID{140, 146, 142};
 constexpr Color SELECTED{25, 32, 32};     // the ring round the selected Bitzkey and those picked on the colour graph
 constexpr Color EXPORTING{205, 120, 30};  // the ring round Bitzkeys on the export list
 
 // The world's grey tinted for a temperature.
 Color zone_colour(double temperature);  // part way between two tints while the weather turns
+Color sea_colour(double temperature);   // the same under the sea
 
 inline Color to_color(const Rgb& rgb) {
     return {static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)};

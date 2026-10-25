@@ -30,7 +30,7 @@ struct Screens {
     }
 
     static void run(Window& window, const std::filesystem::path& folder) {
-        Defaults defaults = {{"width", 100}, {"height", 100}, {"population", 90}, {"grass_density", 50},
+        Defaults defaults = {{"width", 100}, {"height", 100}, {"population", 90}, {"grass_density", 50}, {"ocean", 67},
                              {"seed", std::nullopt}, {"population_cap", std::nullopt}, {"mind_mutation", 50},
                              {"body_mutation", 50}, {"year_length", 360}};
         // Workers: a pool and a worker of its own, in a scratch folder, so the user's own are left alone.
@@ -126,6 +126,7 @@ struct Screens {
 
         Simulation::Settings settings;
         settings.seed = 42;
+        settings.ocean = DEFAULT_OCEAN;
         App app(window, settings, pool, worker);
         for (int turn = 0; turn < 150; ++turn) app.simulation_->advance();
         for (const auto& agent : app.simulation_->agents()) {

@@ -20,12 +20,15 @@ constexpr std::array<const char*, 3> LABELS = {"RING / BODY", "DOT / MIND", "SOC
 // Where a field lies in its word: the social fields in the social background, the rest in the dot and ring.
 int shift_of(Field field) {
     if (field.kind == FieldKind::Climate) return field.index == 0 ? 30 : 62;
-    if (field.kind == FieldKind::Social) return field.index == SOCIAL_TRAIT_COUNT ? NEURODIVERGENCE_SHIFT : TRAIT_BITS * field.index;
+    if (field.kind == FieldKind::Social) {
+        return field.index == SOCIAL_TRAIT_COUNT ? NEURODIVERGENCE_SHIFT : field.index > SOCIAL_TRAIT_COUNT ? TERRAIN_SHIFT : TRAIT_BITS * field.index;
+    }
     return TRAIT_BITS * field.index + (field.kind == FieldKind::Mind ? 0 : 32);
 }
 
 int largest(Field field) {
     if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT}) return NEURODIVERGENCE_MAX;
+    if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT + 1}) return 3;  // the terrain
     if (field == Field{FieldKind::Climate, 0}) return 2;  // none, heat or cold
     return field.kind == FieldKind::Climate ? 3 : TRAIT_MAX;
 }
@@ -203,7 +206,7 @@ void Designer::key(const SDL_Event& event) {
 
 Designer::Layout Designer::layout() const {
     Layout places;
-    places.card = Rect{0, 0, UI(1040), UI(800)}.center_at(window_.width() / 2, window_.height() / 2);
+    places.card = Rect{0, 0, UI(1040), UI(850)}.center_at(window_.width() / 2, window_.height() / 2);
     const Rect& card = places.card;
     places.preview = {card.x + UI(24), card.y + UI(92), UI(320), UI(270)};
     for (int part = 0; part < 3; ++part) {
@@ -354,7 +357,9 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     const std::string_view name = field.kind == FieldKind::Climate ? (field.index == 0 ? "hardiness" : "temperature")
                                   : field.kind == FieldKind::Mind    ? TEMPERAMENT[field.index]
                                   : field.kind == FieldKind::Social
-                                      ? (field.index == SOCIAL_TRAIT_COUNT ? std::string_view("neurodivergence") : TEMPERAMENT[DOT_TRAIT_COUNT + field.index])
+                                      ? (field.index == SOCIAL_TRAIT_COUNT       ? std::string_view("neurodivergence")
+                                         : field.index == SOCIAL_TRAIT_COUNT + 1 ? std::string_view("terrain")
+                                                                                 : TEMPERAMENT[DOT_TRAIT_COUNT + field.index])
                                       : BODY_TRAITS[field.index];
     canvas.text(font, name, {232, 236, 219}, row.x + UI(12), row.y + UI(2));
     const Rect meter{row.x + UI(12), row.bottom() - UI(6), minus.x - row.x - UI(28), UI(3)};
@@ -371,6 +376,7 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
     if (field == Field{FieldKind::Body, SpeciesTrait}) shown = std::string(SPECIES[value % 4]) + " " + shown;
     if (field == Field{FieldKind::Climate, 1}) shown = std::string(TEMPERATURES[static_cast<std::size_t>(value)]);
     if (field == Field{FieldKind::Climate, 0}) shown = std::string(HARDINESS[static_cast<std::size_t>(value)]);
+    if (field == Field{FieldKind::Social, SOCIAL_TRAIT_COUNT + 1}) shown = std::string(TERRAINS[static_cast<std::size_t>(value)]);
     canvas.text_at(font, shown, {238, 238, 220}, [&](Rect& text_box) { text_box.midright_at(box.right() - UI(10), box.centery()); });
 }
 
