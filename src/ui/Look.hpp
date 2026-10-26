@@ -66,10 +66,13 @@ void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_wi
 Surface bitzkey_layer(Dna dna, int radius, int ring_width = RING_WIDTH, bool alive = true);
 
 // A Bitzkey is drawn as a poker chip: its coloured edge CHIP_EDGE of its radius (at least the ring's width), with
-// CHIP_INSERTS lighter inserts round it; the looks drawn are kept, up to CHIPS_KEPT, then drawn afresh.
+// CHIP_INSERTS lighter inserts round it. Each look drawn is kept, up to LOOKS_KEPT, the least recently drawn let go
+// first: a look is its colours to within LOOK_SHADES of each channel, its species, size and whether it lives, so the
+// nearly alike, as most of a world's Bitzkeys are, share one.
 constexpr double CHIP_EDGE = 0.32;
 constexpr int CHIP_INSERTS = 6;
-constexpr std::size_t CHIPS_KEPT = 20000;
+constexpr std::size_t LOOKS_KEPT = 20000;
+constexpr int LOOK_SHADES = 8;
 
 // A tuft of grass the size of a square, or of kelp in the sea, kept once drawn.
 SDL_Surface* grass_tuft(int width, int height, bool sea);

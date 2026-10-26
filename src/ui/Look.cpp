@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <list>
+#include <map>
 #include <numbers>
 #include <set>
 
@@ -188,13 +190,32 @@ Surface bitzkey_layer(Dna dna, int radius, int ring_width, bool alive) {
 
 void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_width, bool alive, double opacity) {
     if (opacity <= 0) return;
-    // Each look drawn once and kept: a world has far fewer genomes than Bitzkeys.
-    using Key = std::tuple<std::uint64_t, std::uint32_t, int, int, bool>;
-    static std::map<Key, Surface> kept;
-    if (kept.size() > CHIPS_KEPT) kept.clear();
-    auto [found, added] = kept.try_emplace(Key{dna.bits, dna.social, radius, ring_width, alive});
-    if (added) found->second = bitzkey_layer(dna, radius, ring_width, alive);
-    SDL_Surface* layer = found->second.get();
+    // Each look drawn once and kept (see LOOKS_KEPT): far fewer than a world's genomes, which nearly all differ.
+    using Key = std::tuple<std::uint64_t, int, int, bool>;
+    struct Kept {
+        Surface layer;
+        std::list<Key>::iterator used;  // its place in the order last drawn
+    };
+    static std::map<Key, Kept> kept;
+    static std::list<Key> order;  // the most recently drawn first
+    std::uint64_t look = static_cast<std::uint64_t>(decode_body(dna)[SpeciesTrait]);
+    for (const std::uint32_t word : {mind_word(dna), body_word(dna), social_word(dna)}) {
+        const Color colour = to_color(color_from_word(word));
+        for (const int channel : {colour.r, colour.g, colour.b}) look = look << 5 | static_cast<std::uint64_t>(channel / LOOK_SHADES);
+    }
+    const Key key{look, radius, ring_width, alive};
+    auto found = kept.find(key);
+    if (found != kept.end()) {
+        order.splice(order.begin(), order, found->second.used);
+    } else {
+        if (kept.size() >= LOOKS_KEPT) {
+            kept.erase(order.back());
+            order.pop_back();
+        }
+        order.push_front(key);
+        found = kept.emplace(key, Kept{bitzkey_layer(dna, radius, ring_width, alive), order.begin()}).first;
+    }
+    SDL_Surface* layer = found->second.layer.get();
     const int reach = layer->w / 2;
     canvas.blit(layer, x - reach, y - reach, static_cast<std::uint8_t>(py_round(255 * std::min(1.0, opacity))));
 }
