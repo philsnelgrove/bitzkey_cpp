@@ -28,8 +28,8 @@ using namespace bitzkey::ui;
 namespace {
 
 struct Options {
-    Defaults defaults = {{"width", GRID_SIZE},
-                         {"height", GRID_SIZE},
+    Defaults defaults = {{"width", DEFAULT_WIDTH},
+                         {"height", DEFAULT_HEIGHT},
                          {"population", INITIAL_POPULATION},
                          {"grass_density", static_cast<int>(GRASS_DENSITY)},
                          {"ocean", static_cast<int>(DEFAULT_OCEAN + 0.5)},
