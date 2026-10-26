@@ -1186,6 +1186,7 @@
 "{#} found": "找到 {#} 项",
 "No settings match \"{*}\".": "没有与“{*}”匹配的设置。",
 "{#} neurons": "{#} 个神经元",
+"Zoomed out too far to see anybody": "缩得太远，看不到任何个体",
 "Set up the world, then start the simulation.": "设置世界，然后开始模拟。",
 "PASTE": "粘贴",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "在此粘贴导出的基因组（CTRL+V）、将文件拖到窗口上、加载文件、“从图鉴”挑选，或“设计”你自己的。导入的 Bitzkey 将加入上方生成的那些。",

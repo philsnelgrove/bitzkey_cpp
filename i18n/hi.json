@@ -1186,6 +1186,7 @@
 "{#} found": "{#} मिले",
 "No settings match \"{*}\".": "\"{*}\" से कोई सेटिंग मेल नहीं खाती।",
 "{#} neurons": "{#} न्यूरॉन",
+"Zoomed out too far to see anybody": "बहुत दूर ज़ूम आउट है, कोई दिखाई नहीं देता",
 "Set up the world, then start the simulation.": "दुनिया तैयार करें, फिर सिमुलेशन शुरू करें।",
 "PASTE": "चिपकाएँ",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "निर्यात किए जीनोम यहाँ चिपकाएँ (CTRL+V), कोई फ़ाइल विंडो पर छोड़ें, एक लोड करें, सूची से एक चुनें, या अपना खुद का डिज़ाइन करें। आयातित Bitzkey ऊपर बनाए गए Bitzkey के साथ जुड़ते हैं।",

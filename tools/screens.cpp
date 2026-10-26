@@ -167,6 +167,27 @@ struct Screens {
         save(canvas, folder / "app-zoomed.bmp");
         app.map_zoom_ = 1.0;
         app.map_centre_.reset();
+        {  // zoomed out all the way, nothing chosen: only the largest drawn
+            const auto chosen = app.selected_id_;
+            const auto exporting = app.export_list_;
+            app.selected_id_.reset();
+            app.export_list_.clear();
+            const Uint64 began = SDL_GetPerformanceCounter();
+            for (int frame = 0; frame < 20; ++frame) app.draw(canvas);
+            std::cout << "drawing a frame zoomed out, the largest alone: "
+                      << (SDL_GetPerformanceCounter() - began) * 1000.0 / SDL_GetPerformanceFrequency() / 20 << " ms\n";
+            save(canvas, folder / "app-lod.bmp");
+            std::vector<int> sizes;  // every one too small to see from all the way out, for a moment
+            for (const auto& agent : app.simulation_->agents()) {
+                sizes.push_back(agent->body[Size]);
+                agent->body[Size] = 0;
+            }
+            app.draw(canvas);
+            save(canvas, folder / "app-too-far.bmp");
+            for (std::size_t index = 0; index < sizes.size(); ++index) app.simulation_->agents()[index]->body[Size] = sizes[index];
+            app.selected_id_ = chosen;
+            app.export_list_ = exporting;
+        }
         app.globe_ = true;  // the globe, then zoomed in with the HUD hidden
         app.draw(canvas);
         save(canvas, folder / "app-globe.bmp");

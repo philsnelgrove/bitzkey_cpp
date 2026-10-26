@@ -120,6 +120,10 @@ private:
                         const std::string& skipped = "");
     void catalog_selected();
     void catalog_picked();
+    // Whether a Bitzkey is drawn whatever its size: the one chosen, one picked, or one to export.
+    bool marked(const Bitzkey& agent) const;
+    // Every Bitzkey in view too small to draw from this far out: say so, in the middle of the view.
+    void say_too_far(Canvas& canvas, const Rect& view);
     void open_death_report();  // every death so far, by cause and species
     void inspect_brains();     // pause, and show the selected Bitzkey's choices in each standard situation
     void browse_catalog();  // look through the catalog, importing and exporting nothing

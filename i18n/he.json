@@ -1186,6 +1186,7 @@
 "{#} found": "נמצאו {#}",
 "No settings match \"{*}\".": "אין הגדרות התואמות ל-\"{*}\".",
 "{#} neurons": "{#} נוירונים",
+"Zoomed out too far to see anybody": "רחוק מדי כדי לראות מישהו",
 "Set up the world, then start the simulation.": "הגדירו את העולם, ואז התחילו את הסימולציה.",
 "PASTE": "הדבקה",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "הדביקו כאן גנומים מיוצאים (CTRL+V), גררו קובץ לחלון, טענו אחד, בחרו אחד מהקטלוג, או עצבו משלכם. Bitzkeys מיובאים מצטרפים לאלה שנוצרו למעלה.",

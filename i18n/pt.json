@@ -1186,6 +1186,7 @@
 "{#} found": "{#} encontradas",
 "No settings match \"{*}\".": "Nenhuma definição corresponde a \"{*}\".",
 "{#} neurons": "{#} neurónios",
+"Zoomed out too far to see anybody": "Demasiado afastado para ver alguém",
 "Set up the world, then start the simulation.": "Configure o mundo e depois inicie a simulação.",
 "PASTE": "Colar",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "Cole aqui genomas exportados (CTRL+V), solte um arquivo na janela, carregue um, escolha um DO CATÁLOGO ou PROJETE o seu. Os Bitzkeys importados se juntam aos criados acima.",

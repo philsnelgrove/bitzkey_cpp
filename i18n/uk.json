@@ -1186,6 +1186,7 @@
 "{#} found": "знайдено: {#}",
 "No settings match \"{*}\".": "Жодне налаштування не відповідає «{*}».",
 "{#} neurons": "{#} нейронів",
+"Zoomed out too far to see anybody": "Занадто віддалено, щоб когось побачити",
 "Set up the world, then start the simulation.": "Налаштуйте світ, потім запустіть симуляцію.",
 "PASTE": "Вставити",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "Вставте сюди експортовані геноми (CTRL+V), перетягніть файл у вікно, завантажте його, виберіть З КАТАЛОГУ або СТВОРІТЬ власний. Імпортовані Bitzkey приєднаються до створених вище.",

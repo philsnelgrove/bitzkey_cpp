@@ -1186,6 +1186,7 @@
 "{#} found": "{#} trovate",
 "No settings match \"{*}\".": "Nessuna impostazione corrisponde a \"{*}\".",
 "{#} neurons": "{#} neuroni",
+"Zoomed out too far to see anybody": "Troppo lontano per vedere qualcuno",
 "Set up the world, then start the simulation.": "Imposta il mondo, poi avvia la simulazione.",
 "PASTE": "Incolla",
 "Paste exported genomes here (CTRL+V), drop a file onto the window, load one, pick one FROM CATALOG, or DESIGN your own. Imported Bitzkeys join the ones spawned above.": "Incolla qui genomi esportati (CTRL+V), trascina un file sulla finestra, caricane uno, scegline uno DAL CATALOGO o PROGETTA il tuo. I Bitzkey importati si uniscono a quelli generati sopra.",

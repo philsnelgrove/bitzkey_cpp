@@ -156,6 +156,17 @@ constexpr double GLOBE_SHARE = 0.46;
 constexpr double GLOBE_ZOOM_MAX = 8.0;
 constexpr int GLOBE_TEXTURE = 1600;
 constexpr double STACK_SPACING = 0.7;
+// The level of detail: zoomed out all the way, only the largest Bitzkeys (size 7) are drawn, and each step in shows
+// the next size down, until from ALL_SIZES_AT of the way in (on the wheel's scale) every size shows. The one chosen,
+// those picked and those to export are drawn whatever their size.
+constexpr double ALL_SIZES_AT = 0.85;
+constexpr const char* TOO_FAR = "Zoomed out too far to see anybody";
+
+// The smallest size drawn at `zoom`, between `least` (all the way out) and `most` (all the way in).
+int smallest_shown(double zoom, double least, double most) {
+    const double inward = std::log(zoom / least) / std::log(most / least);  // 0 all the way out, 1 all the way in
+    return std::clamp(static_cast<int>(std::ceil(TRAIT_MAX * (1 - inward / ALL_SIZES_AT) - 1e-9)), 0, TRAIT_MAX);
+}
 constexpr double TRAIL_OPACITY = 0.5;   // how faintly a Bitzkey shows on each cell it passed through this turn
 
 std::string format(const char* pattern, auto... values) {
@@ -1293,8 +1304,15 @@ void App::draw_globe(Canvas& canvas) {
     globe_hits_.clear();
     const double cell = std::numbers::pi * radius / height;  // a square's height at the globe's face
     const auto [smallest, largest] = map_dot_radii(cell);
+    const int least = smallest_shown(globe_zoom_, 0.5, GLOBE_ZOOM_MAX);
+    int drawn = 0, hidden = 0;
     for (const Stack& stack : stacks) {
-        std::vector<const Bitzkey*> members = *stack.members;
+        std::vector<const Bitzkey*> members;
+        for (const Bitzkey* agent : *stack.members) {
+            if (agent->body[Size] >= least || marked(*agent)) members.push_back(agent);
+            else ++hidden;  // too small to see from this far out
+        }
+        drawn += static_cast<int>(members.size());
         std::stable_sort(members.begin(), members.end(), [](const Bitzkey* a, const Bitzkey* b) { return a->body[Size] > b->body[Size]; });
         const double shrink = 0.55 + 0.45 * stack.depth;  // foreshortened toward the edge
         int lift = 0;
@@ -1309,7 +1327,21 @@ void App::draw_globe(Canvas& canvas) {
             lift += std::max(2, static_cast<int>(std::lround((dot + RING_WIDTH) * STACK_SPACING)));  // the next above, its face clear
         }
     }
+    if (drawn == 0 && hidden > 0) say_too_far(canvas, view);
     canvas.set_clip(std::nullopt);
+}
+
+bool App::marked(const Bitzkey& agent) const {
+    return (selected_id_ && agent.identifier == *selected_id_) || graph_.selection().contains(agent.identifier) ||
+           std::any_of(export_list_.begin(), export_list_.end(), [&](const ExportEntry& entry) { return entry.identifier == agent.identifier; });
+}
+
+void App::say_too_far(Canvas& canvas, const Rect& view) {
+    TTF_Font* font = UI.font(Face::Sans, 15);
+    Rect box{0, 0, Canvas::text_width(font, tr(TOO_FAR)) + UI(28), UI(34)};
+    box.center_at(view.centerx(), view.centery());
+    canvas.rect(box, {19, 26, 27, 220}, 0, UI(6));
+    canvas.text_at(font, TOO_FAR, {238, 183, 110}, [&](Rect& text) { text.center_at(box.centerx(), box.centery()); });
 }
 
 
@@ -1484,7 +1516,10 @@ void App::draw_world(Canvas& canvas) {
     const Rect reach = view.inflate(static_cast<int>(2 * board.cell_width) + UI(20), static_cast<int>(2 * board.cell_height) + UI(20));
     draw_ground(canvas, board, view);
     const auto [smallest, largest] = map_dot_radii(std::min(board.cell_width, board.cell_height));  // zoomed with the map
+    const int least = smallest_shown(map_zoom_, 1.0, MAP_ZOOM_MAX);
+    const auto shown = [&](const Bitzkey& agent) { return agent.body[Size] >= least || marked(agent); };
     for (const auto& agent : simulation_->agents()) {  // the way each came this turn, faint, beneath them all
+        if (!shown(*agent)) continue;
         for (const auto& [x, y] : agent->trail) {
             const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
@@ -1492,10 +1527,16 @@ void App::draw_world(Canvas& canvas) {
             draw_bitzkey(canvas, agent->dna, px, py, dot_radius(agent->body[Size], largest, smallest), RING_WIDTH, agent->alive(), TRAIL_OPACITY);
         }
     }
+    int drawn = 0, hidden = 0;
     for (const auto& agent : simulation_->agents()) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
         if (!reach.contains(px, py)) continue;
+        if (!shown(*agent)) {  // too small to see from this far out
+            ++hidden;
+            continue;
+        }
+        ++drawn;
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
@@ -1526,6 +1567,7 @@ void App::draw_world(Canvas& canvas) {
         canvas.line(rect.x, py, rect.right(), py, GRID);
     }
     canvas.rect(rect, {80, 99, 85}, 1);
+    if (drawn == 0 && hidden > 0) say_too_far(canvas, view);
     canvas.set_clip(std::nullopt);
 }
 
