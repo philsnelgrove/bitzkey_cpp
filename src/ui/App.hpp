@@ -57,7 +57,6 @@ private:
     std::string end_note() const;
     void finish();
     void close_graph();  // the pick on the graph stays selected on the map
-    void seek(int turn);
     void click(int x, int y);
     void open(const std::string& kind, Dialog dialog);
     bool answer(const std::string& choice);  // true when the user leaves the simulation

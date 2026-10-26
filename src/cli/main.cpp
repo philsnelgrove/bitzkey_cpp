@@ -674,9 +674,9 @@ int main(int argc, char** argv) {
         if (profile) {
             const Simulation::Timings& took = world.timings;
             const double each = 1.0 / std::max(1, world.turn() - first_turn);
-            std::printf("ms a turn: upkeep %.2f  sense %.2f  think %.2f  learn %.2f  choose %.2f  act %.2f  after %.2f  record %.2f\n",
+            std::printf("ms a turn: upkeep %.2f  sense %.2f  think %.2f  learn %.2f  choose %.2f  act %.2f  after %.2f\n",
                         took.upkeep * each, took.sense * each, took.think * each, took.learn * each, took.choose * each,
-                        took.act * each, took.after * each, took.record * each);
+                        took.act * each, took.after * each);
             // Within acting, the costliest actions first: ms a turn, how many took it a turn, and µs each.
             std::vector<int> order(ACTION_COUNT);
             std::iota(order.begin(), order.end(), 0);

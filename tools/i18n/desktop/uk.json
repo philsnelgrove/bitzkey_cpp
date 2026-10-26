@@ -11,9 +11,9 @@
 "Added {#} Bitzkeys from the catalog to the import list, with their trained brains.": "Додано до списку імпорту Bitzkey з каталогу: {#}, з навченим мозком.",
 "The clipboard has no text to paste.": "У буфері обміну немає тексту для вставлення.",
 "Couldn't read {*}: {*}": "Не вдалося прочитати {*}: {*}",
-"UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "UP/DOWN  вибрати   LEFT/RIGHT  змінити (SHIFT x{#})   PGUP/PGDN  перейти   ENTER  застосувати   ESC  скасувати",
+"CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "CTRL+F  пошук   UP/DOWN  вибрати   LEFT/RIGHT  змінити (SHIFT x{#})   PGUP/PGDN  перейти   ENTER  застосувати   ESC  скасувати",
 "WARNING  {*}": "Увага  {*}",
-"C++ only: {#} thinks and learns on every GPU found, in floats, with no rewinding; {#} on the CPU, exactly": "Лише C++: {#} думає й навчається на кожному знайденому GPU, з плаваючою комою, без перемотування; {#} на CPU, точно",
+"C++ only: {#} thinks and learns on every GPU found, in floats; {#} on the CPU, exactly": "Лише C++: {#} думає й навчається на кожному знайденому GPU, з плаваючою комою; {#} на CPU, точно",
 "A running world keeps thinking where it started; this takes effect in a new world.": "Запущений світ і далі думає там, де почав; це діятиме в новому світі.",
 "MEMORY: each turn kept holds the whole world, about {#} KB a brain (some {#} MB a turn with {#} animals), up to the history memory limit": "ПАМ'ЯТЬ: кожен збережений хід містить увесь світ, близько {#} КБ на мозок (приблизно {#} МБ на хід при {#} тваринах), до межі пам'яті історії",
 "MEMORY: keep this well below your computer's free memory, or Bitzkey will slow to a crawl or crash": "ПАМ'ЯТЬ: тримайте це значно нижче вільної пам'яті комп'ютера, інакше Bitzkey дуже сповільниться або впаде",
@@ -53,7 +53,7 @@
 "Click a dot to inspect its genome.": "Клацніть точку, щоб оглянути геном.",
 "Living: click its current position.": "Живий: клацніть його поточне місце.",
 "{#} picked on the colour graph, ringed on the map.": "Вибрано на графіку кольорів, обведено на мапі: {#}.",
-"SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  пауза   -/+  швидкість   LEFT / RIGHT  назад / крок   КОЛІЩАТКО / Z  масштаб   I  аналітика   B  звіт   G  графік   E  експорт   R  перезапуск   F{#}  вікно   ESC  меню",
+"SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  пауза   -/+  швидкість   RIGHT  крок   КОЛІЩАТКО / Z  масштаб   I  аналітика   B  звіт   G  графік   E  експорт   R  перезапуск   F{#}  вікно   ESC  меню",
 "home {*}": "дім {*}",
 "brain {#} deep": "мозок, шарів: {#}",
 "{#}-{#} of {#}   (wheel or UP/DOWN to scroll)": "{#}-{#} з {#}   (коліщатко або UP/DOWN для прокручування)",
@@ -80,5 +80,6 @@
 "scaven": "падло",
 "Cleared {#} Bitzkey from the export list.": "Прибрано зі списку експорту: {#}.",
 "Cleared {#} Bitzkeys from the export list.": "Прибрано зі списку експорту: {#}.",
-"{*}   {*}": "{*}   {*}"
+"{*}   {*}": "{*}   {*}",
+"Search settings  (CTRL+F)": "Пошук налаштувань  (CTRL+F)"
 }

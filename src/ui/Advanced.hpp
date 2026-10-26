@@ -1,7 +1,8 @@
 #pragma once
 // The advanced panel: every tunable rule of the simulation, by group, opened from the
 // configuration panel, where applying it sets the rules the next world plays by, or from the map,
-// where it sets the rules of the world running there.
+// where it sets the rules of the world running there. A search box at its top narrows the list, as it is typed
+// into, to the rules whose name, description, group or key holds what is typed, in English or as shown.
 
 #include <array>
 #include <optional>
@@ -17,6 +18,10 @@
 namespace bitzkey::ui {
 
 struct Screens;
+
+// Whether a rule answers a search: every word of it in the rule's name, description, group or key, in English or
+// in the language shown, whatever their case. An empty search finds every rule.
+bool rule_matches(const rules::Rule& rule, std::string_view search);
 
 // Every rule's value, the focused rule, and any number being typed into it.
 class AdvancedForm {
@@ -61,7 +66,7 @@ private:
     static constexpr int HEADING_HEIGHT = 34;
 
     struct Layout {
-        Rect card, view, apply, cancel, reset, reset_all;
+        Rect card, search, view, apply, cancel, reset, reset_all;
     };
     // A line of the list: a group heading, or the index of a rule, with its top in the list.
     struct Line {
@@ -69,6 +74,9 @@ private:
         int top;
     };
     Layout layout() const;
+    void find();  // the list again, of the rules answering the search, the focus kept on one of them
+    void step(int offset);  // the focus that many rules on among those listed, round from the end to the start
+    std::vector<int> listed() const;  // the rules listed, in order
     int max_scroll(const Rect& view) const;
     void scroll_by(int amount);
     void show_focus();
@@ -85,6 +93,8 @@ private:
     Window& window_;
     AdvancedForm form_;
     std::vector<Line> lines_;
+    std::string search_;
+    bool searching_ = false;  // typing goes into the search box rather than the focused rule's value
     int list_height_ = 0;
     int scroll_ = 0;
     std::string note_;

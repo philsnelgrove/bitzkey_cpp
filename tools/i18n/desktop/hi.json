@@ -11,9 +11,9 @@
 "Added {#} Bitzkeys from the catalog to the import list, with their trained brains.": "सूची से {#} Bitzkey उनके प्रशिक्षित मस्तिष्क सहित आयात सूची में जोड़े गए।",
 "The clipboard has no text to paste.": "क्लिपबोर्ड में चिपकाने के लिए कोई पाठ नहीं है।",
 "Couldn't read {*}: {*}": "{*} पढ़ा नहीं जा सका: {*}",
-"UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "UP/DOWN  चुनें   LEFT/RIGHT  बदलें (SHIFT x{#})   PGUP/PGDN  कूदें   ENTER  लागू करें   ESC  रद्द",
+"CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "CTRL+F  खोजें   UP/DOWN  चुनें   LEFT/RIGHT  बदलें (SHIFT x{#})   PGUP/PGDN  कूदें   ENTER  लागू करें   ESC  रद्द",
 "WARNING  {*}": "चेतावनी  {*}",
-"C++ only: {#} thinks and learns on every GPU found, in floats, with no rewinding; {#} on the CPU, exactly": "केवल C++: {#} हर मिले GPU पर फ़्लोट में सोचता और सीखता है, पीछे जाना संभव नहीं; {#} CPU पर, सटीक",
+"C++ only: {#} thinks and learns on every GPU found, in floats; {#} on the CPU, exactly": "केवल C++: {#} हर मिले GPU पर फ़्लोट में सोचता और सीखता है; {#} CPU पर, सटीक",
 "A running world keeps thinking where it started; this takes effect in a new world.": "चलती दुनिया वहीं सोचती रहती है जहाँ शुरू हुई; यह नई दुनिया में लागू होगा।",
 "MEMORY: each turn kept holds the whole world, about {#} KB a brain (some {#} MB a turn with {#} animals), up to the history memory limit": "मेमोरी: रखी गई हर बारी में पूरी दुनिया होती है, प्रति मस्तिष्क लगभग {#} KB ({#3} जानवरों के साथ प्रति बारी लगभग {#2} MB), इतिहास मेमोरी सीमा तक",
 "MEMORY: keep this well below your computer's free memory, or Bitzkey will slow to a crawl or crash": "मेमोरी: इसे अपने कंप्यूटर की खाली मेमोरी से काफ़ी कम रखें, वरना Bitzkey बहुत धीमा हो जाएगा या क्रैश हो जाएगा",
@@ -53,7 +53,7 @@
 "Click a dot to inspect its genome.": "जीनोम देखने के लिए किसी बिंदु पर क्लिक करें।",
 "Living: click its current position.": "जीवित: उसकी वर्तमान जगह पर क्लिक करें।",
 "{#} picked on the colour graph, ringed on the map.": "रंग ग्राफ़ पर {#} चुने गए, मानचित्र पर घेरे गए।",
-"SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  रोकें   -/+  गति   LEFT / RIGHT  पीछे / एक कदम   व्हील / Z  ज़ूम   I  अंतर्दृष्टि   B  रिपोर्ट   G  ग्राफ़   E  निर्यात   R  फिर से शुरू   F{#}  विंडो   ESC  मेनू",
+"SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  रोकें   -/+  गति   RIGHT  एक कदम   व्हील / Z  ज़ूम   I  अंतर्दृष्टि   B  रिपोर्ट   G  ग्राफ़   E  निर्यात   R  फिर से शुरू   F{#}  विंडो   ESC  मेनू",
 "home {*}": "घर {*}",
 "brain {#} deep": "मस्तिष्क {#} परतें",
 "{#}-{#} of {#}   (wheel or UP/DOWN to scroll)": "{#}-{#} / {#}   (स्क्रॉल के लिए व्हील या UP/DOWN)",
@@ -80,5 +80,6 @@
 "scaven": "मुर्दाखोरी",
 "Cleared {#} Bitzkey from the export list.": "निर्यात सूची से {#} Bitzkey हटाया गया।",
 "Cleared {#} Bitzkeys from the export list.": "निर्यात सूची से {#} Bitzkey हटाए गए।",
-"{*}   {*}": "{*}   {*}"
+"{*}   {*}": "{*}   {*}",
+"Search settings  (CTRL+F)": "सेटिंग खोजें  (CTRL+F)"
 }

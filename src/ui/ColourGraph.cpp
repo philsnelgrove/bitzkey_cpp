@@ -144,9 +144,9 @@ void ColourGraph::select(const std::set<int>& picked, Mode mode) {
 }
 
 std::pair<int, int> ColourGraph::window() const {
-    if (!view_) return {0, frontier_};
-    if (pinned_) return {std::max(0, frontier_ - (view_->second - view_->first)), frontier_};  // kept at the latest turn
-    return {std::max(0, view_->first), std::min(frontier_, view_->second)};
+    if (!view_) return {0, now_};
+    if (pinned_) return {std::max(0, now_ - (view_->second - view_->first)), now_};  // kept at the latest turn
+    return {std::max(0, view_->first), std::min(now_, view_->second)};
 }
 
 int ColourGraph::turn_at(int x) const {
@@ -168,7 +168,7 @@ int ColourGraph::x_of(int turn) const {
 void ColourGraph::zoom(int notches, int x) {
     const auto [first, last] = window();
     const int span = last - first + 1;
-    const int whole = frontier_ + 1;
+    const int whole = now_ + 1;
     const int new_span = std::max(MIN_VIEW, static_cast<int>(py_round(span * std::pow(ZOOM_STEP, notches))));
     if (new_span >= whole) {
         view_.reset();
@@ -183,7 +183,7 @@ void ColourGraph::zoom(int notches, int x) {
     int new_first = static_cast<int>(py_round(centre - static_cast<double>(centre - first) * new_span / span));
     new_first = std::max(0, std::min(whole - new_span, new_first));
     view_ = std::pair{new_first, new_first + new_span - 1};
-    pinned_ = view_->second >= frontier_;
+    pinned_ = view_->second >= now_;
 }
 
 void ColourGraph::zoom_height(int notches, int y) {
@@ -202,9 +202,9 @@ void ColourGraph::drag(int start_x, int start_y, std::pair<int, int> view, doubl
         const auto [first, last] = view;
         const int span = last - first + 1;
         const int shift = static_cast<int>(py_round(static_cast<double>(x - start_x) * span / std::max(1, chart.w)));
-        const int new_first = std::max(0, std::min(frontier_ + 1 - span, first - shift));
+        const int new_first = std::max(0, std::min(now_ + 1 - span, first - shift));
         view_ = std::pair{new_first, new_first + span - 1};
-        pinned_ = view_->second >= frontier_;
+        pinned_ = view_->second >= now_;
     }
     set_floor(floor + static_cast<double>(y - start_y) / std::max(1, chart.h) / height_zoom_);
 }
@@ -213,9 +213,9 @@ void ColourGraph::pan(int notches) {
     if (!view_) return;
     const auto [first, last] = window();
     const int span = last - first + 1;
-    const int new_first = std::max(0, std::min(frontier_ + 1 - span, first + notches * std::max(1, span / 10)));
+    const int new_first = std::max(0, std::min(now_ + 1 - span, first + notches * std::max(1, span / 10)));
     view_ = std::pair{new_first, new_first + span - 1};
-    pinned_ = view_->second >= frontier_;
+    pinned_ = view_->second >= now_;
 }
 
 ColourGraph::Layout ColourGraph::layout() const {
@@ -297,7 +297,6 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
     if (event.type == SDL_MOUSEMOTION) {
         mouse_x_ = event.motion.x;
         mouse_y_ = event.motion.y;
-        if (scrub_) scrub_ = turn_at(event.motion.x);
         if (pan_ && (pan_->moved || std::max(std::abs(event.motion.x - pan_->x), std::abs(event.motion.y - pan_->y)) >= UI(DRAG_THRESHOLD))) {
             pan_->moved = true;
             drag(pan_->x, pan_->y, pan_->view, pan_->floor, event.motion.x, event.motion.y);
@@ -320,10 +319,6 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
     } else if (event.type == SDL_MOUSEBUTTONUP && (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE) && pan_) {
         const Pan ended = *pan_;
         pan_.reset();
-        if (ended.button == SDL_BUTTON_RIGHT && !ended.moved) {  // a right-click, not a pan
-            seek_turn_ = turn_at(ended.x);
-            return Action::Seek;
-        }
     } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
         const int x = event.button.x, y = event.button.y;
         if (places.copy.contains(x, y)) return Action::Copy;
@@ -336,17 +331,10 @@ ColourGraph::Action ColourGraph::handle(const SDL_Event& event) {
             menu_open_ = true;
         } else if (places.clear.contains(x, y)) {
             select({}, Mode::Replace);
-        } else if (timeline.contains(x, y)) {
-            scrub_ = turn_at(x);
         } else if (chart.contains(x, y)) {
             press_ = std::tuple{x, y, static_cast<Uint16>(SDL_GetModState())};
         }
     } else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
-        if (scrub_) {
-            seek_turn_ = turn_at(event.button.x);
-            scrub_.reset();
-            return Action::Seek;
-        }
         if (press_) {
             const auto [start_x, start_y, modifiers] = *press_;
             press_.reset();
@@ -489,7 +477,6 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         select(living, Mode::Replace);
     }
     now_ = simulation.turn();
-    frontier_ = simulation.frontier();
     ended_ = simulation.ended();
     const Layout places = layout();
     const Rect &panel = places.panel, &chart = places.chart, &timeline = places.timeline;
@@ -514,7 +501,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     if (note) canvas.text_at(small, *note, {238, 183, 110}, [&](Rect& box) { box.topright_at(panel.right() - UI(24), panel.y + UI(58)); });
 
     const auto [first, last] = window();
-    const std::vector<long long> key = {simulation.turn(), simulation.frontier(), static_cast<long long>(simulation.census().snapshots().size()),
+    const std::vector<long long> key = {simulation.turn(), static_cast<long long>(simulation.census().snapshots().size()),
                                         static_cast<long long>(simulation.agents().size()), simulation.deaths(), part_, chart.w, chart.h,
                                         chart.x, chart.y, selection_version_, first, last,
                                         static_cast<long long>(reinterpret_cast<std::uintptr_t>(&simulation)), sort_,
@@ -650,7 +637,7 @@ void ColourGraph::draw_timeline(Canvas& canvas, const Rect& chart, const Rect& t
     canvas.rect(timeline, {54, 68, 62}, 1, UI(4));
     std::string middle = !view_ ? format("TURN %d", (first + last) / 2)
                                 : format("TURNS %d - %d  (ZOOM x%.1f)", first, last,
-                                         static_cast<double>(frontier_ + 1) / (last - first + 1));
+                                         static_cast<double>(now_ + 1) / (last - first + 1));
     if (height_zoom_ > 1) middle += format("  (HEIGHT x%.1f)", height_zoom_);
     const std::array<std::tuple<std::string, int, double>, 3> labels = {
         std::tuple{format("TURN %d", first), timeline.x + UI(8), 0.0}, std::tuple{middle, timeline.centerx(), 0.5},
@@ -661,8 +648,7 @@ void ColourGraph::draw_timeline(Canvas& canvas, const Rect& chart, const Rect& t
             box.y = timeline.centery() - box.h / 2;
         });
     }
-    const std::array<std::pair<std::optional<int>, Color>, 2> markers = {std::pair{std::optional<int>(now_), Color{245, 238, 206}},
-                                                                        std::pair{scrub_, Color{238, 183, 110}}};
+    const std::array<std::pair<std::optional<int>, Color>, 1> markers = {std::pair{std::optional<int>(now_), Color{245, 238, 206}}};
     for (const auto& [turn, colour] : markers) {
         if (!turn || !(first <= *turn && *turn <= last)) continue;
         const int x = x_of(*turn);
@@ -702,9 +688,7 @@ std::string ColourGraph::describe(const Simulation& simulation, std::optional<in
     for (const Bitzkey* agent : simulation.living()) living.insert(agent->identifier);
     std::string chosen = selection_.empty() ? "Nothing selected" : format("%zu selected", selection_.size());
     if (sort_ != 0) chosen = "The living sorted by " + sort_name(sort_) + ", lowest at the bottom.     " + chosen;
-    if (simulation.turn() < simulation.frontier()) {
-        chosen = format("Rewound to turn %d of %d.     ", simulation.turn(), simulation.frontier()) + chosen;
-    } else if (const EndReason reason = simulation.end_reason(); reason != EndReason::None) {
+    if (const EndReason reason = simulation.end_reason(); reason != EndReason::None) {
         chosen = format("Ended at turn %d: %s.     ", simulation.turn(),
                         reason == EndReason::Extinct ? "every animal died" : "the world filled up") + chosen;
     }

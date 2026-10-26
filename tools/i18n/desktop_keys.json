@@ -11,9 +11,9 @@
 "Added {#} Bitzkeys from the catalog to the import list, with their trained brains.",
 "The clipboard has no text to paste.",
 "Couldn't read {*}: {*}",
-"UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
+"CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
 "WARNING  {*}",
-"C++ only: {#} thinks and learns on every GPU found, in floats, with no rewinding; {#} on the CPU, exactly",
+"C++ only: {#} thinks and learns on every GPU found, in floats; {#} on the CPU, exactly",
 "A running world keeps thinking where it started; this takes effect in a new world.",
 "MEMORY: each turn kept holds the whole world, about {#} KB a brain (some {#} MB a turn with {#} animals), up to the history memory limit",
 "MEMORY: keep this well below your computer's free memory, or Bitzkey will slow to a crawl or crash",
@@ -53,7 +53,7 @@
 "Click a dot to inspect its genome.",
 "Living: click its current position.",
 "{#} picked on the colour graph, ringed on the map.",
-"SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu",
+"SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu",
 "home {*}",
 "brain {#} deep",
 "{#}-{#} of {#}   (wheel or UP/DOWN to scroll)",
@@ -80,5 +80,6 @@
 "scaven",
 "Cleared {#} Bitzkey from the export list.",
 "Cleared {#} Bitzkeys from the export list.",
-"{*}   {*}"
+"{*}   {*}",
+"Search settings  (CTRL+F)"
 ]

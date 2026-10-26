@@ -64,6 +64,15 @@ struct Screens {
         advanced.form_.type_text("0.3");
         advanced.draw(canvas);
         save(canvas, folder / "advanced-mid.bmp");
+        advanced.searching_ = true;  // searching, narrowed as it is typed
+        advanced.search_ = "stamina";
+        advanced.find();
+        advanced.draw(canvas);
+        save(canvas, folder / "advanced-search.bmp");
+        advanced.search_ = "unicorns";
+        advanced.find();
+        advanced.draw(canvas);
+        save(canvas, folder / "advanced-search-none.bmp");
         AdvancedScreen running(window, setup.rules_, true);  // opened from the map: this world's rules
         running.form_.select(4);
         running.show_focus();

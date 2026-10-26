@@ -249,9 +249,6 @@ App::Result App::run() {
                 } else if (key == SDLK_RIGHT) {
                     playing_ = false;
                     simulation_->advance();
-                } else if (key == SDLK_LEFT) {
-                    playing_ = false;
-                    simulation_->rewind();
                 } else if (key == SDLK_EQUALS || key == SDLK_PLUS || key == SDLK_KP_PLUS) {
                     speed_ = std::min(speed_ + 1, static_cast<int>(TURN_INTERVALS.size()) - 1);
                     say(std::string("Speed ") + SPEED_LABELS[static_cast<std::size_t>(speed_)] + ".");
@@ -300,8 +297,7 @@ App::Result App::run() {
             } else if (show_census_ && (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP ||
                                         event.type == SDL_MOUSEMOTION || event.type == SDL_MOUSEWHEEL)) {
                 const ColourGraph::Action action = graph_.handle(event);
-                if (action == ColourGraph::Action::Seek) seek(graph_.seek_turn());
-                else if (action == ColourGraph::Action::Map) close_graph();  // at the run's end, to look over the map
+                if (action == ColourGraph::Action::Map) close_graph();  // at the run's end, to look over the map
                 else if (action == ColourGraph::Action::Catalog) catalog_picked();
                 else if (action == ColourGraph::Action::Open) browse_catalog();
                 else if (action == ColourGraph::Action::Renew) {
@@ -385,17 +381,6 @@ void App::finish() {
     playing_ = false;
     show_census_ = true;
     say(end_note());
-}
-
-void App::seek(int turn) {
-    // Pause and move the world to a turn already simulated, as far back as the history reaches.
-    playing_ = false;
-    simulation_->seek(turn);
-    if (turn < simulation_->turn()) {
-        say(format("The history reaches back only to turn %d; moved there.", simulation_->turn()));
-    } else {
-        say(format("Moved to turn %d.", simulation_->turn()));
-    }
 }
 
 void App::click(int x, int y) {
@@ -1836,9 +1821,8 @@ void App::draw_footer(Canvas& canvas) {
     TTF_Font* small = UI.font(Face::Sans, 12);
     const int height = canvas.height();
     canvas.fill_rect({0, height - UI(52), canvas.width(), UI(52)}, {27, 37, 37});
-    std::string history = format("HISTORY  %d/%d", simulation_->turn(), simulation_->frontier());
-    if (simulation_->earliest()) history += format("  FROM %d", simulation_->earliest());  // the oldest turns no longer fit the disk budget
-    canvas.text(small, history, {158, 181, 160}, UI(22), height - UI(36));
+    const std::string turn_label = format("TURN  %d", simulation_->turn());
+    canvas.text(small, turn_label, {158, 181, 160}, UI(22), height - UI(36));
     TTF_Font* button_font = UI.font(Face::Sans, 13, true);
     const std::string label = format("EXPORT ALL SELECTED (%zu)", export_list_.size());
     const bool any = !export_list_.empty();
@@ -1863,14 +1847,14 @@ void App::draw_footer(Canvas& canvas) {
                                                                                                      height - UI(26));
     canvas.rect(workers_button_, pooled ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
     canvas.label(button_font, "WORKERS", pooled ? Color{19, 26, 27} : Color{220, 229, 211}, workers_button_);
-    const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, history) + UI(24));  // clear of the history, however long
+    const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, turn_label) + UI(24));  // clear of the turn, however long
     const int room = workers_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {
         footer_lines(canvas, message_, left, room, {238, 183, 110});
         return;
     }
     footer_lines(canvas,
-                 "SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   "
+                 "SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   "
                  "G  graph   E  export   R  restart   F11  window   ESC  menu",
                  left, room, {187, 199, 181});
 }

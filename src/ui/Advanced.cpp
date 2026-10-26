@@ -31,7 +31,27 @@ std::string fit(TTF_Font* font, std::string text, int width) {
 
 int rule_count() { return static_cast<int>(rules::all().size()); }
 
+std::string lower(std::string_view text) {  // the Latin letters in lower case, the rest as they are
+    std::string result(text);
+    for (char& c : result) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return result;
+}
+
 }  // namespace
+
+bool rule_matches(const rules::Rule& rule, std::string_view search) {
+    std::string seen;
+    for (const std::string& text : {rule.label, rule.hint, rule.group}) seen += lower(text) + "\n" + lower(tr(text)) + "\n";
+    seen += lower(rule.key);
+    const std::string wanted = lower(search);
+    std::size_t at = 0;
+    while (at < wanted.size()) {  // every word of the search
+        const std::size_t end = std::min(wanted.find(' ', at), wanted.size());
+        if (end > at && seen.find(wanted.substr(at, end - at)) == std::string::npos) return false;
+        at = end + 1;
+    }
+    return true;
+}
 
 // ---------------------------------------------------------------------------------------------
 // The form
@@ -107,10 +127,18 @@ void AdvancedForm::settle() {
 // The screen
 
 AdvancedScreen::AdvancedScreen(Window& window, const rules::Values& values, bool running) : window_(window), form_(values, running) {
+    find();
+}
+
+void AdvancedScreen::find() {
     const auto& all = rules::all();
+    lines_.clear();
     int top = 0;
+    const std::string* group = nullptr;
     for (std::size_t index = 0; index < all.size(); ++index) {
-        if (index == 0 || all[index].group != all[index - 1].group) {
+        if (!rule_matches(all[index], search_)) continue;
+        if (!group || all[index].group != *group) {  // each group's heading over the first of its rules found
+            group = &all[index].group;
             lines_.push_back({all[index].group, top});
             top += HEADING_HEIGHT;
         }
@@ -118,6 +146,26 @@ AdvancedScreen::AdvancedScreen(Window& window, const rules::Values& values, bool
         top += ROW_HEIGHT;
     }
     list_height_ = top;
+    const std::vector<int> found = listed();
+    if (!found.empty() && std::find(found.begin(), found.end(), form_.focus) == found.end()) form_.select(found.front());
+    scroll_ = 0;
+    if (!found.empty()) show_focus();
+}
+
+std::vector<int> AdvancedScreen::listed() const {
+    std::vector<int> found;
+    for (const Line& line : lines_) {
+        if (const int* index = std::get_if<int>(&line.item)) found.push_back(*index);
+    }
+    return found;
+}
+
+void AdvancedScreen::step(int offset) {
+    const std::vector<int> found = listed();
+    if (found.empty()) return;
+    const auto at = std::find(found.begin(), found.end(), form_.focus);
+    const int position = at == found.end() ? 0 : static_cast<int>(at - found.begin());
+    form_.select(found[static_cast<std::size_t>(py_mod(position + offset, static_cast<int>(found.size())))]);
 }
 
 std::pair<AdvancedScreen::Outcome, std::optional<rules::Values>> AdvancedScreen::run() {
@@ -129,8 +177,16 @@ std::pair<AdvancedScreen::Outcome, std::optional<rules::Values>> AdvancedScreen:
             if (event.type == SDL_QUIT) return {Outcome::Quit, std::nullopt};
             if (event.type == SDL_KEYDOWN) {
                 const SDL_Keycode key = event.key.keysym.sym;
+                if (key == SDLK_ESCAPE && !search_.empty()) {  // the search cleared first, then the panel closed
+                    search_.clear();
+                    searching_ = false;
+                    find();
+                    continue;
+                }
                 if (key == SDLK_ESCAPE) return {Outcome::Cancel, std::nullopt};
-                if (key == SDLK_F11) {
+                if (key == SDLK_f && (event.key.keysym.mod & KMOD_CTRL)) {
+                    searching_ = true;
+                } else if (key == SDLK_F11) {
                     window_.toggle_fullscreen();
                 } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
                     if (ready()) return {Outcome::Apply, form_.changed()};
@@ -138,8 +194,13 @@ std::pair<AdvancedScreen::Outcome, std::optional<rules::Values>> AdvancedScreen:
                     this->key(event);
                 }
             } else if (event.type == SDL_TEXTINPUT) {
-                form_.type_text(event.text.text);
-                show_focus();
+                if (searching_) {
+                    search_ += event.text.text;
+                    find();  // narrowed as it is typed
+                } else if (!listed().empty()) {
+                    form_.type_text(event.text.text);
+                    show_focus();
+                }
             } else if (event.type == SDL_MOUSEWHEEL) {
                 scroll_by(-event.wheel.y * UI(ROW_HEIGHT));
             } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
@@ -172,14 +233,24 @@ void AdvancedScreen::key(const SDL_Event& event) {
     const SDL_Keycode key = event.key.keysym.sym;
     const bool shift = event.key.keysym.mod & KMOD_SHIFT;
     const int steps = shift ? 10 : 1;
+    if (searching_ && key == SDLK_BACKSPACE) {
+        if (!search_.empty()) pop_character(search_);
+        find();
+        return;
+    }
+    if (listed().empty()) return;  // nothing found to choose or change
     if (key == SDLK_UP || (key == SDLK_TAB && shift)) {
-        form_.move(-1);
+        step(-1);
     } else if (key == SDLK_DOWN || key == SDLK_TAB) {
-        form_.move(1);
+        step(1);
     } else if (key == SDLK_PAGEUP) {
-        form_.select(std::max(0, form_.focus - 10));
+        const std::vector<int> found = listed();
+        const int position = static_cast<int>(std::find(found.begin(), found.end(), form_.focus) - found.begin());
+        step(-std::min(10, position));
     } else if (key == SDLK_PAGEDOWN) {
-        form_.select(std::min(rule_count() - 1, form_.focus + 10));
+        const std::vector<int> found = listed();
+        const int position = static_cast<int>(std::find(found.begin(), found.end(), form_.focus) - found.begin());
+        step(std::min(10, static_cast<int>(found.size()) - 1 - position));
     } else if (key == SDLK_RIGHT) {
         form_.adjust(steps);
     } else if (key == SDLK_LEFT) {
@@ -234,7 +305,9 @@ AdvancedScreen::Layout AdvancedScreen::layout() const {
                                                                                              window_.height() / 2);
     const Rect& card = places.card;
     const int top = UI(100) + static_cast<int>(law_lines(card.w - UI(56)).size()) * UI(LAW_LINE);  // beneath the word on natural law
-    places.view = {card.x + UI(20), card.y + top, card.w - UI(40), card.h - top - UI(118)};
+    places.search = {card.x + UI(20), card.y + top, card.w - UI(54), UI(32)};
+    const int list = top + UI(42);  // the list beneath the search box
+    places.view = {card.x + UI(20), card.y + list, card.w - UI(40), card.h - list - UI(118)};
     places.apply = Rect{0, 0, UI(180), UI(44)}.bottomleft_at(card.centerx() + UI(6), card.bottom() - UI(42));
     places.cancel = Rect{0, 0, UI(140), UI(44)}.bottomright_at(card.centerx() - UI(6), card.bottom() - UI(42));
     places.reset_all = Rect{0, 0, UI(100), UI(28)}.topright_at(card.right() - UI(20), card.y + UI(28));
@@ -287,6 +360,8 @@ std::optional<AdvancedScreen::Outcome> AdvancedScreen::click(int x, int y) {
     const Layout places = layout();
     if (places.apply.contains(x, y)) return Outcome::Apply;
     if (places.cancel.contains(x, y)) return Outcome::Cancel;
+    searching_ = places.search.contains(x, y);  // a click elsewhere leaves the search as it is, for the rules
+    if (searching_) return std::nullopt;
     if (places.reset.contains(x, y)) {
         form_.reset();
     } else if (places.reset_all.contains(x, y)) {
@@ -328,8 +403,29 @@ void AdvancedScreen::draw(Canvas& canvas) {
         canvas.label(button_font, label, {220, 229, 211}, button);
     }
 
+    const Rect& search = places.search;
+    canvas.rect(search, {19, 26, 27}, 0, UI(4));
+    canvas.rect(search, searching_ ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
+    TTF_Font* search_font = UI.font(Face::Sans, 15);
+    if (search_.empty() && !searching_) {
+        canvas.text(search_font, "Search settings  (CTRL+F)", {96, 110, 100}, search.x + UI(12), search.y + UI(6));
+    } else {
+        const AsShown typed;  // what was typed, as typed
+        std::string shown = search_;
+        if (searching_ && SDL_GetTicks() / 500 % 2) shown += "_";
+        canvas.text(search_font, shown, {238, 238, 220}, search.x + UI(12), search.y + UI(6));
+    }
+    if (!search_.empty()) {
+        const std::string count = std::to_string(listed().size()) + " found";
+        canvas.text_at(small, count, {144, 170, 151}, [&](Rect& box) { box.midright_at(search.right() - UI(12), search.centery()); });
+    }
+
     const Rect& view = places.view;
     scroll_ = std::min(scroll_, max_scroll(view));
+    if (lines_.empty()) {
+        canvas.text_at(search_font, "No settings match \"" + search_ + "\".", {157, 177, 159},
+                       [&](Rect& box) { box.midtop_at(view.centerx(), view.y + UI(24)); });
+    }
     canvas.set_clip(view);
     for (const auto& [line, row] : rows(view)) {
         if (const auto* group = std::get_if<std::string>(&line->item)) {
@@ -351,7 +447,7 @@ void AdvancedScreen::draw(Canvas& canvas) {
     canvas.text_at(small,
                    noting ? note_
                    : !warning.empty() ? fit(small, std::string(warning), card.w - UI(48))
-                                      : "UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x10)   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
+                                      : "CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x10)   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
                    noting || !warning.empty() ? Color{238, 183, 110} : Color{130, 152, 136},
                    [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(14)); });
 }

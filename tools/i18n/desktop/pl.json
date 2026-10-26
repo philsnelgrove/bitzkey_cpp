@@ -11,9 +11,9 @@
 "Added {#} Bitzkeys from the catalog to the import list, with their trained brains.": "Dodano do listy importu Bitzkeye z katalogu: {#}, z wytrenowanymi mózgami.",
 "The clipboard has no text to paste.": "W schowku nie ma tekstu do wklejenia.",
 "Couldn't read {*}: {*}": "Nie udało się odczytać {*}: {*}",
-"UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "UP/DOWN  wybierz   LEFT/RIGHT  zmień (SHIFT x{#})   PGUP/PGDN  skocz   ENTER  zastosuj   ESC  anuluj",
+"CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x{#})   PGUP/PGDN  jump   ENTER  apply   ESC  cancel": "CTRL+F  szukaj   UP/DOWN  wybierz   LEFT/RIGHT  zmień (SHIFT x{#})   PGUP/PGDN  skocz   ENTER  zastosuj   ESC  anuluj",
 "WARNING  {*}": "Uwaga  {*}",
-"C++ only: {#} thinks and learns on every GPU found, in floats, with no rewinding; {#} on the CPU, exactly": "Tylko C++: {#} myśli i uczy się na każdym znalezionym GPU, zmiennoprzecinkowo, bez cofania; {#} na CPU, dokładnie",
+"C++ only: {#} thinks and learns on every GPU found, in floats; {#} on the CPU, exactly": "Tylko C++: {#} myśli i uczy się na każdym znalezionym GPU, zmiennoprzecinkowo; {#} na CPU, dokładnie",
 "A running world keeps thinking where it started; this takes effect in a new world.": "Działający świat myśli dalej tam, gdzie zaczął; to zadziała w nowym świecie.",
 "MEMORY: each turn kept holds the whole world, about {#} KB a brain (some {#} MB a turn with {#} animals), up to the history memory limit": "PAMIĘĆ: każda zachowana tura mieści cały świat, około {#} KB na mózg (około {#} MB na turę przy {#} zwierzętach), do limitu pamięci historii",
 "MEMORY: keep this well below your computer's free memory, or Bitzkey will slow to a crawl or crash": "PAMIĘĆ: trzymaj to znacznie poniżej wolnej pamięci komputera, inaczej Bitzkey bardzo zwolni lub się zawiesi",
@@ -53,7 +53,7 @@
 "Click a dot to inspect its genome.": "Kliknij punkt, aby zbadać jego genom.",
 "Living: click its current position.": "Żywy: kliknij jego obecną pozycję.",
 "{#} picked on the colour graph, ringed on the map.": "Wybrane na wykresie kolorów, zakreślone na mapie: {#}.",
-"SPACE  pause   -/+  speed   LEFT / RIGHT  rewind / step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  pauza   -/+  szybkość   LEFT / RIGHT  wstecz / krok   KÓŁKO / Z  zoom   I  analizy   B  raport   G  wykres   E  eksport   R  restart   F{#}  okno   ESC  menu",
+"SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  pauza   -/+  szybkość   RIGHT  krok   KÓŁKO / Z  zoom   I  analizy   B  raport   G  wykres   E  eksport   R  restart   F{#}  okno   ESC  menu",
 "home {*}": "dom {*}",
 "brain {#} deep": "mózg, warstwy: {#}",
 "{#}-{#} of {#}   (wheel or UP/DOWN to scroll)": "{#}-{#} z {#}   (kółko lub UP/DOWN, aby przewinąć)",
@@ -80,5 +80,6 @@
 "scaven": "padlina",
 "Cleared {#} Bitzkey from the export list.": "Usunięto z listy eksportu: {#}.",
 "Cleared {#} Bitzkeys from the export list.": "Usunięto z listy eksportu: {#}.",
-"{*}   {*}": "{*}   {*}"
+"{*}   {*}": "{*}   {*}",
+"Search settings  (CTRL+F)": "Szukaj ustawień  (CTRL+F)"
 }

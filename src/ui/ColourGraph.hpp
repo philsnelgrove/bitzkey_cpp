@@ -50,7 +50,7 @@ class ColourGraph {
 public:
     // Map: the run is over, and the map is wanted. Catalog: catalog the Bitzkeys picked.
     // Open: the catalog, to look through.
-    enum class Action { None, Copy, Save, Seek, Map, Catalog, Renew, Open };
+    enum class Action { None, Copy, Save, Map, Catalog, Renew, Open };
 
     void switch_part() { part_ = (part_ + 1) % 3; }
     void reset();  // forget the selection and zoom, for a new world
@@ -60,10 +60,8 @@ public:
     void select_all(const std::set<int>& picked) { select(picked, Mode::Replace); }  // exactly these
     void keep_only(const std::set<int>& alive);  // let go of any picked that are no longer alive
     void close_menu() { menu_open_ = false; }
-    int seek_turn() const { return seek_turn_; }
 
-    // Handle a mouse event. Returns Copy or Save when a button asks for an export, and Seek when
-    // the world should move to `seek_turn()`.
+    // Handle a mouse event. Returns Copy or Save when a button asks for an export.
     Action handle(const SDL_Event& event);
     void draw(Canvas& canvas, const Simulation& simulation, const std::optional<std::string>& note);
 
@@ -121,14 +119,12 @@ private:
         bool moved;
     };
     std::optional<Pan> pan_;
-    int seek_turn_ = 0;
     int selection_version_ = 0;
     int width_ = 0, height_ = 0;
     int mouse_x_ = 0, mouse_y_ = 0;
-    int now_ = 0, frontier_ = 0;
+    int now_ = 0;
     bool ended_ = false;  // whether the run is over, when last drawn
     std::optional<std::tuple<int, int, Uint16>> press_;  // where a press began, and its modifiers
-    std::optional<int> scrub_;                           // the turn under the playhead while dragged
     std::vector<Bar> bars_;
     std::map<int, std::vector<std::tuple<int, int, double, double>>> places_;  // where each Bitzkey is drawn
     double peak_ = 1.0;
