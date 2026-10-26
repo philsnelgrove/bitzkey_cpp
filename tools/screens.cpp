@@ -158,6 +158,15 @@ struct Screens {
         save(canvas, folder / "app-zoomed.bmp");
         app.map_zoom_ = 1.0;
         app.map_centre_.reset();
+        app.globe_ = true;  // the globe, then zoomed in with the HUD hidden
+        app.draw(canvas);
+        save(canvas, folder / "app-globe.bmp");
+        app.globe_zoom_ = 2.5;
+        app.hud_hidden_ = true;
+        app.draw(canvas);
+        save(canvas, folder / "app-globe-full.bmp");
+        app.globe_ = app.hud_hidden_ = false;
+        app.globe_zoom_ = 1.0;
         CatalogScreen catalog_screen(window);  // filled here, so the user's own catalog is left alone
         catalog_screen.entries_.clear();
         catalog_screen.note_.clear();

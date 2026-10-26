@@ -5,9 +5,12 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <execution>
 #include <functional>
 #include <limits>
 #include <map>
+#include <numbers>
+#include <numeric>
 #include <set>
 #include <unordered_map>
 
@@ -146,6 +149,13 @@ constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
 constexpr double MAP_ZOOM_STEP = 1.25;  // each wheel notch zooms the map in (or out) by this much
 constexpr double MAP_ZOOM_MAX = 12.0;   // the closest the map zooms in, times its whole-map size
+// The globe: its radius this share of the view's smaller side at no zoom, zooming in to GLOBE_ZOOM_MAX times; the map
+// drawn onto it from a picture about GLOBE_TEXTURE pixels across; and a stack's Bitzkeys each STACK_SPACING of the
+// one below's radius above it, so its face shows.
+constexpr double GLOBE_SHARE = 0.46;
+constexpr double GLOBE_ZOOM_MAX = 8.0;
+constexpr int GLOBE_TEXTURE = 1600;
+constexpr double STACK_SPACING = 0.7;
 constexpr double TRAIL_OPACITY = 0.5;   // how faintly a Bitzkey shows on each cell it passed through this turn
 
 std::string format(const char* pattern, auto... values) {
@@ -275,6 +285,10 @@ App::Result App::run() {
                     else catalog_selected();
                 } else if (key == SDLK_z && show_census_) {
                     graph_.unzoom();  // the whole run, its whole height
+                } else if (key == SDLK_h) {
+                    hud_hidden_ = !hud_hidden_;  // the map or globe alone, filling the window, or everything again
+                } else if (key == SDLK_z && globe_) {
+                    globe_zoom_ = 1.0;  // the whole globe again
                 } else if (key == SDLK_z) {
                     map_zoom_ = 1.0;  // the whole map again
                     map_centre_.reset();
@@ -298,6 +312,12 @@ App::Result App::run() {
                 Canvas canvas = window_.frame();
                 if (language_menu_.click(event.button.x, event.button.y)) {
                     // the language menu opened, closed or chose
+                } else if (!hud_hidden_ && !exemplar_menu_ && map_button_.contains(event.button.x, event.button.y)) {
+                    globe_ = false;
+                } else if (!hud_hidden_ && !exemplar_menu_ && globe_button_.contains(event.button.x, event.button.y)) {
+                    globe_ = true;
+                } else if (globe_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
+                    pick_on_globe(event.button.x, event.button.y);  // a click picks the Bitzkey there; the right button turns it
                 } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
                     if (open_workers()) return Result::Worker;
                 } else if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
@@ -1083,7 +1103,9 @@ double App::corpse_opacity(const Bitzkey& agent) const {
 int App::sidebar_width(const Canvas& canvas) const { return std::min(UI(340), std::max(UI(290), canvas.width() / 3)); }
 
 std::pair<Rect, double> App::map_view(const Canvas& canvas) const {
-    const Rect view = board_area(canvas).inflate(-UI(42) - 2 * UI(EXEMPLAR_WIDTH + 16), -UI(42));  // between the exemplars
+    // Between the exemplars; with the HUD hidden, the whole window.
+    const Rect view = hud_hidden_ ? Rect{0, 0, canvas.width(), canvas.height()}.inflate(-UI(16), -UI(16))
+                                  : board_area(canvas).inflate(-UI(42) - 2 * UI(EXEMPLAR_WIDTH + 16), -UI(42));
     return {view, std::min(static_cast<double>(view.w) / simulation_->width(), static_cast<double>(view.h) / simulation_->height())};
 }
 
@@ -1109,6 +1131,7 @@ bool App::map_event(const SDL_Event& event) {
     Canvas canvas = window_.frame();
     const auto [view, fit] = map_view(canvas);
     const std::pair<double, double> middle{simulation_->width() / 2.0, simulation_->height() / 2.0};
+    if (globe_) return globe_event(event, view);
     if (event.type == SDL_MOUSEWHEEL) {
         int x = 0, y = 0;
         SDL_GetMouseState(&x, &y);
@@ -1142,6 +1165,164 @@ bool App::map_event(const SDL_Event& event) {
     return false;
 }
 
+void App::draw_view_buttons(Canvas& canvas) {
+    const Rect view = map_view(canvas).first;
+    TTF_Font* font = UI.font(Face::Sans, 12, true);
+    map_button_ = Rect{view.x, view.y - UI(21), UI(56), UI(18)};
+    globe_button_ = Rect{map_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
+    for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_}, std::tuple{globe_button_, "GLOBE", globe_}}) {
+        canvas.rect(button, on ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(4));
+        canvas.label(font, label, on ? Color{19, 26, 27} : Color{220, 229, 211}, button);
+    }
+}
+
+bool App::globe_event(const SDL_Event& event, const Rect& view) {
+    if (event.type == SDL_MOUSEWHEEL) {
+        int x = 0, y = 0;
+        SDL_GetMouseState(&x, &y);
+        if (!view.contains(x, y)) return false;
+        globe_zoom_ = std::max(0.5, std::min(GLOBE_ZOOM_MAX, globe_zoom_ * std::pow(MAP_ZOOM_STEP, event.wheel.y)));
+        return true;
+    }
+    const bool other_button = (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP) &&
+                              (event.button.button == SDL_BUTTON_RIGHT || event.button.button == SDL_BUTTON_MIDDLE);
+    if (event.type == SDL_MOUSEBUTTONDOWN && other_button && view.contains(event.button.x, event.button.y)) {
+        turn_from_ = std::tuple{event.button.x, event.button.y, globe_yaw_, globe_tilt_};
+        return true;
+    }
+    if (event.type == SDL_MOUSEBUTTONUP && turn_from_) {
+        turn_from_.reset();
+        return true;
+    }
+    if (event.type == SDL_MOUSEMOTION && turn_from_) {  // dragged across, it turns about its axis; up or down, it tips
+        const auto [x, y, yaw, tilt] = *turn_from_;
+        const double radius = std::min(view.w, view.h) * GLOBE_SHARE * globe_zoom_;
+        globe_yaw_ = yaw - (event.motion.x - x) / radius;
+        globe_tilt_ = std::max(-1.3, std::min(1.3, tilt + (event.motion.y - y) / radius));
+        return true;
+    }
+    return false;
+}
+
+void App::pick_on_globe(int x, int y) {
+    // The topmost Bitzkey drawn under the pointer: the last drawn is on top.
+    for (auto hit = globe_hits_.rbegin(); hit != globe_hits_.rend(); ++hit) {
+        const auto [hx, hy, reach, identifier] = *hit;
+        if ((x - hx) * (x - hx) + (y - hy) * (y - hy) <= (reach + 2) * (reach + 2)) {
+            selected_id_ = identifier;
+            return;
+        }
+    }
+    selected_id_.reset();
+}
+
+void App::draw_globe(Canvas& canvas) {
+    const Rect view = map_view(canvas).first;
+    canvas.set_clip(view);
+    const int width = simulation_->width(), height = simulation_->height();
+    // The map drawn flat onto a picture of its own, a few pixels a square, then wrapped round the globe.
+    const int per = std::max(2, std::min(12, GLOBE_TEXTURE / std::max(width, height)));
+    if (!globe_ground_ || globe_ground_->w != width * per || globe_ground_->h != height * per) globe_ground_ = make_surface(width * per, height * per);
+    {
+        Canvas flat(globe_ground_.get());
+        const Board board{{0, 0, width * per, height * per}, static_cast<double>(per), static_cast<double>(per)};
+        draw_ground(flat, board, board.rect);
+    }
+    const double radius = std::min(view.w, view.h) * GLOBE_SHARE * globe_zoom_;
+    const int size = 2 * static_cast<int>(std::ceil(radius)) + 1;
+    if (globe_look_.size != size || globe_look_.tilt != globe_tilt_) {  // where each pixel of the disc lies on the map
+        globe_look_ = {size, globe_tilt_, std::vector<float>(static_cast<std::size_t>(size) * size), std::vector<float>(static_cast<std::size_t>(size) * size, -1.0f),
+                       std::vector<float>(static_cast<std::size_t>(size) * size)};
+        const double c = std::cos(globe_tilt_), sn = std::sin(globe_tilt_), half = size / 2.0;
+        for (int py = 0; py < size; ++py) {
+            for (int px = 0; px < size; ++px) {
+                const double nx = (px + 0.5 - half) / radius, ny = -(py + 0.5 - half) / radius, rr = nx * nx + ny * ny;
+                if (rr >= 1) continue;
+                const double nz = std::sqrt(1 - rr);
+                const double y1 = ny * c + nz * sn, z1 = -ny * sn + nz * c;  // tipped back upright
+                const std::size_t at = static_cast<std::size_t>(py) * size + px;
+                globe_look_.longitude[at] = static_cast<float>(std::atan2(nx, z1));
+                globe_look_.row[at] = static_cast<float>(0.5 - std::asin(std::clamp(y1, -1.0, 1.0)) / std::numbers::pi);
+                const double lit = std::max(0.0, -0.35 * nx + 0.45 * ny + 0.82 * nz);  // lit from the upper left, in front
+                globe_look_.light[at] = static_cast<float>(0.35 + 0.65 * lit);
+            }
+        }
+    }
+    if (!globe_frame_ || globe_frame_->w != size) globe_frame_ = make_surface(size, size);
+    SDL_Surface* ground = globe_ground_.get();
+    SDL_Surface* frame = globe_frame_.get();
+    SDL_LockSurface(ground);
+    SDL_LockSurface(frame);
+    const double turn = globe_yaw_ / (2 * std::numbers::pi);
+    std::vector<int> rows(static_cast<std::size_t>(size));
+    std::iota(rows.begin(), rows.end(), 0);
+    std::for_each(std::execution::par, rows.begin(), rows.end(), [&](int py) {
+        auto* out = reinterpret_cast<std::uint32_t*>(static_cast<std::uint8_t*>(frame->pixels) + py * frame->pitch);
+        for (int px = 0; px < size; ++px) {
+            const std::size_t at = static_cast<std::size_t>(py) * size + px;
+            const float row = globe_look_.row[at];
+            if (row < 0) {
+                out[px] = 0;
+                continue;
+            }
+            double u = globe_look_.longitude[at] / (2 * std::numbers::pi) + 0.5 + turn;
+            u -= std::floor(u);
+            const int tx = std::min(ground->w - 1, static_cast<int>(u * ground->w)), ty = std::min(ground->h - 1, static_cast<int>(row * ground->h));
+            const std::uint32_t pixel = reinterpret_cast<const std::uint32_t*>(static_cast<const std::uint8_t*>(ground->pixels) + ty * ground->pitch)[tx];
+            const float light = globe_look_.light[at];
+            const auto channel = [&](int shift) { return std::min(255u, static_cast<std::uint32_t>(((pixel >> shift) & 0xFF) * light)); };
+            out[px] = 0xFF000000u | (channel(16) << 16) | (channel(8) << 8) | channel(0);
+        }
+    });
+    SDL_UnlockSurface(frame);
+    SDL_UnlockSurface(ground);
+    const int cx = view.centerx(), cy = view.centery();
+    canvas.blit(frame, cx - size / 2, cy - size / 2);
+
+    // Each square's Bitzkeys, stacked largest at the bottom, the stacks drawn from the back of the globe to the front.
+    std::map<std::pair<int, int>, std::vector<const Bitzkey*>> squares;
+    for (const auto& agent : simulation_->agents()) {
+        if (corpse_opacity(*agent) > 0) squares[{agent->x, agent->y}].push_back(agent.get());
+    }
+    struct Stack {
+        double depth;
+        int x, y;
+        const std::vector<const Bitzkey*>* members;
+    };
+    std::vector<Stack> stacks;
+    const double c = std::cos(globe_tilt_), sn = std::sin(globe_tilt_);
+    for (const auto& [square, members] : squares) {
+        const double latitude = (0.5 - (square.second + 0.5) / height) * std::numbers::pi;
+        const double longitude = ((square.first + 0.5) / width - 0.5) * 2 * std::numbers::pi - globe_yaw_;
+        const double x1 = std::cos(latitude) * std::sin(longitude), y1 = std::sin(latitude), z1 = std::cos(latitude) * std::cos(longitude);
+        const double y = y1 * c - z1 * sn, z = y1 * sn + z1 * c;
+        if (z < 0.08) continue;  // round the back, or too near the edge to see
+        stacks.push_back({z, cx + static_cast<int>(std::lround(x1 * radius)), cy - static_cast<int>(std::lround(y * radius)), &members});
+    }
+    std::sort(stacks.begin(), stacks.end(), [](const Stack& a, const Stack& b) { return a.depth < b.depth; });
+    globe_hits_.clear();
+    const double cell = std::numbers::pi * radius / height;  // a square's height at the globe's face
+    const auto [smallest, largest] = map_dot_radii(cell);
+    for (const Stack& stack : stacks) {
+        std::vector<const Bitzkey*> members = *stack.members;
+        std::stable_sort(members.begin(), members.end(), [](const Bitzkey* a, const Bitzkey* b) { return a->body[Size] > b->body[Size]; });
+        const double shrink = 0.55 + 0.45 * stack.depth;  // foreshortened toward the edge
+        int lift = 0;
+        for (const Bitzkey* agent : members) {
+            const int dot = std::max(2, static_cast<int>(std::lround(dot_radius(agent->body[Size], largest, smallest) * shrink)));
+            const int py = stack.y - lift;
+            draw_bitzkey(canvas, agent->dna, stack.x, py, dot, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
+            if (agent->alive()) globe_hits_.push_back({stack.x, py, dot + RING_WIDTH, agent->identifier});  // drawn last, on top
+            if (selected_id_ && agent->identifier == *selected_id_) {
+                draw_reticle(canvas, stack.x, py, static_cast<int>(std::lround((dot + RING_WIDTH + UI(3)) * reticle_pulse())));
+            }
+            lift += std::max(2, static_cast<int>(std::lround((dot + RING_WIDTH) * STACK_SPACING)));  // the next above, its face clear
+        }
+    }
+    canvas.set_clip(std::nullopt);
+}
+
+
 void App::draw(Canvas& canvas) {
     // Let go of any Bitzkey selected or picked that has died, so the sidebar returns to its neutral
     // state rather than speaking of a selection no longer there.
@@ -1152,8 +1333,15 @@ void App::draw(Canvas& canvas) {
         graph_.keep_only(living);
     }
     canvas.fill({19, 26, 27});
+    if (hud_hidden_) {  // the map or the globe alone, filling the window (H brings the rest back)
+        draw_world(canvas);
+        if (dialog_) dialog_->draw(canvas);
+        if (report_) report_->draw(canvas);
+        return;
+    }
     draw_header(canvas);
     draw_world(canvas);
+    draw_view_buttons(canvas);
     draw_exemplars(canvas);
     draw_sidebar(canvas);
     draw_footer(canvas);
@@ -1220,13 +1408,9 @@ void App::draw_header(Canvas& canvas) {
     }
 }
 
-void App::draw_world(Canvas& canvas) {
-    const Board board = board_geometry(canvas);
+void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
+    // The ground: each row in its temperature's colour, the sea, their textures, the grass and the night.
     const Rect& rect = board.rect;
-    const Rect view = map_view(canvas).first.inflate(2, 2);
-    canvas.set_clip(view);  // zoomed in, only part of the map shows
-    // What may show, near enough: anything further out is skipped.
-    const Rect reach = view.inflate(static_cast<int>(2 * board.cell_width) + UI(20), static_cast<int>(2 * board.cell_height) + UI(20));
     for (int y = 0; y < simulation_->height(); ++y) {  // each row in its temperature's colour
         const int top = static_cast<int>(py_round(rect.y + y * board.cell_height));
         const int bottom = static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height));
@@ -1246,6 +1430,39 @@ void App::draw_world(Canvas& canvas) {
             x = end;
         }
     }
+    // The squares in view, near enough, and whether they are large enough to show texture and tufts.
+    const int x0 = std::max(0, static_cast<int>(std::floor((view.x - rect.x) / board.cell_width)) - 1);
+    const int x1 = std::min(simulation_->width(), static_cast<int>(std::ceil((view.right() - rect.x) / board.cell_width)) + 1);
+    const int y0 = std::max(0, static_cast<int>(std::floor((view.y - rect.y) / board.cell_height)) - 1);
+    const int y1 = std::min(simulation_->height(), static_cast<int>(std::ceil((view.bottom() - rect.y) / board.cell_height)) + 1);
+    const int cell_w = static_cast<int>(py_round(board.cell_width)), cell_h = static_cast<int>(py_round(board.cell_height));
+    const bool detailed = std::min(cell_w, cell_h) >= TEXTURE_FROM;
+    if (detailed) {  // the ground's texture: sand, meadow, snow or ice by the temperature now, or waves at sea
+        for (int y = y0; y < y1; ++y) {
+            const int zone = std::clamp(static_cast<int>(std::lround(simulation_->temperature(y))), 0, 3);  // snow in a winter
+            const Ground land = zone == Hot ? Ground::Sand : zone == Medium ? Ground::Meadow : zone == Cold ? Ground::Snow : Ground::Ice;
+            const int top = static_cast<int>(py_round(rect.y + y * board.cell_height));
+            for (int x = x0; x < x1; ++x) {
+                const int variant = static_cast<int>((static_cast<unsigned>(x) * 73856093U ^ static_cast<unsigned>(y) * 19349663U) % GROUND_VARIANTS);
+                canvas.blit(ground_tile(simulation_->sea(x, y) ? Ground::Sea : land, cell_w, cell_h, variant),
+                            static_cast<int>(py_round(rect.x + x * board.cell_width)), top);
+            }
+        }
+    }
+    const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
+    for (int y = y0; y < y1; ++y) {  // grass: tufts, or kelp at sea, where squares are large enough; else dots
+        for (int x = x0; x < x1; ++x) {
+            if (simulation_->grass_at(x, y) <= 0) continue;
+            const bool wet = simulation_->sea(x, y);
+            if (detailed) {
+                canvas.blit(grass_tuft(cell_w, cell_h, wet), static_cast<int>(py_round(rect.x + x * board.cell_width)),
+                            static_cast<int>(py_round(rect.y + y * board.cell_height)));
+            } else {
+                canvas.circle(static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width)),
+                              static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height)), grass_radius, wet ? SEA_GRASS : GRASS);
+            }
+        }
+    }
     {  // the night, a shadow over half the map's columns, wrapping round east to west
         const int first = simulation_->night_start(), columns = simulation_->width() / 2;
         for (const auto& [from, count] : {std::pair{first, std::min(columns, simulation_->width() - first)},
@@ -1256,25 +1473,27 @@ void App::draw_world(Canvas& canvas) {
             canvas.fill_rect({left, rect.y, right - left, rect.h}, NIGHT);
         }
     }
-    const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
-    for (int y = 0; y < simulation_->height(); ++y) {
-        for (int x = 0; x < simulation_->width(); ++x) {
-            if (simulation_->grass_at(x, y) <= 0) continue;
-            const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
-            const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
-            if (reach.contains(px, py)) canvas.circle(px, py, grass_radius, simulation_->sea(x, y) ? SEA_GRASS : GRASS);
-        }
+}
+
+void App::draw_world(Canvas& canvas) {
+    if (globe_) {
+        draw_globe(canvas);
+        return;
     }
+    const Board board = board_geometry(canvas);
+    const Rect& rect = board.rect;
+    const Rect view = map_view(canvas).first.inflate(2, 2);
+    canvas.set_clip(view);  // zoomed in, only part of the map shows
+    // What may show, near enough: anything further out is skipped.
+    const Rect reach = view.inflate(static_cast<int>(2 * board.cell_width) + UI(20), static_cast<int>(2 * board.cell_height) + UI(20));
+    draw_ground(canvas, board, view);
     const auto [smallest, largest] = map_dot_radii(std::min(board.cell_width, board.cell_height));  // zoomed with the map
     for (const auto& agent : simulation_->agents()) {  // the way each came this turn, faint, beneath them all
-        Surface layer;
         for (const auto& [x, y] : agent->trail) {
             const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             if ((x == agent->x && y == agent->y) || !reach.contains(px, py)) continue;
-            if (!layer) layer = bitzkey_layer(agent->dna, dot_radius(agent->body[Size], largest, smallest), RING_WIDTH, agent->alive());
-            const int half = layer->w / 2;
-            canvas.blit(layer.get(), px - half, py - half, static_cast<std::uint8_t>(py_round(255 * TRAIL_OPACITY)));
+            draw_bitzkey(canvas, agent->dna, px, py, dot_radius(agent->body[Size], largest, smallest), RING_WIDTH, agent->alive(), TRAIL_OPACITY);
         }
     }
     for (const auto& agent : simulation_->agents()) {

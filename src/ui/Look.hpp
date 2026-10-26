@@ -65,4 +65,19 @@ void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_wi
 // A Bitzkey drawn alone, centred on a clear square, to be blitted as faintly as wanted.
 Surface bitzkey_layer(Dna dna, int radius, int ring_width = RING_WIDTH, bool alive = true);
 
+// A Bitzkey is drawn as a poker chip: its coloured edge CHIP_EDGE of its radius (at least the ring's width), with
+// CHIP_INSERTS lighter inserts round it; the looks drawn are kept, up to CHIPS_KEPT, then drawn afresh.
+constexpr double CHIP_EDGE = 0.32;
+constexpr int CHIP_INSERTS = 6;
+constexpr std::size_t CHIPS_KEPT = 20000;
+
+// A tuft of grass the size of a square, or of kelp in the sea, kept once drawn.
+SDL_Surface* grass_tuft(int width, int height, bool sea);
+
+// The ground's texture, laid faintly over a square's colour: by its zone's usual temperature, or the sea.
+enum class Ground { Sand, Meadow, Snow, Ice, Sea };
+constexpr int GROUND_VARIANTS = 4;
+constexpr int TEXTURE_FROM = 6;  // squares this many pixels across or more are textured, and their grass drawn as tufts
+SDL_Surface* ground_tile(Ground ground, int width, int height, int variant);
+
 }  // namespace bitzkey::ui

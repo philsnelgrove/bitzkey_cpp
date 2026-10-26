@@ -140,6 +140,13 @@ private:
     void draw(Canvas& canvas);
     void draw_header(Canvas& canvas);
     void draw_world(Canvas& canvas);
+    void draw_ground(Canvas& canvas, const Board& board, const Rect& view);  // the squares, their grass and the night
+    // The globe: the map wrapped round a sphere turned by globe_yaw_ about its axis and tipped by globe_tilt_, with
+    // each square's Bitzkeys stacked on it, the largest at the bottom.
+    void draw_globe(Canvas& canvas);
+    bool globe_event(const SDL_Event& event, const Rect& view);  // a right or middle drag turns it, the wheel zooms
+    void pick_on_globe(int x, int y);  // a left click selects the Bitzkey there, or none
+    void draw_view_buttons(Canvas& canvas);  // MAP and GLOBE, above the map
     void draw_sidebar(Canvas& canvas);
     void draw_insights(Canvas& canvas, int x, int width);
     // The insights panel scrolls within the sidebar, below the population counts.
@@ -200,6 +207,20 @@ private:
     // The map's zoom (1 shows it all) and the cell at the middle of the view, none while it shows
     // the whole map; while it is dragged, where the drag began and the middle then.
     double map_zoom_ = 1.0;
+    bool globe_ = false;       // the globe shows rather than the map
+    bool hud_hidden_ = false;  // H: the map or globe alone, filling the window
+    double globe_yaw_ = 0.0, globe_tilt_ = 0.35, globe_zoom_ = 1.0;
+    std::optional<std::tuple<int, int, double, double>> turn_from_;  // a drag on the globe: where it began, and its turn then
+    Rect map_button_, globe_button_;
+    std::vector<std::tuple<int, int, int, int>> globe_hits_;  // each living Bitzkey drawn on the globe: x, y, reach, identifier
+    // Where each pixel of the globe's disc lies on the map, worked out again only as its size or tilt changes.
+    struct GlobeLook {
+        int size = 0;
+        double tilt = 0.0;
+        std::vector<float> longitude, row, light;  // a pixel each: the longitude before turning, the map's row (-1 off the disc), its light
+    };
+    GlobeLook globe_look_;
+    Surface globe_ground_, globe_frame_;
     std::optional<std::pair<double, double>> map_centre_;
     std::optional<std::pair<std::pair<int, int>, std::pair<double, double>>> pan_from_;
     int insights_scroll_ = 0;          // how far down the insights panel is scrolled
