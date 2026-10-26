@@ -36,7 +36,7 @@ private:
 
 // The death report and the brain matrix in the language shown: the tables' cells parted by tabs, drawn
 // in columns as wide as their widest cell, so they line up in any script.
-std::vector<std::string> death_report_table(const std::vector<Death>& deaths);
+std::vector<std::string> death_report_table(const DeathTally& tally);
 std::vector<std::string> brain_matrix_table(const Bitzkey& animal);
 
 }  // namespace bitzkey::ui

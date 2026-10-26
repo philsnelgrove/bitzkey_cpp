@@ -61,8 +61,8 @@ std::string upper_of(std::string_view english) {
 }
 }  // namespace
 
-std::vector<std::string> death_report_table(const std::vector<Death>& deaths) {
-    const DeathReport report = death_report(deaths);
+std::vector<std::string> death_report_table(const DeathTally& tally) {
+    const DeathReport report = death_report(tally);
     std::vector<std::string> lines;
     const auto table = [&](const std::string& title, const std::vector<DeathReport::Row>& rows, bool heading) {
         if (heading) {

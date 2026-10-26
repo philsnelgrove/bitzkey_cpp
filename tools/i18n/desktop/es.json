@@ -55,7 +55,6 @@
 "{#} picked on the colour graph, ringed on the map.": "{#} elegidos en el gráfico de colores, rodeados en el mapa.",
 "SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   G  graph   E  export   R  restart   F{#}  window   ESC  menu": "SPACE  pausa   -/+  velocidad   RIGHT  paso   RUEDA / Z  zoom   I  análisis   B  informe   G  gráfico   E  exportar   R  reiniciar   F{#}  ventana   ESC  menú",
 "home {*}": "hogar {*}",
-"brain {#} deep": "cerebro de {#} capas",
 "{#}-{#} of {#}   (wheel or UP/DOWN to scroll)": "{#}-{#} de {#}   (rueda o UP/DOWN para desplazarse)",
 "lines {#}-{#} of {#}   (wheel or UP/DOWN)": "líneas {#}-{#} de {#}   (rueda o UP/DOWN)",
 "SOCIAL BACKGROUND": "Fondo social",
