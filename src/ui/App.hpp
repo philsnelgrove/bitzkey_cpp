@@ -211,7 +211,8 @@ private:
     bool hud_hidden_ = false;  // H: the map or globe alone, filling the window
     double globe_yaw_ = 0.0, globe_tilt_ = 0.35, globe_zoom_ = 1.0;
     std::optional<std::tuple<int, int, double, double>> turn_from_;  // a drag on the globe: where it began, and its turn then
-    Rect map_button_, globe_button_;
+    Rect map_button_, globe_button_, blind_button_;
+    bool blind_ = false;  // neither map nor globe drawn, to spare the time
     std::vector<std::tuple<int, int, int, int>> globe_hits_;  // each living Bitzkey drawn on the globe: x, y, reach, identifier
     // Where each pixel of the globe's disc lies on the map, worked out again only as its size or tilt changes.
     struct GlobeLook {

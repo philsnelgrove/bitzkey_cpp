@@ -313,9 +313,12 @@ App::Result App::run() {
                 if (language_menu_.click(event.button.x, event.button.y)) {
                     // the language menu opened, closed or chose
                 } else if (!hud_hidden_ && !exemplar_menu_ && map_button_.contains(event.button.x, event.button.y)) {
-                    globe_ = false;
+                    globe_ = blind_ = false;
                 } else if (!hud_hidden_ && !exemplar_menu_ && globe_button_.contains(event.button.x, event.button.y)) {
                     globe_ = true;
+                    blind_ = false;
+                } else if (!hud_hidden_ && !exemplar_menu_ && blind_button_.contains(event.button.x, event.button.y)) {
+                    blind_ = true;
                 } else if (globe_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     pick_on_globe(event.button.x, event.button.y);  // a click picks the Bitzkey there; the right button turns it
                 } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
@@ -1170,7 +1173,9 @@ void App::draw_view_buttons(Canvas& canvas) {
     TTF_Font* font = UI.font(Face::Sans, 12, true);
     map_button_ = Rect{view.x, view.y - UI(21), UI(56), UI(18)};
     globe_button_ = Rect{map_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
-    for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_}, std::tuple{globe_button_, "GLOBE", globe_}}) {
+    blind_button_ = Rect{globe_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
+    for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_ && !blind_}, std::tuple{globe_button_, "GLOBE", globe_ && !blind_},
+                                            std::tuple{blind_button_, "BLIND", blind_}}) {
         canvas.rect(button, on ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(4));
         canvas.label(font, label, on ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
@@ -1476,6 +1481,12 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
 }
 
 void App::draw_world(Canvas& canvas) {
+    if (blind_) {  // neither map nor globe drawn, to spare the time it takes
+        const Rect view = map_view(canvas).first;
+        canvas.text_at(UI.font(Face::Sans, 15), "BLIND: the map isn't drawn", {116, 139, 124},
+                       [&](Rect& box) { box.center_at(view.centerx(), view.centery()); });
+        return;
+    }
     if (globe_) {
         draw_globe(canvas);
         return;
