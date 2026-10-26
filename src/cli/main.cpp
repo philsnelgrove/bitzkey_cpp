@@ -254,7 +254,7 @@ public:
             if (!agent->died_turn || *agent->died_turn != turn) continue;
             Tally& tally = tallies[static_cast<std::size_t>(agent->species)];
             ++tally.died;
-            const double infancy = FEEBLE_YOUTH * (agent->species == Species::Predator ? PREDATOR_INFANCY : 1.0) * agent->lifespan;
+            const double infancy = agent->infancy();
             const bool infant = agent->species != Species::Plant && agent->age < infancy;
             tally.died_infant += infant;
             tally.died_newborn += agent->age <= NEWBORN_TURNS;
