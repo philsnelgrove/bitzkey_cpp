@@ -1,4 +1,5 @@
 #include "ui/Canvas.hpp"
+#include "ui/Sound.hpp"
 
 #include <cmath>
 #include <string>
@@ -229,6 +230,7 @@ void Canvas::blit(SDL_Surface* source, int x, int y, std::uint8_t alpha) {
 }
 
 void Canvas::label(TTF_Font* font, std::string_view words, Color color, const Rect& button) {
+    button_drawn(target_, button);  // a press on it is heard
     TTF_Font* fitting = UI.fitting(font, words, button.w - UI(10));
     text_at(fitting, words, color, [&](Rect& box) { box.center_at(button.centerx(), button.centery()); });
 }

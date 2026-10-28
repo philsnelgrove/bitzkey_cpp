@@ -99,6 +99,7 @@ add_executable(bitzkey WIN32
     "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc"
     src/ui/Ui.cpp
     src/ui/Canvas.cpp
+    src/ui/Sound.cpp
     src/ui/Window.cpp
     src/ui/Look.cpp
     src/ui/Icons.cpp
@@ -126,7 +127,7 @@ add_custom_command(TARGET bitzkey POST_BUILD
 
 # Screenshots of every screen, drawn off-screen, for checking the interface.
 add_executable(bitzkey_screens tools/screens.cpp
-    src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Report.cpp src/ui/Setup.cpp
+    src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Sound.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Report.cpp src/ui/Setup.cpp
     src/ui/Advanced.cpp src/ui/Inspector.cpp src/ui/Designer.cpp src/ui/CatalogScreen.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp
     src/ui/Language.cpp src/ui/LanguageMenu.cpp src/ui/Fields.cpp src/ui/WorkersScreen.cpp src/ui/WorkerScreen.cpp)
 target_include_directories(bitzkey_screens PRIVATE src)

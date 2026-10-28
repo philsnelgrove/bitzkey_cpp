@@ -1,4 +1,5 @@
 #include "ui/Window.hpp"
+#include "ui/Sound.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -37,6 +38,7 @@ void Window::fit_to_window() {
 Canvas Window::frame() {
     fit_to_window();
     UI.fit(frame_->w, frame_->h);
+    window_frame(frame_.get());
     return Canvas(frame_.get());
 }
 
@@ -45,6 +47,7 @@ void Window::present() {
     SDL_RenderClear(renderer_);
     SDL_RenderCopy(renderer_, texture_, nullptr, nullptr);
     SDL_RenderPresent(renderer_);
+    frame_shown();
 }
 
 void Window::toggle_fullscreen() {

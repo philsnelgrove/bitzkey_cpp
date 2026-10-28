@@ -18,6 +18,7 @@
 #include "ui/Language.hpp"
 #include "ui/Platform.hpp"
 #include "ui/Setup.hpp"
+#include "ui/Sound.hpp"
 #include "ui/Ui.hpp"
 #include "ui/Window.hpp"
 #include "ui/WorkerScreen.hpp"
@@ -80,6 +81,7 @@ int main(int argc, char** argv) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Bitzkey", SDL_GetError(), nullptr);
         return 1;
     }
+    start_sounds();  // a button pressed clicks
     int status = 0;
     try {
         start_language();
@@ -135,6 +137,7 @@ int main(int argc, char** argv) {
         status = 1;
     }
     UI.close_fonts();
+    stop_sounds();
     TTF_Quit();
     SDL_Quit();
     return status;
