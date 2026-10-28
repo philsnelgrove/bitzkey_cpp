@@ -326,6 +326,10 @@ App::Result App::run() {
                     blind_ = false;
                 } else if (!hud_hidden_ && !exemplar_menu_ && blind_button_.contains(event.button.x, event.button.y)) {
                     blind_ = true;
+                } else if (!hud_hidden_ && !exemplar_menu_ && lod_button_.contains(event.button.x, event.button.y)) {
+                    lod_ = !lod_;
+                } else if (!hud_hidden_ && !exemplar_menu_ && plants_button_.contains(event.button.x, event.button.y)) {
+                    plants_ = !plants_;
                 } else if (globe_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     pick_on_globe(event.button.x, event.button.y);  // a click picks the Bitzkey there; the right button turns it
                 } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
@@ -1170,8 +1174,11 @@ void App::draw_view_buttons(Canvas& canvas) {
     map_button_ = Rect{view.x, view.y - UI(21), UI(56), UI(18)};
     globe_button_ = Rect{map_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     blind_button_ = Rect{globe_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
+    lod_button_ = Rect{blind_button_.right() + UI(18), map_button_.y, UI(104), UI(18)};
+    plants_button_ = Rect{lod_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_ && !blind_}, std::tuple{globe_button_, "GLOBE", globe_ && !blind_},
-                                            std::tuple{blind_button_, "BLIND", blind_}}) {
+                                            std::tuple{blind_button_, "BLIND", blind_}, std::tuple{lod_button_, "LOD MANAGER", lod_},
+                                            std::tuple{plants_button_, "PLANTS", plants_}}) {
         canvas.rect(button, on ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(4));
         canvas.label(font, label, on ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
@@ -1309,8 +1316,8 @@ void App::draw_globe(Canvas& canvas) {
     for (const Stack& stack : stacks) {
         std::vector<const Bitzkey*> members;
         for (const Bitzkey* agent : *stack.members) {
-            if (agent->body[Size] >= least || marked(*agent)) members.push_back(agent);
-            else ++hidden;  // too small to see from this far out
+            if (shown(*agent, least)) members.push_back(agent);
+            else if (plants_ || agent->species != Species::Plant) ++hidden;  // too small to see from this far out
         }
         drawn += static_cast<int>(members.size());
         std::stable_sort(members.begin(), members.end(), [](const Bitzkey* a, const Bitzkey* b) { return a->body[Size] > b->body[Size]; });
@@ -1329,6 +1336,12 @@ void App::draw_globe(Canvas& canvas) {
     }
     if (drawn == 0 && hidden > 0) say_too_far(canvas, view);
     canvas.set_clip(std::nullopt);
+}
+
+bool App::shown(const Bitzkey& agent, int least) const {
+    if (marked(agent)) return true;
+    if (!plants_ && agent.species == Species::Plant) return false;
+    return !lod_ || agent.body[Size] >= least;
 }
 
 bool App::marked(const Bitzkey& agent) const {
@@ -1517,9 +1530,8 @@ void App::draw_world(Canvas& canvas) {
     draw_ground(canvas, board, view);
     const auto [smallest, largest] = map_dot_radii(std::min(board.cell_width, board.cell_height));  // zoomed with the map
     const int least = smallest_shown(map_zoom_, 1.0, MAP_ZOOM_MAX);
-    const auto shown = [&](const Bitzkey& agent) { return agent.body[Size] >= least || marked(agent); };
     for (const auto& agent : simulation_->agents()) {  // the way each came this turn, faint, beneath them all
-        if (!shown(*agent)) continue;
+        if (!shown(*agent, least)) continue;
         for (const auto& [x, y] : agent->trail) {
             const int px = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int py = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
@@ -1532,8 +1544,8 @@ void App::draw_world(Canvas& canvas) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
         if (!reach.contains(px, py)) continue;
-        if (!shown(*agent)) {  // too small to see from this far out
-            ++hidden;
+        if (!shown(*agent, least)) {  // too small to see from this far out, or a plant hidden
+            if (plants_ || agent->species != Species::Plant) ++hidden;
             continue;
         }
         ++drawn;
