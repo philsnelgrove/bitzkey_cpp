@@ -80,6 +80,10 @@ std::vector<std::string> death_report_table(const DeathTally& tally) {
     };
     table("CAUSE", report.causes, true);
     table("", {report.all}, false);
+    if (!report.ages.empty()) {
+        lines.insert(lines.end(), {"", tr("AGE AT DEATH, by species")});
+        table("AGE", report.ages, true);
+    }
     if (report.kills == 0) {
         lines.insert(lines.end(), {"", tr("Nothing has killed anything yet.")});
         return lines;
