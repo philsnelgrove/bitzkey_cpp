@@ -30,7 +30,7 @@ void usage() {
     std::cout <<
         "bitzkey_cli: run a Bitzkey world without a window.\n"
         "  --width N --height N        world size in cells (default 100 x 100)\n"
-        "  --population N              Bitzkeys spawned at the start (default 90)\n"
+        "  --population N              Bitzkeys spawned at the start (default 300)\n"
         "  --seed N                    seed the world for a repeatable run\n"
         "  --grass-density N           percent of cells with grass at the start (default 50)\n"
         "  --population-cap N          most animals alive at once (default: no limit)\n"
