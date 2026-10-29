@@ -238,6 +238,26 @@ It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 
 
 For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemon serves the same probe at `/api/probe/...`.
 
+`GET /probe/minds` shows each species' brains at a glance: the farthest value each gives an action for what it last sensed (median, 90th percentile and highest), how many value one beyond 50, and how many of their neurons have jammed (beyond 0.99 either way).
+
+## Bitzkey Reports
+
+`bitzkey_report.exe`, installed beside the app (Bitzkey Reports in the Start menu), reports on a whole world: from a save (OPEN SAVE, or drop a `.bzworld` on its window) or from a running world's probe (type its port, or the daemon's `host:port`, and CONNECT). Either way it reads the world through the probe's routes, so a save and a running world report alike. Its tabs:
+
+| Tab | What it shows |
+|---|---|
+| Summary | the turn, season and map, how many of each species live, and what stands out: a species died out, crashing or falling fast, hungry or in poor health, one cause taking most of a species' deaths, predators turning on their own kind, brains running away or jammed, herds away from home |
+| Population | each species now, at its peak, its low since, the last quarter's change and how often it has swung, charted over the run; the young; where they live |
+| Condition | each species' age, health, hunger, stamina and what they did last turn |
+| Deaths | every death since the start by cause, the latest deaths by cause and rate, and who killed whom |
+| Brains | the minds route's table, and how often each action is taken when it is open |
+| Herds & migration | the herds of each species, how many are away from their home temperature, and of those that moved, how many moved toward it (from a running world's second look); the largest herds |
+| Climate & grass | the map in bands from north to south: temperature now and usually, growth, grass, sea and the animals in each |
+| Rules & settings | the world's settings and every advanced rule |
+| Brain report, Death report | the probe's reports as they are |
+
+REFRESH reads it again, and LIVE every 10 seconds; COPY puts the whole report on the clipboard as text and SAVE writes it to `reports` in the Bitzkey folder in Documents. `bitzkey_report WORLD.bzworld` or `--probe PORT` opens one at once, and with `--text FILE` it writes the report to the file without a window.
+
 ## Layout
 
 - `src/net/`: workers: a main service's pool (`Pool`), worker mode (`Worker`), the brains a worker holds and the batches

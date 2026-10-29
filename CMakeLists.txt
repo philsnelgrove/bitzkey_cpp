@@ -135,6 +135,23 @@ add_custom_command(TARGET bitzkey_screens POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/i18n $<TARGET_FILE_DIR:bitzkey_screens>/i18n)
 target_link_libraries(bitzkey_screens PRIVATE bitzkey_net SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
 
+# Bitzkey Reports: a whole world's report, from a save or from a running world's probe. Its reading and analysis
+# stand apart from its window, for the tests.
+add_library(bitzkey_report_core STATIC
+    src/report/Source.cpp
+    src/report/Analysis.cpp
+)
+target_link_libraries(bitzkey_report_core PUBLIC bitzkey_net)
+add_executable(bitzkey_report WIN32
+    src/report/main.cpp
+    src/report/Panel.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc"
+    src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Sound.cpp src/ui/Window.cpp src/ui/Platform.cpp src/ui/Language.cpp src/ui/Fields.cpp)
+target_link_libraries(bitzkey_report PRIVATE bitzkey_report_core SDL2::SDL2 SDL2::SDL2main SDL2_ttf::SDL2_ttf comdlg32 shell32 ole32)
+add_custom_command(TARGET bitzkey_report POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:bitzkey_report> $<TARGET_FILE_DIR:bitzkey_report>
+    COMMAND_EXPAND_LISTS)
+
 # A command-line runner: run worlds headless, benchmark, trace, export.
 add_executable(bitzkey_cli src/cli/main.cpp)
 target_link_libraries(bitzkey_cli PRIVATE bitzkey_core)
@@ -154,10 +171,11 @@ add_executable(bitzkey_tests
     tests/test_worldfile.cpp
     tests/test_net.cpp
     tests/test_probe.cpp
+    tests/test_report.cpp
     tests/test_sea.cpp
     tests/test_day.cpp
 )
-target_link_libraries(bitzkey_tests PRIVATE bitzkey_net doctest::doctest)
+target_link_libraries(bitzkey_tests PRIVATE bitzkey_report_core doctest::doctest)
 target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 
 enable_testing()

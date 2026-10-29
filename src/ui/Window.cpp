@@ -6,9 +6,9 @@
 
 namespace bitzkey::ui {
 
-Window::Window(bool fullscreen) : fullscreen_(fullscreen) {
+Window::Window(bool fullscreen, const char* title) : fullscreen_(fullscreen) {
     const Uint32 flags = SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-    window_ = SDL_CreateWindow("Bitzkey | An artificial ecology", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window_ = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                WINDOW_WIDTH, WINDOW_HEIGHT, flags);
     if (!window_) throw std::runtime_error(std::string("Couldn't open a window: ") + SDL_GetError());
     SDL_SetWindowMinimumSize(window_, MIN_WIDTH, MIN_HEIGHT);

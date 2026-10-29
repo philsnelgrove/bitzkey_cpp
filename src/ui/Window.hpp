@@ -15,7 +15,7 @@ constexpr int MIN_HEIGHT = 760;
 
 class Window {
 public:
-    explicit Window(bool fullscreen);
+    explicit Window(bool fullscreen, const char* title = "Bitzkey | An artificial ecology");
     ~Window();
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;
