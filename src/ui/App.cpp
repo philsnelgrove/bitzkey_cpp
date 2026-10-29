@@ -27,6 +27,7 @@
 #include "ui/Language.hpp"
 #include "ui/Look.hpp"
 #include "ui/Platform.hpp"
+#include "ui/Sound.hpp"
 
 namespace bitzkey::ui {
 
@@ -149,6 +150,10 @@ constexpr Uint32 MAX_TURN_MS = 25;   // at full speed, the most of a frame spent
 constexpr int INSIGHTS_TOP = 290;    // the insights panel's top, in design pixels: below the population
 constexpr double MAP_ZOOM_STEP = 1.25;  // each wheel notch zooms the map in (or out) by this much
 constexpr double MAP_ZOOM_MAX = 12.0;   // the closest the map zooms in, times its whole-map size
+// The Bitzkeys' calls are heard zoomed in this close or closer, quietly at first, louder closer still, and the
+// larger the caller, the louder: CALL_VOLUME the loudest, from the largest, zoomed in all the way.
+constexpr double CALL_HEARING_ZOOM = 4.0;
+constexpr double CALL_VOLUME = 0.35;
 // The globe: its radius this share of the view's smaller side at no zoom, zooming in to GLOBE_ZOOM_MAX times; the map
 // drawn onto it from a picture about GLOBE_TEXTURE pixels across; and a stack's Bitzkeys each STACK_SPACING of the
 // one below's radius above it, so its face shows.
@@ -1540,6 +1545,9 @@ void App::draw_world(Canvas& canvas) {
         }
     }
     int drawn = 0, hidden = 0;
+    std::vector<HeardCall> heard;  // this turn's calls, from those drawn, once
+    const bool hearing = map_zoom_ >= CALL_HEARING_ZOOM && simulation_->turn() != calls_heard_turn_;
+    const double nearness = (map_zoom_ - CALL_HEARING_ZOOM) / (MAP_ZOOM_MAX - CALL_HEARING_ZOOM);
     for (const auto& agent : simulation_->agents()) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
@@ -1549,6 +1557,10 @@ void App::draw_world(Canvas& canvas) {
             continue;
         }
         ++drawn;
+        if (hearing && agent->alive() && agent->call != Silent && agent->call_turn == simulation_->turn() && view.contains(px, py)) {
+            const double loudness = CALL_VOLUME * (0.3 + 0.7 * nearness) * (0.25 + 0.75 * agent->physique(Size));
+            heard.push_back({agent->call, loudness, (px - view.centerx()) / (view.w / 2.0)});
+        }
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
@@ -1581,6 +1593,10 @@ void App::draw_world(Canvas& canvas) {
     canvas.rect(rect, {80, 99, 85}, 1);
     if (drawn == 0 && hidden > 0) say_too_far(canvas, view);
     canvas.set_clip(std::nullopt);
+    if (hearing) {
+        calls_heard_turn_ = simulation_->turn();
+        calls_heard(heard);
+    }
 }
 
 void App::draw_sidebar(Canvas& canvas) {

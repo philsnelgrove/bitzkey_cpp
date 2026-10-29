@@ -210,6 +210,7 @@ private:
     // The map's zoom (1 shows it all) and the cell at the middle of the view, none while it shows
     // the whole map; while it is dragged, where the drag began and the middle then.
     double map_zoom_ = 1.0;
+    int calls_heard_turn_ = -1;  // the turn whose calls were last heard from the map
     bool globe_ = false;       // the globe shows rather than the map
     bool hud_hidden_ = false;  // H: the map or globe alone, filling the window
     double globe_yaw_ = 0.0, globe_tilt_ = 0.35, globe_zoom_ = 1.0;
