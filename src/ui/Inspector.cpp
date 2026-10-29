@@ -108,7 +108,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
                                                                     : Color{238, 183, 110};
             canvas.text(mono_small, TEMPERAMENT[trait], colour, left, at(62 + index * 14));
             canvas.text(mono_small, format("%2d", born), colour, numbers, at(62 + index * 14));
-            if (known) canvas.text(mono_small, format("%5.1f", now), colour, numbers + digits, at(62 + index * 14));
+            const char* change = !known || std::abs(now - born) < 0.25 ? " " : now > born ? "+" : "-";  // not by colour alone
+            if (known) canvas.text(mono_small, format("%5.1f%s", now, change), colour, numbers + digits, at(62 + index * 14));
         }
         if (first == DOT_TRAIT_COUNT) {
             canvas.text(mono_small, "neurodiv.", {175, 192, 172}, left, at(62 + SOCIAL_TRAIT_COUNT * 14));

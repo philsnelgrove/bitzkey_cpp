@@ -25,6 +25,9 @@ public:
     // A length from the 1200x820 design, in pixels at the current scale.
     int operator()(double length) const;
     double scale() const { return scale_; }
+    // Text size, on top of the scale, for those who need larger text: 1, 1.25, 1.5 or 2, the next each time.
+    double text_size() const { return text_size_; }
+    void next_text_size();
     // A font at `size` design pixels, scaled; fonts are cached by their real size.
     // In the chosen language's script, or in `language`'s when one is given.
     TTF_Font* font(Face face, int size, bool bold = false, const std::string& language = "");
@@ -38,6 +41,7 @@ private:
     TTF_Font* open(const Key& key);
 
     double scale_ = 1.0;
+    double text_size_ = 1.0;
     std::map<Key, TTF_Font*> fonts_;
     std::map<TTF_Font*, Key> keys_;
 };

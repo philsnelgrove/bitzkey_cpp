@@ -257,6 +257,8 @@ App::Result App::run() {
                     } else {
                         ask_to_leave();
                     }
+                } else if (key == SDLK_F9) {
+                    UI.next_text_size();  // larger text: 100, 125, 150, 200%
                 } else if (key == SDLK_F11) {
                     window_.toggle_fullscreen();
                 } else if (key == SDLK_SPACE) {
@@ -1925,7 +1927,7 @@ void App::draw_footer(Canvas& canvas) {
     }
     footer_lines(canvas,
                  "SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   "
-                 "G  graph   E  export   R  restart   F11  window   ESC  menu",
+                 "G  graph   E  export   R  restart   F9  text size   F11  window   ESC  menu",
                  left, room, {187, 199, 181});
 }
 

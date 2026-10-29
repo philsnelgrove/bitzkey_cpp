@@ -19,6 +19,10 @@ void Ui::fit(int width, int height) {
     scale_ = std::max(MIN_SCALE, std::min(static_cast<double>(width) / DESIGN_WIDTH, static_cast<double>(height) / DESIGN_HEIGHT));
 }
 
+void Ui::next_text_size() {
+    text_size_ = text_size_ < 1.2 ? 1.25 : text_size_ < 1.4 ? 1.5 : text_size_ < 1.9 ? 2.0 : 1.0;
+}
+
 int Ui::operator()(double length) const { return static_cast<int>(py_round(length * scale_)); }
 
 namespace {
@@ -39,7 +43,7 @@ std::string font_path(Face face, bool bold, const std::string& language) {
 
 TTF_Font* Ui::font(Face face, int size, bool bold, const std::string& language) {
     const std::string& code = language.empty() ? bitzkey::ui::language() : language;
-    const int pixels = std::max(6, static_cast<int>(py_round(size * scale_)));
+    const int pixels = std::max(6, static_cast<int>(py_round(size * scale_ * text_size_)));
     return open(std::make_tuple(face, pixels, bold, code));
 }
 
