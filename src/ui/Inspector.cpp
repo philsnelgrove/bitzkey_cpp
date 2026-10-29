@@ -15,6 +15,9 @@
 
 namespace bitzkey::ui {
 
+std::array<Rect, 3> last_swatches{};
+
+
 namespace {
 
 std::string format(const char* pattern, auto... values) {
@@ -73,23 +76,25 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
-    draw_bitzkey(canvas, agent.dna, x + UI(10), at(11), dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), RING_WIDTH,
+    // At twice the size it has on the map, beside its name and its colours
+    draw_bitzkey(canvas, agent.dna, x + UI(16), at(16), 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), 2 * RING_WIDTH,
                  agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
     canvas.text(font, format("#%03d  %s  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str(),
                              agent.nocturnal ? "NOCTURNAL" : "DIURNAL"),
-                {238, 238, 220}, x + UI(28), at(0));
+                {238, 238, 220}, x + UI(40), at(0));
     {  // its three colours as swatches, the hex beside each
-        int across = x;
-        for (const auto& [name, word] : {std::pair{"DOT", mind_word(agent.dna)}, std::pair{"RING", body_word(agent.dna)},
+        int across = x + UI(40), part = 0;  // its three colours as chits: the mouse over one shows that word, gene by gene
+        for (const auto& [name, word] : {std::pair{"MIND", mind_word(agent.dna)}, std::pair{"BODY", body_word(agent.dna)},
                                          std::pair{"SOCIAL", social_word(agent.dna)}}) {
-            const int swatch = UI(10);
+            const int swatch = UI(10), from = across;
             canvas.fill_rect({across, at(27), swatch, swatch}, to_color(color_from_word(word)));
             canvas.rect({across, at(27), swatch, swatch}, OUTLINE, 1);
             across += swatch + UI(3);
-            const std::string label = format("%s %08X", name, word);
+            const std::string label = name;
             canvas.text(mono_small, label, {211, 219, 201}, across, at(26));
-            across += Canvas::text_width(mono_small, label) + UI(5);
+            across += Canvas::text_width(mono_small, label) + UI(12);
+            last_swatches[static_cast<std::size_t>(part++)] = Rect{from, at(24), across - from, UI(16)};  // the chit and its hex
         }
     }
 
@@ -204,6 +209,86 @@ Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x,
     const int top = box.y + padding;
     draw_details(canvas, agent, box.x + padding, [top](int offset) { return top + UI(offset); }, width, known, here, note);
     return box;
+}
+
+const std::array<Rect, 3>& genome_swatches() { return last_swatches; }
+
+namespace {
+
+struct Gene {
+    std::string name;
+    int low, bits;     // where in the word: its lowest bit, and how many
+    std::string meaning;  // what its value means, if more than the number
+};
+
+// A word's genes, from its highest bits to its lowest, as they read left to right in binary.
+std::vector<Gene> genes_of(int part, std::uint32_t word) {
+    const auto value = [word](int low, int bits) { return static_cast<int>((word >> low) & ((1U << bits) - 1)); };
+    std::vector<Gene> genes;
+    if (part == 0) {  // mind: the cold and heat tolerance flags, then the ten mind traits
+        genes.push_back({"cold tolerance", 31, 1, value(31, 1) ? "yes" : "no"});
+        genes.push_back({"heat tolerance", 30, 1, value(30, 1) ? "yes" : "no"});
+        for (int trait = DOT_TRAIT_COUNT - 1; trait >= 0; --trait) genes.push_back({std::string(TEMPERAMENT[trait]), TRAIT_BITS * trait, TRAIT_BITS, ""});
+    } else if (part == 1) {  // body: the home temperature, the nine body traits, then nocturnal and the species
+        genes.push_back({"home temperature", 30, 2, std::string(TEMPERATURES[static_cast<std::size_t>(value(30, 2))])});
+        for (int trait = BODY_TRAIT_COUNT - 1; trait >= 1; --trait) genes.push_back({std::string(BODY_TRAITS[trait]), TRAIT_BITS * trait, TRAIT_BITS, ""});
+        genes.push_back({"nocturnal", 2, 1, value(2, 1) ? "yes" : "no"});
+        genes.push_back({"species", 0, 2, std::string(SPECIES[static_cast<std::size_t>(value(0, 2))])});
+    } else {  // social: spare bits, the terrain, neurodivergence, then the seven social traits
+        genes.push_back({"(unused)", TERRAIN_SHIFT + 2, 32 - TERRAIN_SHIFT - 2, ""});
+        genes.push_back({"terrain", TERRAIN_SHIFT, 2, std::string(TERRAINS[static_cast<std::size_t>(value(TERRAIN_SHIFT, 2))])});
+        genes.push_back({"neurodivergence", NEURODIVERGENCE_SHIFT, 4, ""});
+        for (int trait = SOCIAL_TRAIT_COUNT - 1; trait >= 0; --trait) {
+            genes.push_back({std::string(TEMPERAMENT[DOT_TRAIT_COUNT + trait]), TRAIT_BITS * trait, TRAIT_BITS, ""});
+        }
+    }
+    return genes;
+}
+
+std::string binary(std::uint32_t word, int low, int bits) {
+    std::string digits;
+    for (int bit = low + bits - 1; bit >= low; --bit) digits += (word >> bit) & 1U ? '1' : '0';
+    return digits;
+}
+
+}  // namespace
+
+void draw_word_popup(Canvas& canvas, const Bitzkey& agent, int part, int mouse_x, int mouse_y) {
+    const std::uint32_t word = part == 0 ? mind_word(agent.dna) : part == 1 ? body_word(agent.dna) : social_word(agent.dna);
+    const std::vector<Gene> genes = genes_of(part, word);
+    TTF_Font* mono = UI.font(Face::Mono, 12);
+    TTF_Font* bold = UI.font(Face::Sans, 13, true);
+    std::string all;  // the whole word in binary, a space between genes
+    for (const Gene& gene : genes) all += (all.empty() ? "" : " ") + binary(word, gene.low, gene.bits);
+    int name_width = 0;
+    for (const Gene& gene : genes) name_width = std::max(name_width, Canvas::text_width(mono, tr(gene.name)));
+    const int line = UI(15), padding = UI(10);
+    const int width = std::max(Canvas::text_width(mono, all), name_width + Canvas::text_width(mono, "  bits 00-00  00000  15  very cold")) + 2 * padding;
+    const int height = padding * 2 + UI(20) + line * (3 + static_cast<int>(genes.size()));
+    Rect box{mouse_x - UI(18) - width, mouse_y + UI(12), width, height};  // to the left: the sidebar is at the right
+    if (box.x < 0) box.x = mouse_x + UI(18);
+    box = box.clamp({0, 0, canvas.width(), canvas.height()});
+    canvas.rect(box, {19, 26, 27}, 0, UI(6));
+    canvas.rect(box, {131, 205, 143}, 1, UI(6));
+    int x = box.x + padding, y = box.y + padding;
+    canvas.fill_rect({x, y + UI(2), UI(12), UI(12)}, to_color(color_from_word(word)));
+    canvas.rect({x, y + UI(2), UI(12), UI(12)}, OUTLINE, 1);
+    canvas.text(bold, std::array{"MIND", "BODY", "SOCIAL"}[static_cast<std::size_t>(part)], {229, 239, 220}, x + UI(18), y);
+    y += UI(20);
+    canvas.text(mono, format("hex     %08X", word), {220, 229, 211}, x, y);
+    y += line;
+    canvas.text(mono, "binary", {149, 170, 150}, x, y);
+    y += line;
+    canvas.text(mono, all, {220, 229, 211}, x, y);
+    y += line;
+    for (const Gene& gene : genes) {  // each gene: its name, where it lies, its bits, and its value
+        const int value = static_cast<int>((word >> gene.low) & ((1U << gene.bits) - 1));
+        const std::string where = gene.bits == 1 ? format("bit  %d", gene.low) : format("bits %d-%d", gene.low, gene.low + gene.bits - 1);
+        canvas.text(mono, tr(gene.name), {175, 192, 172}, x, y);
+        canvas.text(mono, format("%-10s %6s %3d  %s", where.c_str(), binary(word, gene.low, gene.bits).c_str(), value, tr(gene.meaning).c_str()),
+                    {211, 219, 201}, x + name_width + UI(10), y);
+        y += line;
+    }
 }
 
 }  // namespace bitzkey::ui

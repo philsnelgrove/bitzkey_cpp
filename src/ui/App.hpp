@@ -175,6 +175,7 @@ private:
     std::unique_ptr<Simulation> simulation_;
     net::ProbeServer* probe_ = nullptr;
     std::optional<int> selected_id_;
+    std::optional<int> word_popup_;  // the genome word whose chit the mouse is over, this frame
     bool show_insights_ = false;
     bool show_census_ = false;
     ColourGraph graph_;

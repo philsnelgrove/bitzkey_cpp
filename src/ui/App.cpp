@@ -1409,9 +1409,17 @@ void App::draw(Canvas& canvas) {
     draw_world(canvas);
     draw_view_buttons(canvas);
     draw_exemplars(canvas);
+    word_popup_.reset();
     draw_sidebar(canvas);
     draw_footer(canvas);
     draw_square(canvas);
+    if (word_popup_ && selected_id_ && !show_census_ && !dialog_ && !report_) {  // a genome word, gene by gene, over the rest
+        if (const Bitzkey* agent = simulation_->find_agent(*selected_id_)) {
+            int mouse_x = 0, mouse_y = 0;
+            SDL_GetMouseState(&mouse_x, &mouse_y);
+            draw_word_popup(canvas, *agent, *word_popup_, mouse_x, mouse_y);
+        }
+    }
     draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
     language_menu_.draw_list(canvas);
     if (show_census_) {
@@ -1684,6 +1692,13 @@ void App::draw_sidebar(Canvas& canvas) {
     }
 
     draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y));
+    {  // the mouse over a colour chit: that word, gene by gene
+        int mouse_x = 0, mouse_y = 0;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+        for (int part = 0; part < 3; ++part) {
+            if (genome_swatches()[static_cast<std::size_t>(part)].contains(mouse_x, mouse_y)) word_popup_ = part;
+        }
+    }
     if (agent->brain) {  // a living animal: its brain can be inspected, beside the heading
         brains_button_ = Rect{x + width - UI(130), UI(299), UI(130), UI(26)};
         canvas.rect(*brains_button_, {44, 57, 52}, 0, UI(5));

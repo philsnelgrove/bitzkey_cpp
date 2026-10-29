@@ -24,6 +24,11 @@ constexpr std::array<Color, 4> TEMPERATURE_COLOURS = {{{238, 160, 110}, {175, 19
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width,
                   bool known = true, std::optional<double> here = std::nullopt, const std::string& note = {});
 
+// Where the last details drew the mind's, body's and social background's colour chits, each with its hex.
+const std::array<Rect, 3>& genome_swatches();
+// A popup of one of those words (0 mind, 1 body, 2 social): its hex, its binary, and its genes labelled.
+void draw_word_popup(Canvas& canvas, const Bitzkey& agent, int part, int mouse_x, int mouse_y);
+
 // The details in a box beside the mouse, kept on the screen. Returns the box.
 Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y,
                   std::optional<double> here = std::nullopt, const std::string& note = {});
