@@ -83,6 +83,7 @@ bool SetupForm::can_start() const {
 
 Simulation::Settings SetupForm::values() const {
     Simulation::Settings settings;
+    settings.pregrowth = PREGROWTH_TURNS;  // a new world's plants get their head start
     const auto at = [this](std::string_view key) {
         return value(*std::find_if(SETTINGS.begin(), SETTINGS.end(), [key](const Setting& s) { return s.key == key; }));
     };
