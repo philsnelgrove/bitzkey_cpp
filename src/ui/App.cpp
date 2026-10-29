@@ -1410,6 +1410,7 @@ void App::draw(Canvas& canvas) {
     draw_view_buttons(canvas);
     draw_exemplars(canvas);
     word_popup_.reset();
+    trait_popup_.reset();
     draw_sidebar(canvas);
     draw_footer(canvas);
     draw_square(canvas);
@@ -1418,6 +1419,13 @@ void App::draw(Canvas& canvas) {
             int mouse_x = 0, mouse_y = 0;
             SDL_GetMouseState(&mouse_x, &mouse_y);
             draw_word_popup(canvas, *agent, *word_popup_, mouse_x, mouse_y);
+        }
+    }
+    if (trait_popup_ && selected_id_ && !show_census_ && !dialog_ && !report_) {  // a trait, and what it governs
+        if (const Bitzkey* agent = simulation_->find_agent(*selected_id_)) {
+            int mouse_x = 0, mouse_y = 0;
+            SDL_GetMouseState(&mouse_x, &mouse_y);
+            draw_trait_popup(canvas, *agent, *trait_popup_, true, mouse_x, mouse_y);
         }
     }
     draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
@@ -1697,6 +1705,9 @@ void App::draw_sidebar(Canvas& canvas) {
         SDL_GetMouseState(&mouse_x, &mouse_y);
         for (int part = 0; part < 3; ++part) {
             if (genome_swatches()[static_cast<std::size_t>(part)].contains(mouse_x, mouse_y)) word_popup_ = part;
+        }
+        for (const auto& [spot_rect, spot] : trait_spots()) {
+            if (spot_rect.contains(mouse_x, mouse_y)) trait_popup_ = spot;
         }
     }
     if (agent->brain) {  // a living animal: its brain can be inspected, beside the heading

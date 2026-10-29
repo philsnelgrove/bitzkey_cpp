@@ -16,6 +16,7 @@
 namespace bitzkey::ui {
 
 std::array<Rect, 3> last_swatches{};
+std::vector<std::pair<Rect, int>> last_traits;
 
 
 namespace {
@@ -80,9 +81,14 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     draw_bitzkey(canvas, agent.dna, x + UI(16), at(16), 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), 2 * RING_WIDTH,
                  agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
-    canvas.text(font, format("#%03d  %s  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str(),
-                             agent.nocturnal ? "NOCTURNAL" : "DIURNAL"),
+    canvas.text(font, as_shown(format("#%03d  %s  %s", agent.identifier, upper(tr(species_name(agent.species))).c_str(),
+                                      upper(tr(agent.nocturnal ? "nocturnal" : "diurnal")).c_str())),
                 {238, 238, 220}, x + UI(40), at(0));
+    {  // its terrain on the line below, at the right, clear of the species icon
+        const std::string terrain = as_shown(upper(tr(terrain_name(agent.terrain))));
+        canvas.text(small, terrain, {211, 219, 201}, x + width - Canvas::text_width(small, terrain), at(25));
+    }
+    last_traits.clear();
     {  // its three colours as swatches, the hex beside each
         int across = x + UI(40), part = 0;  // its three colours as chits: the mouse over one shows that word, gene by gene
         for (const auto& [name, word] : {std::pair{"MIND", mind_word(agent.dna)}, std::pair{"BODY", body_word(agent.dna)},
@@ -131,12 +137,14 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
             const int tick = bar_left + static_cast<int>(bar_width * std::clamp(static_cast<double>(born) / TRAIT_MAX, 0.0, 1.0));
             canvas.fill_rect({tick - 1, bar_y - UI(1), 2, std::max(2, UI(4))}, {230, 236, 226});
             canvas.text(mono_small, TEMPERAMENT[trait], colour, left, at(62 + index * 14));
+            last_traits.push_back({Rect{left, at(61 + index * 14), bar_width, UI(14)}, trait});
             canvas.text(mono_small, format("%2d", born), colour, numbers, at(62 + index * 14));
             const char* change = !known || std::abs(now - born) < 0.25 ? " " : now > born ? "+" : "-";  // not by colour alone
             if (known) canvas.text(mono_small, format("%5.1f%s", now, change), colour, numbers + digits, at(62 + index * 14));
         }
         if (first == DOT_TRAIT_COUNT) {
             canvas.text(mono_small, "neurodiv.", {175, 192, 172}, left, at(62 + SOCIAL_TRAIT_COUNT * 14));
+            last_traits.push_back({Rect{left, at(61 + SOCIAL_TRAIT_COUNT * 14), numbers + digits - left, UI(14)}, NEURODIVERGENCE_SPOT});
             canvas.text(mono_small, format("%2d", decode_neurodivergence(agent.dna)), {175, 192, 172}, numbers,
                         at(62 + SOCIAL_TRAIT_COUNT * 14));
         }
@@ -152,6 +160,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
         const int cell = x + column * width / 3;
         const int number_at = cell + width / 3 - UI(10) - Canvas::text_width(mono_small, number);
         canvas.text(mono_small, name, {175, 192, 172}, cell, at(222 + row * 14));
+        last_traits.push_back({Rect{cell, at(221 + row * 14), width / 3 - UI(10), UI(14)}, last ? BURN_SPOT : BODY_SPOT + index + 1});
         canvas.text(mono_small, number, {175, 192, 172}, number_at, at(222 + row * 14));
         if (!last) {  // a bar under it on the traits' shared scale
             const int bar_width = width / 3 - UI(10), bar_y = at(222 + row * 14) + UI(12);
@@ -273,20 +282,102 @@ void draw_word_popup(Canvas& canvas, const Bitzkey& agent, int part, int mouse_x
     int x = box.x + padding, y = box.y + padding;
     canvas.fill_rect({x, y + UI(2), UI(12), UI(12)}, to_color(color_from_word(word)));
     canvas.rect({x, y + UI(2), UI(12), UI(12)}, OUTLINE, 1);
-    canvas.text(bold, std::array{"MIND", "BODY", "SOCIAL"}[static_cast<std::size_t>(part)], {229, 239, 220}, x + UI(18), y);
+    canvas.text(bold, std::array{"MIND", "BODY", "SOCIAL"}[static_cast<std::size_t>(part)], {229, 239, 220}, x + UI(18), y);  // translated as drawn
     y += UI(20);
-    canvas.text(mono, format("hex     %08X", word), {220, 229, 211}, x, y);
+    canvas.text(mono, as_shown(tr("hex") + format("  %08X", word)), {220, 229, 211}, x, y);
     y += line;
-    canvas.text(mono, "binary", {149, 170, 150}, x, y);
+    canvas.text(mono, tr("binary"), {149, 170, 150}, x, y);
     y += line;
     canvas.text(mono, all, {220, 229, 211}, x, y);
     y += line;
     for (const Gene& gene : genes) {  // each gene: its name, where it lies, its bits, and its value
         const int value = static_cast<int>((word >> gene.low) & ((1U << gene.bits) - 1));
-        const std::string where = gene.bits == 1 ? format("bit  %d", gene.low) : format("bits %d-%d", gene.low, gene.low + gene.bits - 1);
+        const std::string where = gene.bits == 1 ? tr("bit") + format(" %d", gene.low) : tr("bits") + format(" %d-%d", gene.low, gene.low + gene.bits - 1);
         canvas.text(mono, tr(gene.name), {175, 192, 172}, x, y);
-        canvas.text(mono, format("%-10s %6s %3d  %s", where.c_str(), binary(word, gene.low, gene.bits).c_str(), value, tr(gene.meaning).c_str()),
+        canvas.text(mono, as_shown(format("%-10s %6s %3d  %s", where.c_str(), binary(word, gene.low, gene.bits).c_str(), value,
+                                          gene.meaning.empty() ? "" : tr(gene.meaning).c_str())),
                     {211, 219, 201}, x + name_width + UI(10), y);
+        y += line;
+    }
+}
+
+namespace {
+
+// What each trait governs, for the trait popup: the temperament, the body, neurodivergence and the burn.
+constexpr std::array<const char*, TEMPERAMENT_COUNT> TEMPERAMENT_ABOUT = {
+    "How much it enjoys fighting and attacking, softened by its empathy and tolerance.",
+    "How much it enjoys mating, and so how eagerly it seeks a partner.",
+    "How much it enjoys setting off to explore.",
+    "How strongly it shies from hunters and danger, and how much a blow frightens it.",
+    "How much it enjoys eating.",
+    "How far ahead it looks for the weather turning.",
+    "How fast it learns and how many past experiences it re-learns from; a cleverer brain burns more energy.",
+    "How long it remembers where it last fed and where it was last struck.",
+    "How quickly it gets over a herd-mate's failure, how long it bears bad weather, and how little a bad experience frightens it.",
+    "How much experience reshapes its temperament over its life.",
+    "How much it enjoys the company of its own kind.",
+    "How much it shares in others' joys and sorrows: caring for its young, grieving for them, and holding back from fights.",
+    "How readily it accepts others unlike itself, and how much less it enjoys fighting and rivalry.",
+    "How much it values keeping to its herd.",
+    "How sought-after it is as a mate, and how little crowding troubles it.",
+    "How much it learns from what its herd-mates do, and how far off a herd-mate's alert reaches it.",
+    "How closely a herd-mate or partner must share its social background for it to accept them."};
+constexpr std::array<const char*, BODY_TRAIT_COUNT> BODY_ABOUT = {
+    "",
+    "A larger body is mightier and tougher but has fewer young at a time; a small one may slip away from an attacker.",
+    "How hard it hits; it costs energy to keep.",
+    "How well it withstands blows; it costs energy to keep.",
+    "How much harm it does in a fight (thorns, for a plant); it costs energy to keep.",
+    "How fast it moves; the costliest trait to keep.",
+    "How far it sees: three squares further for each step.",
+    "How cheaply and how often it can breed (how freely a plant spreads).",
+    "How many young it tends to have at once.",
+    "How well it digests what it eats, carrion included."};
+constexpr const char* NEURODIVERGENCE_ABOUT = "A gene that does nothing yet.";
+constexpr const char* BURN_ABOUT = "The energy its body and brain use each turn.";
+
+}  // namespace
+
+const std::vector<std::pair<Rect, int>>& trait_spots() { return last_traits; }
+
+void draw_trait_popup(Canvas& canvas, const Bitzkey& agent, int spot, bool known, int mouse_x, int mouse_y) {
+    std::string name, value, about;
+    if (spot < TEMPERAMENT_COUNT) {
+        name = TEMPERAMENT[static_cast<std::size_t>(spot)];
+        value = known ? format("%s %d   %s %.1f", tr("inborn").c_str(), agent.inborn[spot], tr("now").c_str(), agent.mind[spot])
+                      : format("%s %d", tr("inborn").c_str(), agent.inborn[spot]);
+        about = TEMPERAMENT_ABOUT[static_cast<std::size_t>(spot)];
+    } else if (spot == NEURODIVERGENCE_SPOT) {
+        name = "neurodivergence";
+        value = format("%s %d / %d", tr("value").c_str(), decode_neurodivergence(agent.dna), NEURODIVERGENCE_MAX);
+        about = NEURODIVERGENCE_ABOUT;
+    } else if (spot == BURN_SPOT) {
+        name = "burn";
+        value = format("%s %.2f", tr("value").c_str(), agent.burn);
+        about = BURN_ABOUT;
+    } else {
+        const auto trait = static_cast<std::size_t>(spot - BODY_SPOT);
+        name = BODY_TRAITS[trait];
+        value = format("%s %d / %d", tr("value").c_str(), agent.body[trait], TRAIT_MAX);
+        about = BODY_ABOUT[trait];
+    }
+    TTF_Font* title = UI.font(Face::Sans, 17, true);
+    TTF_Font* text = UI.font(Face::Sans, 15);
+    const int padding = UI(12), width = UI(320), line = UI(20);
+    const std::vector<std::string> lines = wrapped_lines(text, about, width - 2 * padding);
+    Rect box{mouse_x - UI(18) - width, mouse_y + UI(12), width, padding * 2 + UI(32) + line * (1 + static_cast<int>(lines.size()))};
+    if (box.x < 0) box.x = mouse_x + UI(18);
+    box = box.clamp({0, 0, canvas.width(), canvas.height()});
+    canvas.rect(box, {19, 26, 27}, 0, UI(6));
+    canvas.rect(box, {131, 205, 143}, 1, UI(6));
+    const int x = box.x + padding;
+    int y = box.y + padding;
+    canvas.text(title, as_shown(upper(tr(name))), {229, 239, 220}, x, y);
+    y += UI(26);
+    canvas.text(text, as_shown(value), {131, 205, 143}, x, y);
+    y += line + UI(6);
+    for (const std::string& shown : lines) {
+        canvas.text(text, as_shown(shown), {211, 219, 201}, x, y);
         y += line;
     }
 }

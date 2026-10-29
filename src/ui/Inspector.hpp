@@ -5,6 +5,8 @@
 #include <array>
 #include <functional>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "core/Simulation.hpp"
 #include "ui/Canvas.hpp"
@@ -28,6 +30,13 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
 const std::array<Rect, 3>& genome_swatches();
 // A popup of one of those words (0 mind, 1 body, 2 social): its hex, its binary, and its genes labelled.
 void draw_word_popup(Canvas& canvas, const Bitzkey& agent, int part, int mouse_x, int mouse_y);
+
+// Where the last details drew each trait, by spot: 0 to 16 the temperament, then these; a body trait at BODY_SPOT
+// plus its index (1 to 9).
+constexpr int NEURODIVERGENCE_SPOT = 17, BODY_SPOT = 18, BURN_SPOT = 28;
+const std::vector<std::pair<Rect, int>>& trait_spots();
+// A popup, in larger text, of one trait: its name, its value, and what it governs.
+void draw_trait_popup(Canvas& canvas, const Bitzkey& agent, int spot, bool known, int mouse_x, int mouse_y);
 
 // The details in a box beside the mouse, kept on the screen. Returns the box.
 Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y,
