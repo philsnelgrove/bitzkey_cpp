@@ -1,5 +1,7 @@
 #include "ui/Platform.hpp"
 
+#include "ui/Language.hpp"
+
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -66,17 +68,42 @@ std::string utf8_name(const std::filesystem::path& path) {
     return std::string(reinterpret_cast<const char*>(name.data()), name.size());
 }
 
+#ifdef _WIN32
+namespace {
+
+// Text in the language shown, for Windows.
+std::wstring shown_wide(std::string_view english) { return path_from_utf8(tr(english)).wstring(); }
+
+// A file dialog's filter, in the language shown: what the files are, their pattern, then all files.
+std::wstring file_filter(std::string_view what, const std::wstring& listed, const std::wstring& pattern) {
+    std::wstring filter = shown_wide(what) + L" (" + listed + L")";
+    filter.push_back(L'\0');
+    filter += pattern;
+    filter.push_back(L'\0');
+    filter += shown_wide("All files") + L" (*.*)";
+    filter.push_back(L'\0');
+    filter += L"*.*";
+    filter.push_back(L'\0');
+    filter.push_back(L'\0');
+    return filter;
+}
+
+}  // namespace
+#endif
+
 std::optional<std::filesystem::path> choose_file(const std::filesystem::path& start) {
 #ifdef _WIN32
     std::vector<wchar_t> buffer(32768, L'\0');
     const std::wstring folder = std::filesystem::exists(start) ? start.wstring() : std::wstring();
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof dialog;
-    dialog.lpstrFilter = L"Bitzkey genomes (*.json, *.txt)\0*.json;*.txt\0All files (*.*)\0*.*\0";
+    const std::wstring filter = file_filter("Bitzkey genomes", L"*.json, *.txt", L"*.json;*.txt");
+    const std::wstring title = shown_wide("Import Bitzkeys");
+    dialog.lpstrFilter = filter.c_str();
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
-    dialog.lpstrTitle = L"Import Bitzkeys";
+    dialog.lpstrTitle = title.c_str();
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameW(&dialog)) return std::filesystem::path(buffer.data());
 #else
@@ -94,11 +121,13 @@ std::optional<std::filesystem::path> choose_world_save(const std::filesystem::pa
     const std::wstring start = folder.wstring();
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof dialog;
-    dialog.lpstrFilter = L"Bitzkey worlds (*.bzworld)\0*.bzworld\0All files (*.*)\0*.*\0";
+    const std::wstring filter = file_filter("Bitzkey worlds", L"*.bzworld", L"*.bzworld");
+    dialog.lpstrFilter = filter.c_str();
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.lpstrInitialDir = start.c_str();
-    dialog.lpstrTitle = L"Save World";
+    const std::wstring title = shown_wide("Save World");
+    dialog.lpstrTitle = title.c_str();
     dialog.lpstrDefExt = L"bzworld";
     dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetSaveFileNameW(&dialog)) return std::filesystem::path(buffer.data());
@@ -114,11 +143,13 @@ std::optional<std::filesystem::path> choose_world_file(const std::filesystem::pa
     const std::wstring start = std::filesystem::exists(folder) ? folder.wstring() : std::wstring();
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof dialog;
-    dialog.lpstrFilter = L"Bitzkey worlds (*.bzworld)\0*.bzworld\0All files (*.*)\0*.*\0";
+    const std::wstring filter = file_filter("Bitzkey worlds", L"*.bzworld", L"*.bzworld");
+    dialog.lpstrFilter = filter.c_str();
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
     dialog.lpstrInitialDir = start.empty() ? nullptr : start.c_str();
-    dialog.lpstrTitle = L"Load World";
+    const std::wstring title = shown_wide("Load World");
+    dialog.lpstrTitle = title.c_str();
     dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameW(&dialog)) return std::filesystem::path(buffer.data());
 #else
