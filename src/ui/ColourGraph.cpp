@@ -52,7 +52,11 @@ std::uint32_t word_of(Dna dna, int part) {
     return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna);
 }
 
-Color colour_of(Dna dna, int part) { return to_color(color_from_word(word_of(dna, part))); }
+Color colour_of(Dna dna, int part) {
+    const Rgb rgb = color_from_word(word_of(dna, part));
+    if (part == 3) return {static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)};  // already safe
+    return to_color(rgb);
+}
 
 constexpr std::array<const char*, 4> TITLES = {"RING / BODY", "DOT / MIND", "SOCIAL BACKGROUND", "SPECIES"};
 
