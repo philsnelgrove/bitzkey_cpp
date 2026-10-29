@@ -339,8 +339,18 @@ App::Result App::run() {
                     blind_ = true;
                 } else if (!hud_hidden_ && !exemplar_menu_ && lod_button_.contains(event.button.x, event.button.y)) {
                     lod_ = !lod_;
-                } else if (!hud_hidden_ && !exemplar_menu_ && plants_button_.contains(event.button.x, event.button.y)) {
-                    plants_ = !plants_;
+                } else if (!hud_hidden_ && !exemplar_menu_ && std::any_of(species_buttons_.begin(), species_buttons_.end(), [&](const Rect& button) {
+                               return button.contains(event.button.x, event.button.y);
+                           })) {
+                    for (std::size_t kind = 0; kind < species_buttons_.size(); ++kind) {
+                        if (species_buttons_[kind].contains(event.button.x, event.button.y)) species_shown_[kind] = !species_shown_[kind];
+                    }
+                } else if (!hud_hidden_ && !exemplar_menu_ && std::any_of(terrain_buttons_.begin(), terrain_buttons_.end(), [&](const Rect& button) {
+                               return button.contains(event.button.x, event.button.y);
+                           })) {
+                    for (std::size_t kind = 0; kind < terrain_buttons_.size(); ++kind) {
+                        if (terrain_buttons_[kind].contains(event.button.x, event.button.y)) terrain_shown_[kind] = !terrain_shown_[kind];
+                    }
                 } else if (globe_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     pick_on_globe(event.button.x, event.button.y);  // a click picks the Bitzkey there; the right button turns it
                 } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
@@ -1136,10 +1146,23 @@ double App::corpse_opacity(const Bitzkey& agent) const {
 
 int App::sidebar_width(const Canvas& canvas) const { return std::min(UI(340), std::max(UI(290), canvas.width() / 3)); }
 
+namespace {
+// The view's buttons and the filters' two rows above the map take this much of the board's height, in design pixels.
+constexpr int FILTER_ROWS_HEIGHT = 63;
+
+// The map below the rows of buttons: they take more than the board's margin.
+Rect with_filter_rows(Rect view) {
+    const int more = UI(FILTER_ROWS_HEIGHT) - UI(21);
+    view.y += more;
+    view.h -= more;
+    return view;
+}
+}  // namespace
+
 std::pair<Rect, double> App::map_view(const Canvas& canvas) const {
     // Between the exemplars; with the HUD hidden, the whole window.
     const Rect view = hud_hidden_ ? Rect{0, 0, canvas.width(), canvas.height()}.inflate(-UI(16), -UI(16))
-                                  : board_area(canvas).inflate(-UI(42) - 2 * UI(EXEMPLAR_WIDTH + 16), -UI(42));
+                                  : with_filter_rows(board_area(canvas).inflate(-UI(42) - 2 * UI(EXEMPLAR_WIDTH + 16), -UI(42)));
     return {view, std::min(static_cast<double>(view.w) / simulation_->width(), static_cast<double>(view.h) / simulation_->height())};
 }
 
@@ -1202,16 +1225,29 @@ bool App::map_event(const SDL_Event& event) {
 void App::draw_view_buttons(Canvas& canvas) {
     const Rect view = map_view(canvas).first;
     TTF_Font* font = UI.font(Face::Sans, 12, true);
-    map_button_ = Rect{view.x, view.y - UI(21), UI(56), UI(18)};
+    // Three rows above the map: the views, then the filters by species, then by terrain
+    map_button_ = Rect{view.x, view.y - UI(FILTER_ROWS_HEIGHT), UI(56), UI(18)};
     globe_button_ = Rect{map_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     blind_button_ = Rect{globe_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     lod_button_ = Rect{blind_button_.right() + UI(18), map_button_.y, UI(104), UI(18)};
-    plants_button_ = Rect{lod_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
-    for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_ && !blind_}, std::tuple{globe_button_, "GLOBE", globe_ && !blind_},
-                                            std::tuple{blind_button_, "BLIND", blind_}, std::tuple{lod_button_, "LOD MANAGER", lod_},
-                                            std::tuple{plants_button_, "PLANTS", plants_}}) {
+    const auto draw_button = [&](const Rect& button, const char* label, bool on) {
         canvas.rect(button, on ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(4));
         canvas.label(font, label, on ? Color{19, 26, 27} : Color{220, 229, 211}, button);
+    };
+    for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_ && !blind_}, std::tuple{globe_button_, "GLOBE", globe_ && !blind_},
+                                            std::tuple{blind_button_, "BLIND", blind_}, std::tuple{lod_button_, "LOD MANAGER", lod_}}) {
+        draw_button(button, label, on);
+    }
+    constexpr std::array<const char*, 4> SPECIES_LABELS = {"PLANTS", "GRAZERS", "OMNIVORES", "PREDATORS"};
+    constexpr std::array<const char*, 4> TERRAIN_LABELS = {"TERRESTRIAL", "AQUATIC", "AVIAN", "AMPHIBIOUS"};
+    for (const auto& [buttons, labels, shown, row] : {std::tuple{&species_buttons_, &SPECIES_LABELS, &species_shown_, 1},
+                                                      std::tuple{&terrain_buttons_, &TERRAIN_LABELS, &terrain_shown_, 2}}) {
+        int left = view.x;
+        for (std::size_t kind = 0; kind < buttons->size(); ++kind) {  // each as wide as its label in the language shown
+            (*buttons)[kind] = Rect{left, map_button_.y + row * UI(21), Canvas::text_width(font, tr((*labels)[kind])) + UI(16), UI(18)};
+            draw_button((*buttons)[kind], (*labels)[kind], (*shown)[kind]);
+            left = (*buttons)[kind].right() + UI(6);
+        }
     }
 }
 
@@ -1348,7 +1384,7 @@ void App::draw_globe(Canvas& canvas) {
         std::vector<const Bitzkey*> members;
         for (const Bitzkey* agent : *stack.members) {
             if (shown(*agent, least)) members.push_back(agent);
-            else if (plants_ || agent->species != Species::Plant) ++hidden;  // too small to see from this far out
+            else if (!filtered_out(*agent)) ++hidden;  // too small to see from this far out
         }
         drawn += static_cast<int>(members.size());
         std::stable_sort(members.begin(), members.end(), [](const Bitzkey* a, const Bitzkey* b) { return a->body[Size] > b->body[Size]; });
@@ -1371,8 +1407,12 @@ void App::draw_globe(Canvas& canvas) {
 
 bool App::shown(const Bitzkey& agent, int least) const {
     if (marked(agent)) return true;
-    if (!plants_ && agent.species == Species::Plant) return false;
+    if (filtered_out(agent)) return false;
     return !lod_ || agent.body[Size] >= least;
+}
+
+bool App::filtered_out(const Bitzkey& agent) const {
+    return !species_shown_[static_cast<std::size_t>(agent.species)] || !terrain_shown_[static_cast<std::size_t>(agent.terrain)];
 }
 
 bool App::marked(const Bitzkey& agent) const {
@@ -1606,8 +1646,8 @@ void App::draw_world(Canvas& canvas) {
         const int px = static_cast<int>(py_round(rect.x + (agent->x + 0.5) * board.cell_width));
         const int py = static_cast<int>(py_round(rect.y + (agent->y + 0.5) * board.cell_height));
         if (!reach.contains(px, py)) continue;
-        if (!shown(*agent, least)) {  // too small to see from this far out, or a plant hidden
-            if (plants_ || agent->species != Species::Plant) ++hidden;
+        if (!shown(*agent, least)) {  // too small to see from this far out, or filtered out
+            if (!filtered_out(*agent)) ++hidden;
             continue;
         }
         ++drawn;
