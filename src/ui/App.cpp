@@ -1597,7 +1597,7 @@ void App::draw_sidebar(Canvas& canvas) {
     canvas.text(bold, format("TURN  %05d", simulation_->turn()), {232, 236, 219}, x, UI(78));
     canvas.text(small, format("%zu ALIVE    %d LOST", alive.size(), simulation_->deaths()), {157, 177, 159}, x, UI(108));
     const int turn = simulation_->turn();
-    canvas.text_at(font, format("YEAR %d", year(turn)), {232, 236, 219}, [&](Rect& box) { box.topright_at(x + width, UI(84)); });
+    canvas.text_at(font, format("MONTH %d, YEAR %d", month(turn), year(turn)), {232, 236, 219}, [&](Rect& box) { box.topright_at(x + width, UI(84)); });
     canvas.text_at(small, upper(SEASONS[static_cast<std::size_t>(season(turn))]),
                    season(turn) % 2 ? Color{140, 185, 230} : Color{157, 177, 159},
                    [&](Rect& box) { box.topright_at(x + width, UI(108)); });
