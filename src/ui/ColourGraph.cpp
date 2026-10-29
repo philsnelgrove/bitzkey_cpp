@@ -41,11 +41,20 @@ std::string fit_text(const std::string& text, TTF_Font* font, int width) {
 }
 
 // The genome's word for a part: 0 the ring, 1 the dot, 2 the social background.
-std::uint32_t word_of(Dna dna, int part) { return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna); }
+// The species' own colours, a colour-blind safe set (Okabe and Ito's), as words: plant, grazer, omnivore, predator.
+constexpr std::array<std::uint32_t, 4> SPECIES_WORDS = {(255u - 0) << 24 | (255u - 158) << 16 | (255u - 115) << 8,
+                                                        (255u - 86) << 24 | (255u - 180) << 16 | (255u - 233) << 8,
+                                                        (255u - 230) << 24 | (255u - 159) << 16 | (255u - 0) << 8,
+                                                        (255u - 213) << 24 | (255u - 94) << 16 | (255u - 0) << 8};
+
+std::uint32_t word_of(Dna dna, int part) {
+    if (part == 3) return SPECIES_WORDS[static_cast<std::size_t>(decode_body(dna)[SpeciesTrait] % 4)];
+    return part == 0 ? body_word(dna) : part == 1 ? mind_word(dna) : social_word(dna);
+}
 
 Color colour_of(Dna dna, int part) { return to_color(color_from_word(word_of(dna, part))); }
 
-constexpr std::array<const char*, 3> TITLES = {"RING / BODY", "DOT / MIND", "SOCIAL BACKGROUND"};
+constexpr std::array<const char*, 4> TITLES = {"RING / BODY", "DOT / MIND", "SOCIAL BACKGROUND", "SPECIES"};
 
 Color faded(Color colour, double amount) {
     const auto channel = [amount](int value, int back) {

@@ -79,8 +79,19 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     canvas.text(font, format("#%03d  %s  %s  %s", agent.identifier, upper(species_name(agent.species)).c_str(), upper(terrain_name(agent.terrain)).c_str(),
                              agent.nocturnal ? "NOCTURNAL" : "DIURNAL"),
                 {238, 238, 220}, x + UI(28), at(0));
-    canvas.text(mono_small, format("DOT %08X RING %08X SOCIAL %08X", mind_word(agent.dna), body_word(agent.dna), social_word(agent.dna)),
-                {211, 219, 201}, x, at(26));
+    {  // its three colours as swatches, the hex beside each
+        int across = x;
+        for (const auto& [name, word] : {std::pair{"DOT", mind_word(agent.dna)}, std::pair{"RING", body_word(agent.dna)},
+                                         std::pair{"SOCIAL", social_word(agent.dna)}}) {
+            const int swatch = UI(10);
+            canvas.fill_rect({across, at(27), swatch, swatch}, to_color(color_from_word(word)));
+            canvas.rect({across, at(27), swatch, swatch}, OUTLINE, 1);
+            across += swatch + UI(3);
+            const std::string label = format("%s %08X", name, word);
+            canvas.text(mono_small, label, {211, 219, 201}, across, at(26));
+            across += Canvas::text_width(mono_small, label) + UI(5);
+        }
+    }
 
     // Temperament: the mind's traits on the left, the social background's on the right. Names are
     // in the language shown, and the numbers stand in columns after the longest of them.
@@ -106,6 +117,14 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
             const Color colour = !known || std::abs(now - born) < 0.25 ? Color{175, 192, 172}
                                  : now > born                       ? Color{131, 205, 143}
                                                                     : Color{238, 183, 110};
+            // A bar under the row: filled to now, a tick at birth, so the change shows at a glance
+            const int bar_left = left, bar_width = numbers + digits + Canvas::text_width(mono_small, " 0.0+") - left;
+            const int bar_y = at(62 + index * 14) + UI(12);
+            canvas.fill_rect({bar_left, bar_y, bar_width, std::max(1, UI(2))}, {58, 70, 62});
+            const double shown = known ? now : born;
+            canvas.fill_rect({bar_left, bar_y, static_cast<int>(bar_width * std::clamp(shown / TRAIT_MAX, 0.0, 1.0)), std::max(1, UI(2))}, colour);
+            const int tick = bar_left + static_cast<int>(bar_width * std::clamp(static_cast<double>(born) / TRAIT_MAX, 0.0, 1.0));
+            canvas.fill_rect({tick - 1, bar_y - UI(1), 2, std::max(2, UI(4))}, {230, 236, 226});
             canvas.text(mono_small, TEMPERAMENT[trait], colour, left, at(62 + index * 14));
             canvas.text(mono_small, format("%2d", born), colour, numbers, at(62 + index * 14));
             const char* change = !known || std::abs(now - born) < 0.25 ? " " : now > born ? "+" : "-";  // not by colour alone
@@ -129,6 +148,11 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
         const int number_at = cell + width / 3 - UI(10) - Canvas::text_width(mono_small, number);
         canvas.text(mono_small, name, {175, 192, 172}, cell, at(222 + row * 14));
         canvas.text(mono_small, number, {175, 192, 172}, number_at, at(222 + row * 14));
+        if (!last) {  // a bar under it on the traits' shared scale
+            const int bar_width = width / 3 - UI(10), bar_y = at(222 + row * 14) + UI(12);
+            canvas.fill_rect({cell, bar_y, bar_width, std::max(1, UI(2))}, {58, 70, 62});
+            canvas.fill_rect({cell, bar_y, bar_width * agent.body[index + 1] / TRAIT_MAX, std::max(1, UI(2))}, {175, 192, 172});
+        }
     }
     draw_climate(canvas, agent, x, at(280), width, known ? here : std::nullopt);
 

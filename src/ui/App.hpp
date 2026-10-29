@@ -81,6 +81,7 @@ private:
     void pick_on_map(int start_x, int start_y, int end_x, int end_y, bool adding);
     std::optional<int> living_at(int x, int y);  // the living Bitzkey clicked at, if any
     void select(int identifier);  // on the map and the graph alike
+    void step_selection(int way);  // Tab: the next Bitzkey, Shift+Tab the one before
     // Copy the living Bitzkeys picked on the graph to the clipboard and leave, to start a new world with
     // them alone imported. Returns whether it left.
     bool renew();

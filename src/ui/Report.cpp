@@ -1,5 +1,6 @@
 #include "ui/Report.hpp"
 
+#include <cstdlib>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -208,6 +209,11 @@ void Report::draw(Canvas& canvas) {
         for (std::size_t index = 0; index < cells.size(); ++index) {
             const bool words = index == 0 || (cells.size() == 5 && index >= 3);
             const int cell_width = Canvas::text_width(mono, cells[index]);
+            if (!heading && !words && cells[index].find('%') != std::string::npos) {  // a share shaded by its size: a heatmap
+                const double share = std::clamp(std::atof(cells[index].c_str()) / 100.0, 0.0, 1.0);
+                const auto shade = [share](int low, int high) { return static_cast<std::uint8_t>(low + (high - low) * share); };
+                canvas.fill_rect({x - UI(2), y, widths[index] + UI(4), UI(LINE) - 1}, {shade(30, 30), shade(40, 88), shade(40, 118)});
+            }
             canvas.text(mono, cells[index], colour, words ? x : x + widths[index] - cell_width, y);
             x += widths[index] + UI(GAP);
         }

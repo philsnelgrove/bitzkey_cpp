@@ -2,6 +2,7 @@
 // How a Bitzkey is drawn: an inner dot in its mind word's colour, sized by its body, inside a
 // ring in its body word's colour.
 
+#include <algorithm>
 #include <array>
 #include <utility>
 #include <vector>
@@ -37,8 +38,20 @@ constexpr Color EXPORTING{205, 120, 30};  // the ring round Bitzkeys on the expo
 Color zone_colour(double temperature);  // part way between two tints while the weather turns
 Color sea_colour(double temperature);   // the same under the sea
 
+// Colour-blind safe colours (F8): genome colours with the red-green differences a deuteranope or protanope loses moved
+// into lightness and blue-yellow, where they can be seen (a "daltonize" correction).
+inline bool COLOUR_BLIND_SAFE = false;
+
 inline Color to_color(const Rgb& rgb) {
-    return {static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)};
+    double r = rgb.r, g = rgb.g, b = rgb.b;
+    if (COLOUR_BLIND_SAFE) {
+        const double seen_r = 0.625 * r + 0.375 * g, seen_g = 0.7 * r + 0.3 * g, seen_b = 0.3 * g + 0.7 * b;  // as a deuteranope sees it
+        const double lost_r = r - seen_r, lost_g = g - seen_g, lost_b = b - seen_b;
+        g += 0.7 * lost_r + lost_g;
+        b += 0.7 * lost_r + lost_b;
+    }
+    const auto channel = [](double value) { return static_cast<std::uint8_t>(std::clamp(value, 0.0, 255.0) + 0.5); };
+    return {channel(r), channel(g), channel(b)};
 }
 
 // The dot's radius shows the body's size: from the smallest at size 0 to `largest` at the biggest.

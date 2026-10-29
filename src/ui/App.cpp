@@ -257,6 +257,10 @@ App::Result App::run() {
                     } else {
                         ask_to_leave();
                     }
+                } else if (key == SDLK_F8) {
+                    COLOUR_BLIND_SAFE = !COLOUR_BLIND_SAFE;  // colour-blind safe genome colours
+                } else if (key == SDLK_TAB && !show_census_) {
+                    step_selection((SDL_GetModState() & KMOD_SHIFT) ? -1 : 1);  // the keyboard's way through the Bitzkeys
                 } else if (key == SDLK_F9) {
                     UI.next_text_size();  // larger text: 100, 125, 150, 200%
                 } else if (key == SDLK_F11) {
@@ -942,6 +946,26 @@ void App::pick_on_map(int start_x, int start_y, int end_x, int end_y, bool addin
     }
 }
 
+void App::step_selection(int way) {
+    // The next living Bitzkey by identifier after the one selected, or before it, round to the first.
+    const auto living = simulation_->living();
+    if (living.empty()) return;
+    std::vector<int> identifiers;
+    for (const Bitzkey* agent : living) identifiers.push_back(agent->identifier);
+    std::sort(identifiers.begin(), identifiers.end());
+    auto next = identifiers.begin();
+    if (selected_id_) {
+        if (way > 0) {
+            next = std::upper_bound(identifiers.begin(), identifiers.end(), *selected_id_);
+            if (next == identifiers.end()) next = identifiers.begin();
+        } else {
+            next = std::lower_bound(identifiers.begin(), identifiers.end(), *selected_id_);
+            next = next == identifiers.begin() ? identifiers.end() - 1 : next - 1;
+        }
+    }
+    select(*next);
+}
+
 void App::select(int identifier) {
     selected_id_ = identifier;
     graph_.select_only(identifier);  // the map and the graph share one selection
@@ -1515,6 +1539,18 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             canvas.fill_rect({left, rect.y, right - left, rect.h}, NIGHT);
         }
     }
+    // Each climate band named where it starts, at the left of what is seen, so the zones read without colour
+    TTF_Font* small = UI.font(Face::Sans, 11);
+    int last_zone = -1;
+    for (int y = 0; y < simulation_->height(); ++y) {
+        const int zone = std::clamp(static_cast<int>(std::lround(simulation_->temperature(y))), 0, static_cast<int>(HOMES.size()) - 1);
+        if (zone == last_zone) continue;
+        last_zone = zone;
+        const int top = std::max(static_cast<int>(py_round(rect.y + y * board.cell_height)), view.y) + UI(2);
+        const int left = std::max(rect.x, view.x) + UI(4);
+        canvas.text(small, HOMES[static_cast<std::size_t>(zone)], {0, 0, 0}, left + 1, top + 1);
+        canvas.text(small, HOMES[static_cast<std::size_t>(zone)], {240, 244, 236}, left, top);
+    }
 }
 
 void App::draw_world(Canvas& canvas) {
@@ -1927,7 +1963,7 @@ void App::draw_footer(Canvas& canvas) {
     }
     footer_lines(canvas,
                  "SPACE  pause   -/+  speed   RIGHT  step   WHEEL / Z  zoom   I  insights   B  report   "
-                 "G  graph   E  export   R  restart   F9  text size   F11  window   ESC  menu",
+                 "G  graph   E  export   R  restart   TAB  next   F8  colour-blind   F9  text size   F11  window   ESC  menu",
                  left, room, {187, 199, 181});
 }
 

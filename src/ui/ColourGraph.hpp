@@ -52,7 +52,7 @@ public:
     // Open: the catalog, to look through.
     enum class Action { None, Copy, Save, Map, Catalog, Renew, Open };
 
-    void switch_part() { part_ = (part_ + 1) % 3; }
+    void switch_part() { part_ = (part_ + 1) % 4; }
     void reset();  // forget the selection and zoom, for a new world
     void unzoom();  // the whole run, its whole height
     const std::set<int>& selection() const { return selection_; }
@@ -102,7 +102,7 @@ private:
     std::string describe(const Simulation& simulation, std::optional<int> hovered) const;
     static Rect box_between(int x1, int y1, int x2, int y2);
 
-    int part_ = 0;  // the colours shown: 0 the ring's, 1 the dot's, 2 the social background's
+    int part_ = 0;  // the colours shown: 0 the ring's, 1 the dot's, 2 the social background's, 3 the species'
     int sort_ = 0;
     bool menu_open_ = false;  // the sort menu
     std::set<int> selection_;
