@@ -80,7 +80,7 @@ Json worker_in(const Pool& pool, int port) {
 
 std::size_t living_brains(Simulation& simulation) {
     std::size_t count = 0;
-    for (const Bitzkey* agent : simulation.living()) count += (agent->brain != nullptr) + (agent->target != nullptr);  // and its target brain
+    for (const Bitzkey* agent : simulation.living()) count += agent->brain != nullptr;
     return count;
 }
 
