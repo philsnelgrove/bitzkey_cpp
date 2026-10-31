@@ -355,6 +355,18 @@ SDL_Surface* ground_tile(Ground ground, int width, int height, int variant) {
 
 namespace bitzkey::ui {
 
+void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) {
+    const int size = std::max(2, radius * 3 / 5);
+    if (wears) {
+        const int cx = x - radius, cy = y + radius * 3 / 5;
+        canvas.fill_rect({cx - size, cy - size, 2 * size, 3 * size / 2}, wears == 1 ? Color{236, 226, 205} : Color{122, 80, 44});
+    }
+    if (wields) {
+        const int cx = x + radius, cy = y - radius * 3 / 5;
+        canvas.line(cx - size, cy + size, cx + size, cy - size, wields == 2 ? Color{122, 80, 44} : wields == 1 ? Color{236, 226, 205} : Color{136, 138, 142}, std::max(1, size / 2));
+    }
+}
+
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half) {
     const int size = std::max(2, half / 2);
     const std::array<std::pair<int, Color>, 3> marks{{{stone, Color{136, 138, 142}}, {bone, Color{236, 226, 205}}, {wood, Color{122, 80, 44}}}};

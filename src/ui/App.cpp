@@ -1592,7 +1592,8 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             int gear = 0;
             for (const PileKind kind : {BoneAxePile, ClubPile, StoneAxePile, BoneArmourPile, WoodArmourPile}) gear += simulation_->pile_at(x, y, kind);
             const bool fire = simulation_->fire_at(x, y) > simulation_->turn();
-            if (!meat && !fruit && !stone && !bone && !wood && !gear && !fire) continue;
+            const bool shelter = simulation_->shelter_at(x, y), site = simulation_->site_at(x, y) > 0;
+            if (!meat && !fruit && !stone && !bone && !wood && !gear && !fire && !shelter && !site) continue;
             const int cx = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int cy = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             const int half = std::max(2, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.25)));
@@ -1600,6 +1601,7 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             if (fruit) draw_pile(canvas, false, fruit, meat ? cx + half : cx, cy, half);
             draw_materials(canvas, stone, bone, wood, cx, cy, half);
             if (gear) canvas.fill_rect({cx - half / 2, cy - half, half, std::max(2, half / 2)}, Color{96, 130, 160});
+            if (shelter || site) canvas.rect({cx - half * 8 / 5, cy - half * 8 / 5, half * 16 / 5, half * 16 / 5}, Color{150, 110, 70}, shelter ? 2 : 1);
             if (fire) canvas.circle(cx, cy, std::max(2, half * 7 / 10), Color{255, 120, 20});
         }
     }
@@ -1675,6 +1677,7 @@ void App::draw_world(Canvas& canvas) {
         }
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
+        draw_gear(canvas, agent->weapon ? agent->weapon : agent->carried_stone > 0 ? 4 : 0, agent->armour, px, py, radius);
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             draw_reticle(canvas, px, py, static_cast<int>(std::lround((radius + RING_WIDTH + UI(3)) * reticle_pulse())));
         }
