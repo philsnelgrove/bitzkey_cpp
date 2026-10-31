@@ -752,7 +752,9 @@ bool App::square_event(const SDL_Event& event) {
     if (event.type == SDL_MOUSEMOTION) {
         if (!(square_panel_ && square_panel_->contains(event.motion.x, event.motion.y))) {
             const bool quiet = event.motion.state == 0 && !exemplar_menu_ && deploying_.empty();
-            square_ = quiet ? cell_at(event.motion.x, event.motion.y) : std::nullopt;
+            const auto cell = quiet ? cell_at(event.motion.x, event.motion.y) : std::nullopt;
+            if (cell != square_) square_since_ = SDL_GetTicks();
+            square_ = cell;
         }
         return false;
     }
@@ -765,10 +767,12 @@ bool App::square_event(const SDL_Event& event) {
     return false;
 }
 
+constexpr std::uint32_t SQUARE_DELAY = 400;  // milliseconds on a square before its popup
+
 void App::draw_square(Canvas& canvas) {
     square_panel_.reset();
     square_rows_.clear();
-    if (!square_ || show_census_ || dialog_ || report_) return;
+    if (!square_ || show_census_ || dialog_ || report_ || SDL_GetTicks() - square_since_ < SQUARE_DELAY) return;
     std::vector<const Bitzkey*> here;
     int used = 0;
     for (const Bitzkey* agent : simulation_->living())

@@ -196,6 +196,7 @@ private:
     std::vector<std::pair<Rect, int>> menu_items_;      // the open menu's choices, and which statistic each is
     std::optional<std::pair<int, int>> square_;         // the map square under the pointer, listed in a popup
     std::optional<Rect> square_panel_;
+    std::uint32_t square_since_ = 0;  // when the pointer came to this square
     std::vector<std::pair<Rect, int>> square_rows_;     // each name in the popup, and whom it is
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
