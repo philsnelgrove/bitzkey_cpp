@@ -91,6 +91,7 @@ constexpr int LOOK_SHADES = 8;
 SDL_Surface* grass_tuft(int width, int height, bool sea);
 // A heap of meat or of fruit about (cx, cy), with how many portions it holds once there's room to read it.
 void draw_pile(Canvas& canvas, bool meat, int count, int cx, int cy, int half);
+void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half);  // small marks along the foot of a square
 
 // The ground's texture, laid faintly over a square's colour: by its zone's usual temperature, or the sea.
 enum class Ground { Sand, Meadow, Snow, Ice, Sea };

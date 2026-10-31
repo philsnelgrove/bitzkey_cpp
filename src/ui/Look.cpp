@@ -352,3 +352,15 @@ SDL_Surface* ground_tile(Ground ground, int width, int height, int variant) {
 }
 
 }  // namespace bitzkey::ui
+
+namespace bitzkey::ui {
+
+void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half) {
+    const int size = std::max(2, half / 2);
+    const std::array<std::pair<int, Color>, 3> marks{{{stone, Color{136, 138, 142}}, {bone, Color{236, 226, 205}}, {wood, Color{122, 80, 44}}}};
+    for (int index = 0; index < 3; ++index) {
+        if (marks[index].first) canvas.fill_rect({cx + (index - 1) * (size + half / 2) - size / 2, cy + half, size, size}, marks[index].second);
+    }
+}
+
+}  // namespace bitzkey::ui

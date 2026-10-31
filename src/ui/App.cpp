@@ -1588,12 +1588,14 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
     for (int y = y0; y < y1; ++y) {  // the piles: meat to the left of a square and fruit to the right, each with its count
         for (int x = x0; x < x1; ++x) {
             const int meat = simulation_->meat_pile_at(x, y), fruit = simulation_->fruit_pile_at(x, y);
-            if (!meat && !fruit) continue;
+            const int stone = simulation_->pile_at(x, y, StonePile), bone = simulation_->pile_at(x, y, BonePile), wood = simulation_->pile_at(x, y, WoodPile);
+            if (!meat && !fruit && !stone && !bone && !wood) continue;
             const int cx = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int cy = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             const int half = std::max(2, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.25)));
             if (meat) draw_pile(canvas, true, meat, fruit ? cx - half : cx, cy, half);
             if (fruit) draw_pile(canvas, false, fruit, meat ? cx + half : cx, cy, half);
+            draw_materials(canvas, stone, bone, wood, cx, cy, half);
         }
     }
     {  // the night, a shadow over half the map's columns, wrapping round east to west
