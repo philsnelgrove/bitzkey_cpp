@@ -191,6 +191,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
                 {145, 164, 146}, x, at(334));
     std::string state = "LAST ACTION: " + upper(agent.last_action);
     if (!agent.alive()) state += format("     MEAT LEFT %.0f", agent.meat);
+    else if (agent.load()) state += format("     CARRYING %d MEAT, %d FRUIT, ROOM FOR %d", agent.carried_meat, agent.carried_fruit, agent.capacity());
     canvas.text(small, state, {145, 164, 146}, x, at(350));
     if (agent.odds_offered) {
         std::vector<std::pair<int, double>> odds;

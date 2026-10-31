@@ -220,6 +220,21 @@ void draw_bitzkey(Canvas& canvas, Dna dna, int x, int y, int radius, int ring_wi
     canvas.blit(layer, x - reach, y - reach, static_cast<std::uint8_t>(py_round(255 * std::min(1.0, opacity))));
 }
 
+void draw_pile(Canvas& canvas, bool meat, int count, int cx, int cy, int half) {
+    const int lump = std::max(1, half * 3 / 5);
+    const Color dark = meat ? Color{120, 34, 38} : Color{176, 92, 24}, light = meat ? Color{190, 62, 62} : Color{230, 150, 46};
+    canvas.circle(cx - lump, cy + lump / 2, lump, dark);
+    canvas.circle(cx + lump, cy + lump / 2, lump, dark);
+    canvas.circle(cx, cy - lump / 2, lump, light);
+    if (meat) canvas.circle(cx, cy - lump / 2, std::max(1, lump / 2), {236, 226, 205});  // the bone
+    else canvas.circle(cx + lump / 2, cy - lump - lump / 2, std::max(1, lump / 3), {74, 140, 60});  // a leaf
+    if (half < 5) return;
+    TTF_Font* font = UI.font(Face::Sans, 11);
+    const std::string number = std::to_string(count);
+    canvas.text(font, number, {0, 0, 0}, cx + 1, cy + 1);
+    canvas.text(font, number, {255, 255, 255}, cx, cy);
+}
+
 SDL_Surface* grass_tuft(int width, int height, bool sea) {
     static std::map<std::tuple<int, int, bool>, Surface> kept;
     auto [found, added] = kept.try_emplace(std::tuple{width, height, sea});
