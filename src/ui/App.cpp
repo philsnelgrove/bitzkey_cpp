@@ -776,12 +776,21 @@ void App::draw_square(Canvas& canvas) {
             here.push_back(agent);
             used += agent->space();
         }
-    if (here.empty()) return;
+    const int tile_x = square_->first, tile_y = square_->second;
+    const int zone = std::clamp(static_cast<int>(std::lround(simulation_->temperature(tile_y))), 0, static_cast<int>(HOMES.size()) - 1);
+    std::vector<std::string> notes{format("WEATHER: %s, %s", HOMES[static_cast<std::size_t>(zone)], std::string(SEASONS[static_cast<std::size_t>(season(simulation_->turn()))]).c_str())};
+    if (simulation_->shelter_at(tile_x, tile_y)) notes.push_back("SHELTER");
+    else if (simulation_->site_at(tile_x, tile_y)) notes.push_back(format("SHELTER SITE %d/%d", simulation_->site_at(tile_x, tile_y), SHELTER_UNITS));
+    if (simulation_->fire_at(tile_x, tile_y) > simulation_->turn()) notes.push_back(format("FIRE: %d TURNS LEFT", simulation_->fire_at(tile_x, tile_y) - simulation_->turn()));
+    const auto pile = [&](PileKind kind) { return simulation_->pile_at(tile_x, tile_y, kind); };
+    const int cooked = pile(CookedMeatPile) + pile(CookedFruitPile), gear = pile(BoneAxePile) + pile(ClubPile) + pile(StoneAxePile) + pile(BoneArmourPile) + pile(WoodArmourPile);
+    if (pile(MeatPile) + pile(FruitPile) + cooked) notes.push_back(format("MEAT %d  FRUIT %d  COOKED %d", pile(MeatPile), pile(FruitPile), cooked));
+    if (pile(StonePile) + pile(BonePile) + pile(WoodPile) + gear) notes.push_back(format("STONE %d  BONE %d  WOOD %d  GEAR %d", pile(StonePile), pile(BonePile), pile(WoodPile), gear));
     const Board board = board_geometry(canvas);
-    const int row = UI(MENU_ROW), width = UI(230);
+    const int row = UI(MENU_ROW), width = UI(230), lines = static_cast<int>(notes.size()) + 1;
     Rect panel{static_cast<int>(board.rect.x + (square_->first + 1) * board.cell_width),  // touching the square, to reach it
                static_cast<int>(board.rect.y + square_->second * board.cell_height), width,
-               static_cast<int>(here.size() + 1) * row + UI(8)};
+               (static_cast<int>(here.size()) + lines) * row + UI(8)};
     if (panel.right() > canvas.width() - UI(4)) panel.x = static_cast<int>(board.rect.x + square_->first * board.cell_width) - width;
     panel.y = std::max(UI(4), std::min(canvas.height() - panel.h - UI(4), panel.y));
     canvas.rect(panel, {27, 37, 37}, 0, UI(5));
@@ -790,11 +799,14 @@ void App::draw_square(Canvas& canvas) {
     SDL_GetMouseState(&mouse_x, &mouse_y);
     TTF_Font* small = UI.font(Face::Sans, 12);
     canvas.text(small, format("%s (%d, %d)   %d/%d SPACES", simulation_->sea(square_->first, square_->second) ? "SEA" : "SQUARE",
-                              square_->first, square_->second, used, CELL_SPACE),
+                              square_->first, square_->second, used, CELL_SPACE * (simulation_->shelter_at(tile_x, tile_y) ? 2 : 1)),
                 {144, 170, 151}, panel.x + UI(10), panel.y + UI(6));
+    for (std::size_t index = 0; index < notes.size(); ++index) {
+        canvas.text(small, notes[index], {144, 170, 151}, panel.x + UI(10), panel.y + UI(6) + static_cast<int>(index + 1) * row);
+    }
     for (std::size_t index = 0; index < here.size(); ++index) {
         const Bitzkey& agent = *here[index];
-        const Rect item{panel.x + UI(4), panel.y + UI(4) + static_cast<int>(index + 1) * row, width - UI(8), row};
+        const Rect item{panel.x + UI(4), panel.y + UI(4) + (static_cast<int>(index) + lines) * row, width - UI(8), row};
         if (item.contains(mouse_x, mouse_y)) canvas.rect(item, {44, 57, 52}, 0, UI(3));
         canvas.text(small, format("#%03d  %s   size %d  ·  %d spaces", agent.identifier,
                                   upper(species_name(agent.species)).c_str(), agent.body[Size], agent.space()),
