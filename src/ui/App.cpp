@@ -1589,13 +1589,18 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
         for (int x = x0; x < x1; ++x) {
             const int meat = simulation_->meat_pile_at(x, y), fruit = simulation_->fruit_pile_at(x, y);
             const int stone = simulation_->pile_at(x, y, StonePile), bone = simulation_->pile_at(x, y, BonePile), wood = simulation_->pile_at(x, y, WoodPile);
-            if (!meat && !fruit && !stone && !bone && !wood) continue;
+            int gear = 0;
+            for (const PileKind kind : {BoneAxePile, ClubPile, StoneAxePile, BoneArmourPile, WoodArmourPile}) gear += simulation_->pile_at(x, y, kind);
+            const bool fire = simulation_->fire_at(x, y) > simulation_->turn();
+            if (!meat && !fruit && !stone && !bone && !wood && !gear && !fire) continue;
             const int cx = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int cy = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             const int half = std::max(2, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.25)));
             if (meat) draw_pile(canvas, true, meat, fruit ? cx - half : cx, cy, half);
             if (fruit) draw_pile(canvas, false, fruit, meat ? cx + half : cx, cy, half);
             draw_materials(canvas, stone, bone, wood, cx, cy, half);
+            if (gear) canvas.fill_rect({cx - half / 2, cy - half, half, std::max(2, half / 2)}, Color{96, 130, 160});
+            if (fire) canvas.circle(cx, cy, std::max(2, half * 7 / 10), Color{255, 120, 20});
         }
     }
     {  // the night, a shadow over half the map's columns, wrapping round east to west
