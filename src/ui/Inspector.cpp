@@ -191,8 +191,13 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
                 {145, 164, 146}, x, at(334));
     std::string state = "LAST ACTION: " + upper(agent.last_action);
     if (!agent.alive()) state += format("     MEAT LEFT %.0f", agent.meat);
-    else if (agent.load()) state += format("     CARRYING %d MEAT, %d FRUIT, ROOM FOR %d", agent.carried_meat, agent.carried_fruit, agent.capacity());
     canvas.text(small, state, {145, 164, 146}, x, at(350));
+    int next = 366;  // the line for what follows
+    if (agent.alive() && agent.load()) {
+        canvas.text(small, format("CARRYING %d MEAT, %d FRUIT, ROOM FOR %d", agent.carried_meat, agent.carried_fruit, agent.capacity()), {145, 164, 146}, x,
+                    at(next));
+        next += 16;
+    }
     if (agent.odds_offered) {
         std::vector<std::pair<int, double>> odds;
         for (int action = 0; action < ACTION_COUNT; ++action) {
@@ -204,7 +209,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
             if (index) line += "   ";
             line += tr(ACTIONS[static_cast<std::size_t>(odds[index].first)]) + " " + py_percent(odds[index].second, 0);
         }
-        canvas.text(small, as_shown(line), {175, 192, 172}, x, at(366));
+        canvas.text(small, as_shown(line), {175, 192, 172}, x, at(next));
     }
 }
 

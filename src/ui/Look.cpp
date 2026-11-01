@@ -357,13 +357,28 @@ namespace bitzkey::ui {
 
 void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) {
     const int size = std::max(2, radius * 3 / 5);
-    if (wears) {
+    if (wears) {  // a shield: flat across the top, narrowing to a point below
         const int cx = x - radius, cy = y + radius * 3 / 5;
-        canvas.fill_rect({cx - size, cy - size, 2 * size, 3 * size / 2}, wears == 1 ? Color{236, 226, 205} : Color{122, 80, 44});
+        const Color colour = wears == 1 ? Color{236, 226, 205} : Color{122, 80, 44};
+        canvas.polygon({{cx - size, cy - size}, {cx + size, cy - size}, {cx + size, cy}, {cx, cy + size}, {cx - size, cy}}, colour);
     }
-    if (wields) {
-        const int cx = x + radius, cy = y - radius * 3 / 5;
-        canvas.line(cx - size, cy + size, cx + size, cy - size, wields == 2 ? Color{122, 80, 44} : wields == 1 ? Color{236, 226, 205} : Color{136, 138, 142}, std::max(1, size / 2));
+    if (!wields) return;
+    const int cx = x + radius, cy = y - radius * 3 / 5;
+    const Color colour = wields == 2 ? Color{122, 80, 44} : wields == 1 ? Color{236, 226, 205} : Color{136, 138, 142};
+    // A point along the tool's handle, from its foot (-1) to its tip (1), and across it.
+    const auto at = [&](double along, double across) {
+        return std::pair<int, int>{cx + static_cast<int>(std::lround((along + across) * size)), cy + static_cast<int>(std::lround((across - along) * size))};
+    };
+    if (wields == 4) {  // a stone carried: a pebble
+        canvas.circle(cx, cy, std::max(2, size * 2 / 3), colour);
+    } else if (wields == 2) {  // a club: thin at the grip, heavy at the head
+        canvas.polygon({at(-1, 0.12), at(1, 0.4), at(1, -0.4), at(-1, -0.12)}, colour);
+        const auto head = at(1, 0);
+        canvas.circle(head.first, head.second, std::max(2, size * 3 / 5), colour);
+    } else {  // an axe, of bone or stone: a handle, and a blade at its tip
+        const auto foot = at(-1, 0), neck = at(0.9, 0);
+        canvas.line(foot.first, foot.second, neck.first, neck.second, colour, std::max(1, size / 2));
+        canvas.polygon({at(0.45, 0), at(1, 0), at(1.15, -0.75), at(0.3, -0.75)}, colour);  // the blade flares from the haft
     }
 }
 

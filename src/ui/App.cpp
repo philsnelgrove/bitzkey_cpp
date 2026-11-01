@@ -1792,12 +1792,12 @@ void App::draw_sidebar(Canvas& canvas) {
         canvas.rect(*brains_button_, {44, 57, 52}, 0, UI(5));
         canvas.label(UI.font(Face::Sans, 13, true), "INSPECT BRAINS", {220, 229, 211}, *brains_button_);
     }
-    canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(719));
+    canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(735));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
                                     [agent](const ExportEntry& entry) { return entry.identifier == agent->identifier; });
     const int half = (width - UI(8)) / 2;
-    add_button_ = Rect{x, UI(737), half, UI(28)};
-    catalog_button_ = Rect{x + half + UI(8), UI(737), width - half - UI(8), UI(28)};
+    add_button_ = Rect{x, UI(753), half, UI(28)};
+    catalog_button_ = Rect{x + half + UI(8), UI(753), width - half - UI(8), UI(28)};
     canvas.rect(*catalog_button_, {44, 57, 52}, 0, UI(5));
     canvas.text_at(UI.font(Face::Sans, 13, true), "ADD TO CATALOG", {220, 229, 211},
                    [&](Rect& box) { box.center_at(catalog_button_->centerx(), catalog_button_->centery()); });
