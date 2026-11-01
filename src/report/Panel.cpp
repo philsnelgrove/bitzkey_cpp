@@ -182,7 +182,9 @@ Panel::Layout Panel::layout() const {
     places.open = take(UI(110));
     const int sections = world_ ? static_cast<int>(analysis_.sections.size()) : 0;
     const int below = UI(104);
-    for (int at = 0; at < sections; ++at) places.tabs.push_back({UI(16), below + at * UI(42), UI(176), UI(36)});
+    // The tabs close up when they would run off the window.
+    const int pitch = sections > 1 ? std::min(UI(42), (height - below - UI(16) - UI(36)) / (sections - 1)) : UI(42);
+    for (int at = 0; at < sections; ++at) places.tabs.push_back({UI(16), below + at * pitch, UI(176), UI(36)});
     const Rect content{UI(208), below, width - UI(224), height - below - UI(16)};
     const bool chart = world_ && tab_ < analysis_.sections.size() && analysis_.sections[tab_].title == "Population";
     places.chart = chart ? Rect{content.x, content.y, content.w, UI(CHART)} : Rect{};

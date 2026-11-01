@@ -1,7 +1,8 @@
 #pragma once
 // A whole world's report: everything the probe tells of it, gathered in one go, and read for what it says of the
 // world. How many of each species live and how that has gone, their condition, what kills them, their brains, their
-// herds and where those stand against the climate, the climate and grass, and the rules. What stands out is pulled
+// herds and where those stand against the climate, their crafts, gear and teaching, whether their calls mean anything, the food they
+// carry and pile, the climate and grass, where a turn's time goes, and the rules. What stands out is pulled
 // together as findings at the top.
 //
 // A section's lines are text, some of them marked: "# " a heading, "! " a finding, "~" a table's heading row; a table's
@@ -18,7 +19,7 @@ namespace bitzkey::report {
 // What the probe answered, route by route; a route that failed (an older app without it, say) is left null.
 struct World {
     std::string name;
-    Json state, settings, rules, history, deaths, insights, climate, animals, minds;
+    Json state, settings, rules, history, deaths, insights, climate, animals, minds, skills, calls, carrying, timings;
     std::map<std::string, Json> herds;  // by species
     std::string brain_report, death_report;
     std::vector<std::string> missing;  // the routes that failed, and why

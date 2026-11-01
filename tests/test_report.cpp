@@ -31,10 +31,11 @@ TEST_CASE("a save is reported on through the same routes as a running world") {
         CHECK(read.herds.size() == 3);
 
         const report::Analysis analysis = report::analyse(read);
-        REQUIRE(analysis.sections.size() == 10);
+        REQUIRE(analysis.sections.size() == 14);
         CHECK(analysis.sections.front().title == "Summary");
         const std::string text = report::as_text(analysis);
         CHECK(text.find("== Herds & migration ==") != std::string::npos);
+        for (const char* title : {"Tools & teaching", "Calls", "Food & carrying", "Speed"}) CHECK(text.find(std::string("== ") + title + " ==") != std::string::npos);
         CHECK(text.find("BITZKEY BRAIN REPORT") != std::string::npos);
         CHECK(text.find('\t') == std::string::npos);  // its tables lined up in spaces
         CHECK_THROWS_AS(source->get("animal/999999"), std::runtime_error);

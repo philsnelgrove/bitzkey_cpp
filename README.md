@@ -251,8 +251,12 @@ For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemo
 | Condition | each species' age, health, hunger, stamina and what they did last turn |
 | Deaths | every death since the start by cause, the latest deaths by cause and rate, and who killed whom |
 | Brains | the minds route's table, and how often each action is taken when it is open |
+| Tools & teaching | the crafts found and tried by each species, the weapons wielded and armour worn, and the teaching done: infants taught by a parent, students by an elder, elders old enough to teach |
+| Calls | how often each call is made with a hunter in sight and without, and how hearing one changes whether listeners flee or move; marked as a finding when a call looks meant or heeded |
+| Food & carrying | food taken by source, dropped, eaten and spoiled, and the piles, carried portions and materials in the world now |
 | Herds & migration | the herds of each species, how many are away from their home temperature, and of those that moved, how many moved toward it (from a running world's second look); the largest herds |
 | Climate & grass | the map in bands from north to south: temperature now and usually, growth, grass, sea and the animals in each |
+| Speed | where a turn's time goes, by part and by action |
 | Rules & settings | the world's settings and every advanced rule |
 | Brain report, Death report | the probe's reports as they are |
 

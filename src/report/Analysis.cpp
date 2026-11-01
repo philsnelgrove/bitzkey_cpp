@@ -441,6 +441,166 @@ Section herds(const World& world, Findings& findings) {
     return section;
 }
 
+// A route this probe lacks (an older Bitzkey), said where its section would be.
+bool lacks(const Json& route, const char* name, std::vector<std::string>& lines) {
+    if (route.is_object()) return false;
+    lines.push_back(std::string("(This probe has no ") + name + " route: it needs a newer Bitzkey.)");
+    return true;
+}
+
+Section tools(const World& world, Findings& findings) {
+    Section section{"Tools & teaching", {}};
+    auto& lines = section.lines;
+    if (lacks(world.skills, "skills", lines)) return section;
+    const Json& skills = world.skills["skills"];
+    constexpr double WIELDING_NOTED = 0.25;  // of a species armed or armoured, worth a finding
+    std::set<std::string> crafts, weapons, armours;
+    for (const char* species : ANIMAL_NAMES) {
+        for (const auto& [name, _] : skills[species]["crafts"].items()) crafts.insert(name);
+        for (const auto& [name, _] : skills[species]["wielding"].items()) weapons.insert(name);
+        for (const auto& [name, _] : skills[species]["wearing"].items()) armours.insert(name);
+    }
+    const auto share = [](double part, double whole) { return whole > 0 ? percent(part / whole) : std::string(); };
+    lines.push_back("# Crafts: how many have found each, and how many have ever tried it");
+    lines.push_back(row({"~CRAFT", "GRAZER KNOW", "TRIED", "OMNIVORE KNOW", "TRIED", "PREDATOR KNOW", "TRIED"}));
+    for (const std::string& craft : crafts) {
+        std::vector<std::string> cells = {craft};
+        for (const char* species : ANIMAL_NAMES) {
+            const double living = number_in(skills[species], "living");
+            cells.push_back(share(number_in(skills[species]["crafts"][craft], "known"), living));
+            cells.push_back(share(number_in(skills[species]["crafts"][craft], "tried"), living));
+        }
+        lines.push_back(row(cells));
+    }
+    lines.push_back("");
+    lines.push_back("# Gear in hand and on the body, of the living");
+    lines.push_back(row({"~GEAR", "GRAZER", "OMNIVORE", "PREDATOR"}));
+    for (const auto& [names, kind] : {std::pair{&weapons, "wielding"}, std::pair{&armours, "wearing"}}) {
+        for (const std::string& name : *names) {
+            if (name == "none") continue;
+            std::vector<std::string> cells = {name};
+            for (const char* species : ANIMAL_NAMES) cells.push_back(share(number_in(skills[species][kind], name.c_str()), number_in(skills[species], "living")));
+            lines.push_back(row(cells));
+        }
+    }
+    for (const char* species : ANIMAL_NAMES) {
+        const double living = number_in(skills[species], "living");
+        double armed = 0, armoured = 0;
+        for (const auto& [name, count] : skills[species]["wielding"].items()) armed += name == "none" ? 0 : count.get<double>();
+        for (const auto& [name, count] : skills[species]["wearing"].items()) armoured += name == "none" ? 0 : count.get<double>();
+        if (living >= 10 && armed / living >= WIELDING_NOTED) findings.add(format("%s of %s wield a weapon.", percent(armed / living).c_str(), plural(species).c_str()));
+        if (living >= 10 && armoured / living >= WIELDING_NOTED) findings.add(format("%s of %s wear armour.", percent(armoured / living).c_str(), plural(species).c_str()));
+    }
+    lines.push_back("");
+    lines.push_back("# Teaching: a parent teaches an infant its first chance, an elder a student its second");
+    lines.push_back(row({"~SPECIES", "LIVING", "INFANT TAUGHT", "ELDER TAUGHT", "ELDERS", "OLDEST OF ITS SPAN"}));
+    for (const char* species : ANIMAL_NAMES) {
+        const Json& kind = skills[species];
+        const double living = number_in(kind, "living");
+        lines.push_back(row({capital(species), number(living, 0), share(number_in(kind, "infants_taught"), living), share(number_in(kind, "taught_by_elder"), living),
+                             number(number_in(kind, "elders"), 0), living ? percent(number_in(kind, "oldest_share")) : ""}));
+        if (number_in(kind, "elders") >= 5 && number_in(kind, "taught_by_elder") == 0) {
+            findings.add(format("%.0f %s are old enough to teach, yet no one living was taught by an elder.", number_in(kind, "elders"), plural(species).c_str()));
+        }
+    }
+    return section;
+}
+
+Section calls(const World& world, Findings& findings) {
+    Section section{"Calls", {}};
+    auto& lines = section.lines;
+    if (lacks(world.calls, "calls", lines)) return section;
+    const Json& calls = world.calls["calls"];
+    constexpr double MEANT = 0.15;  // a call made this much more with a hunter in sight than without, or heeded this much more
+    constexpr int HEARD_ENOUGH = 30;
+    lines.push_back("# How often each call is made, with a hunter in sight and without");
+    lines.push_back(row({"~SPECIES", "CALL", "WITH HUNTER", "WITHOUT"}));
+    for (const char* species : ANIMAL_NAMES) {
+        const Json& kind = calls[species];
+        for (const auto& [name, call] : kind["calls"].items()) {
+            const double with = number_in(call, "made_with_hunter", -1), without = number_in(call, "made_without", -1);
+            lines.push_back(row({capital(species), name, with >= 0 ? percent(with) : "", without >= 0 ? percent(without) : ""}));
+            if (with >= 0 && without >= 0 && name != "alert" && with - without >= MEANT && kind.value("with_hunter", 0) >= HEARD_ENOUGH) {
+                findings.add(format("%s make %s %s of the time with a hunter in sight and %s without: it may mean danger.", capital(plural(species)).c_str(), name.c_str(),
+                                    percent(with).c_str(), percent(without).c_str()));
+            }
+        }
+    }
+    lines.push_back("");
+    lines.push_back("# What hearing a call does: the share who flee with a hunter in sight, or move with none");
+    lines.push_back(row({"~SPECIES", "CALL", "HEARD (HUNTER)", "FLED", "FLED (KIN)", "HEARD (NONE)", "MOVED"}));
+    const auto cell = [](const Json& value, const char* key) { return value.contains(key) && value[key].is_number() ? percent(value[key].get<double>()) : std::string(); };
+    for (const char* species : ANIMAL_NAMES) {
+        const Json& kind = calls[species];
+        lines.push_back(row({capital(species), "none heard", "", cell(kind, "fled_hearing_nothing"), "", "", cell(kind, "moved_hearing_nothing")}));
+        for (const auto& [name, call] : kind["calls"].items()) {
+            if (!call.contains("hunter_in_sight")) continue;
+            const Json& threat = call["hunter_in_sight"];
+            lines.push_back(row({capital(species), name, std::to_string(threat.value("heard", 0)), cell(threat, "fled_having_heard"), cell(threat, "fled_having_heard_kin"),
+                                 std::to_string(call["no_hunter"].value("heard", 0)), cell(call["no_hunter"], "moved_having_heard")}));
+            const double fled = number_in(threat, "fled_having_heard", -1), baseline = number_in(kind, "fled_hearing_nothing", -1);
+            if (threat.value("heard", 0) >= HEARD_ENOUGH && fled >= 0 && baseline >= 0 && fled - baseline >= MEANT) {
+                findings.add(format("%s who hear %s with a hunter in sight flee %s of the time, against %s hearing nothing: it is heeded.", capital(plural(species)).c_str(), name.c_str(),
+                                    percent(fled).c_str(), percent(baseline).c_str()));
+            }
+        }
+    }
+    return section;
+}
+
+Section food(const World& world, Findings& findings) {
+    Section section{"Food & carrying", {}};
+    auto& lines = section.lines;
+    if (lacks(world.carrying, "carrying", lines)) return section;
+    const Json& carrying = world.carrying;
+    const Json &taken = carrying["taken"], &dropped = carrying["dropped"], &eaten = carrying["eaten"], &now = carrying["now"];
+    constexpr double SPOILING = 0.5;  // of what is dropped, rotting uneaten
+    lines.push_back("# Since the world was begun or loaded");
+    lines.push_back(row({"~TAKEN", "PORTIONS"}));
+    for (const auto& [name, count] : taken.items()) lines.push_back(row({name, std::to_string(count.get<long long>())}));
+    lines.push_back("");
+    lines.push_back(row({"~DROPPED, EATEN, SPOILED", "PORTIONS"}));
+    for (const auto& [name, count] : dropped.items()) lines.push_back(row({"dropped " + name, std::to_string(count.get<long long>())}));
+    for (const auto& [name, count] : eaten.items()) lines.push_back(row({"eaten " + name, std::to_string(count.get<long long>())}));
+    lines.push_back(row({"spoiled", std::to_string(carrying.value("spoiled", 0LL))}));
+    lines.push_back("");
+    lines.push_back("# In the world now");
+    lines.push_back(row({"~WHAT", "HOW MANY"}));
+    for (const auto& [name, count] : now.items()) lines.push_back(row({name, std::to_string(count.get<long long>())}));
+    const double left = number_in(dropped, "meat") + number_in(dropped, "fruit"), spoiled = number_in(carrying, "spoiled");
+    if (left >= 50 && spoiled / left > SPOILING) {
+        findings.add(format("%s as many portions have spoiled as were dropped: piles are left to rot.", percent(spoiled / left).c_str()));
+    }
+    return section;
+}
+
+Section speed(const World& world) {
+    Section section{"Speed", {}};
+    auto& lines = section.lines;
+    if (lacks(world.timings, "timings", lines)) return section;
+    const Json& total = world.timings["ms_total"];
+    double all = 0;
+    for (const auto& [_, ms] : total.items()) all += ms.get<double>();
+    const int turn = std::max(1, world.timings.value("turn", 0));
+    lines.push_back("# Where a turn's time goes, since the world was loaded or begun");
+    lines.push_back(row({"~PART", "SECONDS", "SHARE", "MS A TURN"}));
+    for (const auto& [name, ms] : total.items()) {
+        lines.push_back(row({name, number(ms.get<double>() / 1000, 1), all > 0 ? percent(ms.get<double>() / all) : "", number(ms.get<double>() / turn, 2)}));
+    }
+    lines.push_back(row({"all", number(all / 1000, 1), "", number(all / turn, 2)}));
+    std::vector<std::pair<double, std::string>> ranked;
+    for (const auto& [name, action] : world.timings["acting"].items()) ranked.emplace_back(number_in(action, "ms"), name);
+    std::sort(ranked.rbegin(), ranked.rend());
+    lines.push_back("");
+    lines.push_back("# Within acting: the actions that take longest");
+    lines.push_back(row({"~ACTION", "SECONDS", "TAKEN", "MICROSECONDS EACH"}));
+    for (std::size_t at = 0; at < std::min<std::size_t>(12, ranked.size()); ++at) {
+        const double taken = number_in(world.timings["acting"][ranked[at].second], "taken");
+        lines.push_back(row({ranked[at].second, number(ranked[at].first / 1000, 1), number(taken, 0), taken ? number(1000 * ranked[at].first / taken, 1) : ""}));
+    }
+    return section;
+}
+
 Section climate(const World& world) {
     Section section{"Climate & grass", {}};
     auto& lines = section.lines;
@@ -548,6 +708,10 @@ World gather(Source& source) {
     read(world.climate, "climate");
     read(world.animals, "animals?limit=1000000");
     read(world.minds, "minds");
+    read(world.skills, "skills");
+    read(world.calls, "calls");
+    read(world.carrying, "carrying");
+    read(world.timings, "timings");
     for (const char* species : ANIMAL_NAMES) read(world.herds[species], std::string("herds?species=") + species);
     for (auto [into, route] : {std::pair{&world.brain_report, "reports/brain"}, std::pair{&world.death_report, "reports/deaths"}}) {
         try {
@@ -562,8 +726,9 @@ World gather(Source& source) {
 Analysis analyse(const World& world) {
     Findings findings;
     std::vector<Section> sections = {population(world, findings), condition(world, findings), deaths(world, findings),
-                                     brains(world, findings),     herds(world, findings),     climate(world),
-                                     rules(world),                from_text("Brain report", world.brain_report),
+                                     brains(world, findings),     tools(world, findings),     calls(world, findings),
+                                     food(world, findings),       herds(world, findings),     climate(world),
+                                     speed(world),                rules(world),               from_text("Brain report", world.brain_report),
                                      from_text("Death report", world.death_report)};
     Section summary{"Summary", {}};
     auto& lines = summary.lines;
@@ -571,6 +736,10 @@ Analysis analyse(const World& world) {
     lines.push_back("# " + world.name);
     lines.push_back(format("Turn %d, year %d, season %s. The map is %d by %d.", state.value("turn", 0), state.value("year", 0),
                            state.value("season", "").c_str(), state.value("width", 0), state.value("height", 0)));
+    if (state.contains("day_length")) {
+        lines.push_back(format("A day is %d turns; night covers %d columns from column %d, running east.", state.value("day_length", 0), state.value("night_width", 0),
+                               state.value("night_start", 0)));
+    }
     if (world.settings.is_object() && world.settings.value("ended", false)) lines.push_back("! This world has ended.");
     lines.push_back("");
     lines.push_back(row({"~", "PLANTS", "GRAZERS", "OMNIVORES", "PREDATORS"}));
