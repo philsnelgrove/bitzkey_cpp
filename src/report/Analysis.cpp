@@ -473,6 +473,23 @@ Section tools(const World& world, Findings& findings) {
         lines.push_back(row(cells));
     }
     lines.push_back("");
+    lines.push_back("# How each craft came to be known, by those who know it; a chain counts the teachers in a line");
+    lines.push_back(row({"~CRAFT", "SPECIES", "KNOW", "DISCOVERED", "FROM A PARENT", "FROM AN ELDER", "NOT RECORDED", "MASTERED", "LONGEST CHAIN"}));
+    for (const std::string& craft : crafts) {
+        for (const char* species : ANIMAL_NAMES) {
+            const Json& known = skills[species]["crafts"][craft];
+            if (number_in(known, "known") == 0) continue;
+            std::vector<std::string> cells = {craft, capital(species)};
+            for (const char* field : {"known", "discovered", "by_parent", "by_elder", "unrecorded", "mastered", "longest_chain"}) cells.push_back(number(number_in(known, field), 0));
+            lines.push_back(row(cells));
+        }
+    }
+    if (world.skills.contains("works")) {
+        const Json& works = world.skills["works"];
+        lines.push_back("");
+        lines.push_back(format("In the world now: %.0f fires burning, %.0f shelters standing, %.0f begun.", number_in(works, "fires"), number_in(works, "shelters"), number_in(works, "sites")));
+    }
+    lines.push_back("");
     lines.push_back("# Gear in hand and on the body, of the living");
     lines.push_back(row({"~GEAR", "GRAZER", "OMNIVORE", "PREDATOR"}));
     for (const auto& [names, kind] : {std::pair{&weapons, "wielding"}, std::pair{&armours, "wearing"}}) {
@@ -501,6 +518,41 @@ Section tools(const World& world, Findings& findings) {
                              number(number_in(kind, "elders"), 0), living ? percent(number_in(kind, "oldest_share")) : ""}));
         if (number_in(kind, "elders") >= 5 && number_in(kind, "taught_by_elder") == 0) {
             findings.add(format("%.0f %s are old enough to teach, yet no one living was taught by an elder.", number_in(kind, "elders"), plural(species).c_str()));
+        }
+    }
+    return section;
+}
+
+std::string first_in_words(const std::string& event, const std::string& species, const std::string& craft) {
+    const std::string who = capital(plural(species.c_str()));
+    if (event == "fire_lit") return who + " lit their first fire.";
+    if (event == "cooked") return who + " cooked for the first time.";
+    if (event == "shelter_finished") return who + " finished their first shelter.";
+    if (event == "discovered") return who + " first discovered " + craft + ".";
+    if (event == "taught_by_parent") return who + " first had " + craft + " taught by a parent.";
+    if (event == "taught_by_elder") return who + " first had " + craft + " taught by an elder: a guru.";
+    if (event == "made_taught") return who + " first made " + craft + " from a taught recipe.";
+    if (event == "first_elder") return who + " had their first elder, old enough to teach.";
+    if (event == "extinct") return who + " died out.";
+    if (event.rfind("chain_", 0) == 0) return who + " passed " + craft + " down a line of " + event.substr(6) + " teachers.";
+    return who + ": " + event + " " + craft;
+}
+
+Section diary(const World& world, Findings& findings) {
+    Section section{"Diary", {}};
+    auto& lines = section.lines;
+    if (lacks(world.diary, "diary", lines)) return section;
+    const int since = world.diary.value("since", 0);
+    lines.push_back("# The first time each thing was done");
+    if (since > 0) lines.push_back(format("This world is older than its diary, which began at turn %d: a first here is the first since then.", since));
+    if (world.diary["entries"].empty()) lines.push_back("Nothing yet.");
+    else lines.push_back(row({"~TURN", "WHAT", "WHO"}));
+    for (const Json& entry : world.diary["entries"]) {
+        const std::string event = entry.value("event", ""), words = first_in_words(event, entry.value("species", ""), entry.value("craft", ""));
+        const int who = entry.value("who", -1);
+        lines.push_back(row({std::to_string(entry.value("turn", 0)), words, who >= 0 ? std::to_string(who) : ""}));
+        if (event == "fire_lit" || event == "cooked" || event == "shelter_finished" || event == "taught_by_elder" || event == "made_taught") {
+            findings.add(format("Turn %d: %s", entry.value("turn", 0), words.c_str()));
         }
     }
     return section;
@@ -709,6 +761,7 @@ World gather(Source& source) {
     read(world.animals, "animals?limit=1000000");
     read(world.minds, "minds");
     read(world.skills, "skills");
+    read(world.diary, "diary");
     read(world.calls, "calls");
     read(world.carrying, "carrying");
     read(world.timings, "timings");
@@ -726,7 +779,7 @@ World gather(Source& source) {
 Analysis analyse(const World& world) {
     Findings findings;
     std::vector<Section> sections = {population(world, findings), condition(world, findings), deaths(world, findings),
-                                     brains(world, findings),     tools(world, findings),     calls(world, findings),
+                                     brains(world, findings),     tools(world, findings),     diary(world, findings),     calls(world, findings),
                                      food(world, findings),       herds(world, findings),     climate(world),
                                      speed(world),                rules(world),               from_text("Brain report", world.brain_report),
                                      from_text("Death report", world.death_report)};

@@ -19,7 +19,7 @@ namespace bitzkey::report {
 // What the probe answered, route by route; a route that failed (an older app without it, say) is left null.
 struct World {
     std::string name;
-    Json state, settings, rules, history, deaths, insights, climate, animals, minds, skills, calls, carrying, timings;
+    Json state, settings, rules, history, deaths, insights, climate, animals, minds, skills, diary, calls, carrying, timings;
     std::map<std::string, Json> herds;  // by species
     std::string brain_report, death_report;
     std::vector<std::string> missing;  // the routes that failed, and why

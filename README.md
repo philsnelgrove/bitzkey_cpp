@@ -234,6 +234,7 @@ It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 
 | `GET /probe/brain/ID?weights=1` | a brain: its shape, what it makes of what it last sensed, and its weights if asked |
 | `GET /probe/reports/brain` | the brain report, as text |
 | `GET /probe/reports/deaths` | the death report, as text |
+| `GET /probe/diary` | the first time each thing was done, kept in the world file: fire, cooking, a shelter, a recipe found, taught or made from teaching, a line of teachers, the first elder, a species dying out |
 | `GET /probe/timings` | where each turn's time has gone, part by part and action by action |
 
 For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemon serves the same probe at `/api/probe/...`.
@@ -251,7 +252,8 @@ For example, `curl http://127.0.0.1:49200/probe/herds?species=grazer`. The daemo
 | Condition | each species' age, health, hunger, stamina and what they did last turn |
 | Deaths | every death since the start by cause, the latest deaths by cause and rate, and who killed whom |
 | Brains | the minds route's table, and how often each action is taken when it is open |
-| Tools & teaching | the crafts found and tried by each species, the weapons wielded and armour worn, and the teaching done: infants taught by a parent, students by an elder, elders old enough to teach |
+| Tools & teaching | the crafts found and tried by each species, how each came to be known (discovered, from a parent, from an elder), how many have mastered it and the longest line of teachers, the fires and shelters in the world, the weapons wielded and armour worn, and the teaching done: infants taught by a parent, students by an elder, elders old enough to teach |
+| Diary | the first time each thing was done, with its turn; the rarest also show in the Summary |
 | Calls | how often each call is made with a hunter in sight and without, and how hearing one changes whether listeners flee or move; marked as a finding when a call looks meant or heeded |
 | Food & carrying | food taken by source, dropped, eaten and spoiled, and the piles, carried portions and materials in the world now |
 | Herds & migration | the herds of each species, how many are away from their home temperature, and of those that moved, how many moved toward it (from a running world's second look); the largest herds |
