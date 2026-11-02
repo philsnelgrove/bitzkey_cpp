@@ -54,3 +54,8 @@ Before changing anything, ask whether the world might recover alone. It often do
 - **The server's world:** `/var/lib/private/bitzkey_daemon/`, with its probe at `/api/probe/...`.
 - **Every question the probe can answer:** the Probe section of the README. Try `curl http://127.0.0.1:49200/probe/diary`.
 - **Fragile things:** a world saved by a newer version may not open in an older one. Back up before updating.
+
+## Regard, factions and reputation
+
+Ask `/probe/regard` whether animals strike enemies more than chance, stay near friends and the skilled, keep clear of the dangerous, trust friends' calls, and how many hostile or friendly colours they hold. Its blow and alert counts restart with the program.
+
