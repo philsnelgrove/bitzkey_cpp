@@ -525,6 +525,8 @@ Section tools(const World& world, Findings& findings) {
 
 std::string first_in_words(const std::string& event, const std::string& species, const std::string& craft) {
     const std::string who = capital(plural(species.c_str()));
+    if (event == "tilled") return who + " first worked the land.";
+    if (event == "planted") return who + " first planted a seed.";
     if (event == "fire_lit") return who + " lit their first fire.";
     if (event == "cooked") return who + " cooked for the first time.";
     if (event == "shelter_finished") return who + " finished their first shelter.";

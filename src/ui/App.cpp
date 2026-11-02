@@ -1591,6 +1591,13 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             }
         }
     }
+    for (int y = y0; y < y1; ++y) {  // worked land, brown
+        for (int x = x0; x < x1; ++x) {
+            if (!simulation_->arable_at(x, y)) continue;
+            const int left = static_cast<int>(py_round(rect.x + x * board.cell_width)), top = static_cast<int>(py_round(rect.y + y * board.cell_height));
+            canvas.fill_rect({left, top, static_cast<int>(py_round(rect.x + (x + 1) * board.cell_width)) - left, static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height)) - top}, Color{122, 84, 48, 255});
+        }
+    }
     const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));
     for (int y = y0; y < y1; ++y) {  // grass: tufts, or kelp at sea, where squares are large enough; else dots
         for (int x = x0; x < x1; ++x) {
