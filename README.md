@@ -234,6 +234,7 @@ It is off unless asked for. Start the app with `--probe PORT`, or put `{"port": 
 | `GET /probe/brain/ID?weights=1` | a brain: its shape, what it makes of what it last sensed, and its weights if asked |
 | `GET /probe/reports/brain` | the brain report, as text |
 | `GET /probe/reports/deaths` | the death report, as text |
+| `GET /probe/society` | whether groups are forming, by species: families, tribes of mutual friends, colour factions and their own-against-other regard, and the leaders most held as friends or skilled, each with distances to read against strangers |
 | `GET /probe/regard` | what regard is doing: how far animals stay from friends and enemies, those held dangerous or skilled, the factions held and how many are hostile or friendly, blows at enemies and friends against chance, and fleeing after a friend's, an enemy's or a stranger's call |
 | `GET /probe/diary` | the first time each thing was done, kept in the world file: fire, cooking, a shelter, a recipe found, taught or made from teaching, a line of teachers, the first elder, a species dying out |
 | `GET /probe/timings` | where each turn's time has gone, part by part and action by action |

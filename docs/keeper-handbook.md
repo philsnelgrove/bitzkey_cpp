@@ -59,3 +59,5 @@ Before changing anything, ask whether the world might recover alone. It often do
 
 Ask `/probe/regard` whether animals strike enemies more than chance, stay near friends and the skilled, keep clear of the dangerous, trust friends' calls, and how many hostile or friendly colours they hold. Its blow and alert counts restart with the program.
 
+
+- `/probe/society` asks whether families, tribes, colour factions and leaders are forming. Read each distance against `strangers_mean_steps`.
