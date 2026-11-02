@@ -337,6 +337,8 @@ App::Result App::run() {
                     blind_ = false;
                 } else if (!hud_hidden_ && !exemplar_menu_ && blind_button_.contains(event.button.x, event.button.y)) {
                     blind_ = true;
+                    graph_.select_all({});  // nothing to pick from, and nothing picked
+                    selected_id_.reset();
                 } else if (!hud_hidden_ && !exemplar_menu_ && lod_button_.contains(event.button.x, event.button.y)) {
                     lod_ = !lod_;
                 } else if (!hud_hidden_ && !exemplar_menu_ && std::any_of(species_buttons_.begin(), species_buttons_.end(), [&](const Rect& button) {
@@ -351,10 +353,12 @@ App::Result App::run() {
                     for (std::size_t kind = 0; kind < terrain_buttons_.size(); ++kind) {
                         if (terrain_buttons_[kind].contains(event.button.x, event.button.y)) terrain_shown_[kind] = !terrain_shown_[kind];
                     }
-                } else if (globe_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
+                } else if (globe_ && !blind_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     pick_on_globe(event.button.x, event.button.y);  // a click picks the Bitzkey there; the right button turns it
                 } else if (!exemplar_menu_ && workers_button_.contains(event.button.x, event.button.y)) {
                     if (open_workers()) return Result::Worker;
+                } else if (blind_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
+                    // no map: nothing there to pick
                 } else if (!exemplar_menu_ && map_view(canvas).first.contains(event.button.x, event.button.y)) {
                     marquee_from_ = std::tuple{event.button.x, event.button.y, (SDL_GetModState() & KMOD_CTRL) != 0};
                 } else {
