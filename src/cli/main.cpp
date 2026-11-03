@@ -21,6 +21,7 @@
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
 #include "core/WorldFile.hpp"
+#include "net/ProbeServer.hpp"
 
 using namespace bitzkey;
 
@@ -56,7 +57,8 @@ void usage() {
         "                              as the catalog's DEPLOY does; may be repeated\n"
         "  --rules                     list the advanced rules, with their defaults and limits\n"
         "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
-        "  --profile                   say at the end how long each part of a turn took\n";
+        "  --profile                   say at the end how long each part of a turn took\n"
+        "  --probe PORT                serve the probe on 127.0.0.1:PORT while it runs, as the app does\n";
 }
 
 // Every rule, one line each, as the Python version lists them:
@@ -483,6 +485,7 @@ int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
     bool profile = false, year_length_given = false;
+    std::optional<int> probe_port;
     std::optional<std::string> trace_path, migration_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
     rules::Values changes;
     std::map<int, rules::Values> later;  // rules changed once the world reaches a turn, by turn
@@ -533,6 +536,7 @@ int main(int argc, char** argv) {
             else if (flag == "--export") export_path = value;
             else if (flag == "--load") load_path = value;
             else if (flag == "--save") save_path = value;
+            else if (flag == "--probe") probe_port = std::stoi(value);
             else if (flag == "--brain-report") report_path = value;
             else if (flag == "--death-report") deaths_path = value;
             else if (flag == "--rule" || flag == "--rule-at") {
@@ -612,6 +616,11 @@ int main(int argc, char** argv) {
         const auto start = last;
         const int first_turn = world.turn();  // a loaded world starts part way
         int last_turn = first_turn;
+        std::optional<net::ProbeServer> probe;  // looks and changes answered between turns
+        if (probe_port) {
+            probe.emplace(*probe_port);
+            probe->attach(world);
+        }
         for (int step = 1; step <= turns; ++step) {
             if (const auto due = later.find(world.turn()); due != later.end()) {  // as the map's ADVANCED does
                 for (const auto& [key, value] : due->second) changes[key] = value;
@@ -620,6 +629,7 @@ int main(int argc, char** argv) {
             }
             const auto [from, to] = deployments.equal_range(world.turn());  // as the catalog's DEPLOY does
             for (auto due = from; due != to; ++due) world.deploy(due->second.bitzkeys, due->second.x, due->second.y);
+            if (probe) probe->serve(world);
             if (diagnosis) diagnosis->before(world);
             if (ecology) ecology->before(world);
             world.advance();

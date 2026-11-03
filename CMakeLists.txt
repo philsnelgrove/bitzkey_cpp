@@ -155,7 +155,7 @@ add_custom_command(TARGET bitzkey_report POST_BUILD
 
 # A command-line runner: run worlds headless, benchmark, trace, export.
 add_executable(bitzkey_cli src/cli/main.cpp)
-target_link_libraries(bitzkey_cli PRIVATE bitzkey_core)
+target_link_libraries(bitzkey_cli PRIVATE bitzkey_net)
 
 # Unit tests.
 add_executable(bitzkey_tests
