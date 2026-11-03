@@ -28,6 +28,10 @@ How to read a Bitzkey world without help. Everything here comes from watching re
 - **A guru** is an elder teaching a student. The Diary records the first one, and the Summary shows it.
 - **Migrating ahead of winter:** in Herds & migration and Climate, or `bitzkey_cli --migration`, anticipation shows as animals leaving a band before it gets cold. Grazers have done this by turnover, not travel: births shift, while survivors hardly move. So ask how they moved, as well as whether.
 
+## Changing rules through the probe
+
+From the machine the world runs on, `POST /probe/rules` with `{"rules": {"SURPRISE_JOY": 0}}` changes rules from the next turn, without pausing (on the server, `/api/probe/rules`, through ssh). `POST /probe/settings` takes `population_cap` (null for none), `mind_mutation` and `body_mutation`. World size, ocean and year length are fixed once a world is made. Requests that come through the public web site are refused.
+
 ## Judging your own changes
 
 - Change one rule at a time, and write down the turn. Each world keeps its own saved rules, so changing a default doesn't touch a running world.
