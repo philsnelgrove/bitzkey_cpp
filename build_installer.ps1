@@ -7,6 +7,11 @@ if (-not $Version) { $Version = (Get-Content VERSION -TotalCount 1).Trim() }
 & .\build.ps1
 if ($LASTEXITCODE -ne 0) { throw "The build or its tests failed." }
 
+# The manager, built from the bitzkey-manager checkout beside this one
+& ..\bitzkey-manager\build_exe.ps1 -Icon (Join-Path $PSScriptRoot "packaging\bitzkey.ico")
+if (-not $? -or -not (Test-Path ..\bitzkey-manager\dist\bitzkey_manager.exe)) { throw "The manager failed to build." }
+Set-Location $PSScriptRoot
+
 $iscc = @(
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",

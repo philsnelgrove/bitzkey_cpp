@@ -40,6 +40,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#Release}\bitzkey.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\bitzkey_cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\bitzkey_report.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\bitzkey-manager\dist\bitzkey_manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\SDL2.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Release}\SDL2_ttf.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\i18n\*.json"; DestDir: "{app}\i18n"; Flags: ignoreversion
@@ -51,6 +52,7 @@ Source: "{#Deps}\sdl2_ttf-src\LICENSE.txt"; DestDir: "{app}\licenses"; DestName:
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\bitzkey.exe"
 Name: "{autoprograms}\{#AppName} Reports"; Filename: "{app}\bitzkey_report.exe"
+Name: "{autoprograms}\{#AppName} Manager"; Filename: "{app}\bitzkey_manager.exe"; Comment: "Start the manager and open its page"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\bitzkey.exe"; Tasks: desktopicon
 
 [Run]
