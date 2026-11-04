@@ -171,7 +171,7 @@ std::string read_file(const std::filesystem::path& path) {
 void write_file(const std::filesystem::path& path, std::string_view text) {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("can't write " + path.string());
+    if (!file) throw std::runtime_error("can't write " + utf8_name(path));
     file << text;
 }
 
