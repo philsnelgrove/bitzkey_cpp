@@ -175,9 +175,11 @@ add_executable(bitzkey_tests
     tests/test_report.cpp
     tests/test_sea.cpp
     tests/test_day.cpp
+    tests/test_i18n.cpp
 )
 target_link_libraries(bitzkey_tests PRIVATE bitzkey_report_core doctest::doctest)
-target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+target_compile_definitions(bitzkey_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS BITZKEY_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+                           BITZKEY_I18N_DIR="${CMAKE_CURRENT_SOURCE_DIR}/i18n")
 
 enable_testing()
 add_test(NAME bitzkey_tests COMMAND bitzkey_tests)
