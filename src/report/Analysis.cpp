@@ -474,13 +474,13 @@ Section tools(const World& world, Findings& findings) {
     }
     lines.push_back("");
     lines.push_back("# How each craft came to be known, by those who know it; a chain counts the teachers in a line");
-    lines.push_back(row({"~CRAFT", "SPECIES", "KNOW", "DISCOVERED", "FROM A PARENT", "FROM AN ELDER", "NOT RECORDED", "MASTERED", "LONGEST CHAIN"}));
+    lines.push_back(row({"~CRAFT", "SPECIES", "KNOW", "DISCOVERED", "FROM A PARENT", "FROM AN ELDER", "WATCHED", "NOT RECORDED", "MASTERED", "LONGEST CHAIN"}));
     for (const std::string& craft : crafts) {
         for (const char* species : ANIMAL_NAMES) {
             const Json& known = skills[species]["crafts"][craft];
             if (number_in(known, "known") == 0) continue;
             std::vector<std::string> cells = {craft, capital(species)};
-            for (const char* field : {"known", "discovered", "by_parent", "by_elder", "unrecorded", "mastered", "longest_chain"}) cells.push_back(number(number_in(known, field), 0));
+            for (const char* field : {"known", "discovered", "by_parent", "by_elder", "watched", "unrecorded", "mastered", "longest_chain"}) cells.push_back(number(number_in(known, field), 0));
             lines.push_back(row(cells));
         }
     }
@@ -533,6 +533,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "discovered") return who + " first discovered " + craft + ".";
     if (event == "taught_by_parent") return who + " first had " + craft + " taught by a parent.";
     if (event == "taught_by_elder") return who + " first had " + craft + " taught by an elder: a guru.";
+    if (event == "watched") return who + " first learnt " + craft + " by watching one they held skilled.";
     if (event == "made_taught") return who + " first made " + craft + " from a taught recipe.";
     if (event == "first_elder") return who + " had their first elder, old enough to teach.";
     if (event == "extinct") return who + " died out.";
