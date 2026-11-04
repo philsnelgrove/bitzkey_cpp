@@ -1112,10 +1112,11 @@ void App::draw_exemplars(Canvas& canvas) {
             const int px = card.x + UI(10) + radius + RING_WIDTH, py = card.y + (height + UI(20)) / 2;
             draw_bitzkey(canvas, exemplar.agent->dna, px, py, radius);
             const int x = px + radius + UI(12);
-            canvas.text(small, format("#%03d  %s", exemplar.agent->identifier,
-                                      std::string(SPECIES[static_cast<std::size_t>(exemplar.agent->species)]).c_str()),
-                        {231, 236, 222}, x, py - UI(16));
-            canvas.text(small, exemplar.said, {149, 170, 150}, x, py + UI(2));
+            canvas.text(small, format("#%03d", exemplar.agent->identifier), {231, 236, 222}, x, py - UI(24));
+            const std::string kind = tr(terrain_name(exemplar.agent->terrain)) + " " +  // its own line, so a long name fits
+                                     tr(SPECIES[static_cast<std::size_t>(exemplar.agent->species)]);
+            canvas.text(small, fit(kind, card.right() - x - UI(6)), {231, 236, 222}, x, py - UI(8));
+            canvas.text(small, exemplar.said, {149, 170, 150}, x, py + UI(8));
             exemplar_cards_.push_back({card, exemplar.agent->identifier});
         }
     }
