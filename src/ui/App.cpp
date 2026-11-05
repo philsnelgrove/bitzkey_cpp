@@ -788,6 +788,7 @@ void App::draw_square(Canvas& canvas) {
     const int zone = std::clamp(static_cast<int>(std::lround(simulation_->temperature(tile_y))), 0, static_cast<int>(HOMES.size()) - 1);
     std::vector<std::string> notes{format("WEATHER: %s, %s", HOMES[static_cast<std::size_t>(zone)], std::string(SEASONS[static_cast<std::size_t>(season(simulation_->turn()))]).c_str())};
     if (simulation_->shelter_at(tile_x, tile_y)) notes.push_back("SHELTER");
+    if (simulation_->road_at(tile_x, tile_y)) notes.push_back("ROAD");
     else if (simulation_->site_at(tile_x, tile_y)) notes.push_back(format("SHELTER SITE %d/%d", simulation_->site_at(tile_x, tile_y), SHELTER_UNITS));
     if (simulation_->fire_at(tile_x, tile_y) > simulation_->turn()) notes.push_back(format("FIRE: %d TURNS LEFT", simulation_->fire_at(tile_x, tile_y) - simulation_->turn()));
     const auto pile = [&](PileKind kind) { return simulation_->pile_at(tile_x, tile_y, kind); };
@@ -1590,6 +1591,13 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
                 canvas.blit(ground_tile(simulation_->sea(x, y) ? Ground::Sea : land, cell_w, cell_h, variant),
                             static_cast<int>(py_round(rect.x + x * board.cell_width)), top);
             }
+        }
+    }
+    for (int y = y0; y < y1; ++y) {  // roads, grey
+        for (int x = x0; x < x1; ++x) {
+            if (!simulation_->road_at(x, y)) continue;
+            const int left = static_cast<int>(py_round(rect.x + x * board.cell_width)), top = static_cast<int>(py_round(rect.y + y * board.cell_height));
+            canvas.fill_rect({left, top, static_cast<int>(py_round(rect.x + (x + 1) * board.cell_width)) - left, static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height)) - top}, Color{128, 124, 116, 255});
         }
     }
     for (int y = y0; y < y1; ++y) {  // worked land, brown

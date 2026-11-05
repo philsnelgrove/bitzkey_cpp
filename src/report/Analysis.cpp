@@ -530,6 +530,8 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "fire_lit") return who + " lit their first fire.";
     if (event == "cooked") return who + " cooked for the first time.";
     if (event == "shelter_finished") return who + " finished their first shelter.";
+    if (event == "road_finished") return who + " laid their first road.";
+    if (event == "shelters_joined") return who + " first joined two shelters by road.";
     if (event == "discovered") return who + " first discovered " + craft + ".";
     if (event == "taught_by_parent") return who + " first had " + craft + " taught by a parent.";
     if (event == "taught_by_elder") return who + " first had " + craft + " taught by an elder: a guru.";
@@ -554,7 +556,7 @@ Section diary(const World& world, Findings& findings) {
         const std::string event = entry.value("event", ""), words = first_in_words(event, entry.value("species", ""), entry.value("craft", ""));
         const int who = entry.value("who", -1);
         lines.push_back(row({std::to_string(entry.value("turn", 0)), words, who >= 0 ? std::to_string(who) : ""}));
-        if (event == "fire_lit" || event == "cooked" || event == "shelter_finished" || event == "taught_by_elder" || event == "made_taught") {
+        if (event == "fire_lit" || event == "cooked" || event == "shelter_finished" || event == "road_finished" || event == "shelters_joined" || event == "taught_by_elder" || event == "made_taught") {
             findings.add(format("Turn %d: %s", entry.value("turn", 0), words.c_str()));
         }
     }
