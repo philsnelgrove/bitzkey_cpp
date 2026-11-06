@@ -1604,7 +1604,8 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
         for (int x = x0; x < x1; ++x) {
             if (!simulation_->arable_at(x, y)) continue;
             const int left = static_cast<int>(py_round(rect.x + x * board.cell_width)), top = static_cast<int>(py_round(rect.y + y * board.cell_height));
-            canvas.fill_rect({left, top, static_cast<int>(py_round(rect.x + (x + 1) * board.cell_width)) - left, static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height)) - top}, Color{122, 84, 48, 255});
+            const Color soil = simulation_->fertilized_at(x, y) ? Color{84, 56, 30, 255} : Color{122, 84, 48, 255};  // fed bone, darker
+            canvas.fill_rect({left, top, static_cast<int>(py_round(rect.x + (x + 1) * board.cell_width)) - left, static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height)) - top}, soil);
         }
     }
     const int grass_radius = std::max(1, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.18)));

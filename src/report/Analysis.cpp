@@ -530,6 +530,14 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "fire_lit") return who + " lit their first fire.";
     if (event == "cooked") return who + " cooked for the first time.";
     if (event == "shelter_finished") return who + " finished their first shelter.";
+    if (event == "fought_over") return who + " first fought over a possession.";
+    if (event == "won_a_fight") return who + " first won a fight over a possession.";
+    if (event == "stole") return who + " first stole a possession.";
+    if (event == "gave") return who + " first gave a possession to a friend.";
+    if (event == "skinned") return who + " first wore a hide.";
+    if (event == "caught_lying") return who + " was first seen fleeing a fight in a warrior's garb: a liar.";
+    if (event == "ate_marrow") return who + " first crushed a bone for its marrow.";
+    if (event == "fertilized") return who + " first fed crushed bone to the land.";
     if (event == "road_finished") return who + " laid their first road.";
     if (event == "shelters_joined") return who + " first joined two shelters by road.";
     if (event == "discovered") return who + " first discovered " + craft + ".";
