@@ -537,6 +537,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "skinned") return who + " first wore a hide.";
     if (event == "caught_lying") return who + " was first seen fleeing a fight in a warrior's garb: a liar.";
     if (event == "ate_marrow") return who + " first crushed a bone for its marrow.";
+    if (event == "loved_cooked") return who + " first came to love cooked food.";
     if (event == "gave_in_to_meat") return who + " first gave in to meat: a grazer, marrow by marrow, turned omnivore.";
     if (event == "fertilized") return who + " first fed crushed bone to the land.";
     if (event == "road_finished") return who + " laid their first road.";
