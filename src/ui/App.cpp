@@ -768,6 +768,8 @@ bool App::square_event(const SDL_Event& event) {
         square_panel_->contains(event.button.x, event.button.y)) {
         for (const auto& [row, identifier] : square_rows_)
             if (row.contains(event.button.x, event.button.y)) select(identifier);
+        for (const auto& [row, realm] : square_lands_)
+            if (row.contains(event.button.x, event.button.y)) select_group(realm);
         return true;
     }
     return false;
@@ -778,6 +780,7 @@ constexpr std::uint32_t SQUARE_DELAY = 400;  // milliseconds on a square before 
 void App::draw_square(Canvas& canvas) {
     square_panel_.reset();
     square_rows_.clear();
+    square_lands_.clear();
     if (!square_ || show_census_ || dialog_ || report_ || SDL_GetTicks() - square_since_ < SQUARE_DELAY) return;
     std::vector<const Bitzkey*> here;
     int used = 0;
@@ -797,8 +800,15 @@ void App::draw_square(Canvas& canvas) {
     const int cooked = pile(CookedMeatPile) + pile(CookedFruitPile), gear = pile(BoneAxePile) + pile(ClubPile) + pile(StoneAxePile) + pile(BoneArmourPile) + pile(WoodArmourPile);
     if (pile(MeatPile) + pile(FruitPile) + cooked) notes.push_back(format("MEAT %d  FRUIT %d  COOKED %d", pile(MeatPile), pile(FruitPile), cooked));
     if (pile(StonePile) + pile(BonePile) + pile(WoodPile) + gear) notes.push_back(format("STONE %d  BONE %d  WOOD %d  GEAR %d", pile(StonePile), pile(BonePile), pile(WoodPile), gear));
+    std::vector<int> claimants;  // the groups claiming its land, each a row with its colour, to pick the group by
+    if (const LandClaims* land = simulation_->claims_at(tile_x, tile_y)) {
+        for (const Claim& claim : *land) {
+            if (claim.realm >= 0 && simulation_->realms().contains(claim.realm)) claimants.push_back(claim.realm);
+        }
+    }
+    const int claimed = static_cast<int>(claimants.size()) + (claimants.size() > 1 ? 1 : 0);  // and WAR, contested
     const Board board = board_geometry(canvas);
-    const int row = UI(MENU_ROW), width = UI(230), lines = static_cast<int>(notes.size()) + 1;
+    const int row = UI(MENU_ROW), width = UI(230), lines = static_cast<int>(notes.size()) + 1 + claimed;
     Rect panel{static_cast<int>(board.rect.x + (square_->first + 1) * board.cell_width),  // touching the square, to reach it
                static_cast<int>(board.rect.y + square_->second * board.cell_height), width,
                (static_cast<int>(here.size()) + lines) * row + UI(8)};
@@ -814,6 +824,23 @@ void App::draw_square(Canvas& canvas) {
                 {144, 170, 151}, panel.x + UI(10), panel.y + UI(6));
     for (std::size_t index = 0; index < notes.size(); ++index) {
         canvas.text(small, notes[index], {144, 170, 151}, panel.x + UI(10), panel.y + UI(6) + static_cast<int>(index + 1) * row);
+    }
+    constexpr std::array<const char*, 4> GROUPS = {"PLANTS", "GRAZERS", "OMNIVORES", "PREDATORS"};
+    for (std::size_t index = 0; index < claimants.size(); ++index) {
+        const Realm& realm = simulation_->realms().at(claimants[index]);
+        const Rect item{panel.x + UI(4), panel.y + UI(4) + static_cast<int>(notes.size() + 1 + index) * row, width - UI(8), row};
+        if (item.contains(mouse_x, mouse_y)) canvas.rect(item, {44, 57, 52}, 0, UI(3));
+        const Rgb rgb = color_from_word(realm.ring);
+        const Rect chip{item.x + UI(6), item.y + (row - UI(10)) / 2, UI(10), UI(10)};
+        canvas.rect(chip, Color{static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b)}, 0, UI(2));
+        canvas.rect(chip, {220, 229, 211}, 1, UI(2));
+        canvas.text(small, format("LAND OF %s: %d STRONG", GROUPS[static_cast<std::size_t>(realm.species)], realm.members), {220, 229, 211},
+                    chip.right() + UI(6), item.y + UI(2));
+        square_lands_.push_back({item, claimants[index]});
+    }
+    if (claimants.size() > 1) {
+        canvas.text(UI.font(Face::Sans, 12, true), "WAR", {220, 36, 36}, panel.x + UI(10),
+                    panel.y + UI(6) + static_cast<int>(notes.size() + 1 + claimants.size()) * row);
     }
     for (std::size_t index = 0; index < here.size(); ++index) {
         const Bitzkey& agent = *here[index];
@@ -997,6 +1024,16 @@ void App::step_selection(int way) {
         }
     }
     select(*next);
+}
+
+void App::select_group(int realm) {
+    std::set<int> picked;
+    for (const Bitzkey* agent : simulation_->living()) {
+        if (agent->realm == realm) picked.insert(agent->identifier);
+    }
+    graph_.select_all(picked);  // the map and the graph share one selection
+    selected_id_ = picked.size() == 1 ? std::optional<int>(*picked.begin()) : std::nullopt;
+    show_insights_ = false;
 }
 
 void App::select(int identifier) {
@@ -1628,6 +1665,17 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
                 if (!west || (*west)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.y, thick, cell.h}, edge);
                 if (!south || (*south)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.bottom() - thick, cell.w, thick}, edge);
                 if (!north || (*north)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.y, cell.w, thick}, edge);
+            }
+        }
+        for (int top = y0 / patch * patch; top < y1; top += patch) {  // WAR, in red, across each contested square
+            for (int left = x0 / patch * patch; left < x1; left += patch) {
+                const LandClaims* land = simulation_->claims_at(left, top);
+                if (!land || (*land)[1].realm < 0) continue;
+                const Rect first = cell_rect(left, top);
+                const Rect last = cell_rect(std::min(left + patch, simulation_->width()) - 1, std::min(top + patch, simulation_->height()) - 1);
+                const Rect square{first.x, first.y, last.right() - first.x, last.bottom() - first.y};
+                const int size = std::clamp(square.w / 16 * 4, 8, 72);  // in steps, so few sizes are made
+                canvas.label(UI.fitting(UI.font(Face::Sans, size, true), tr("WAR"), square.w), "WAR", Color{220, 36, 36}, square);
             }
         }
     }

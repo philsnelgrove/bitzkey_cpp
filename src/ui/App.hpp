@@ -80,7 +80,8 @@ private:
     // a click adds the Bitzkey to the selection or takes it out, and a marquee adds to it.
     void pick_on_map(int start_x, int start_y, int end_x, int end_y, bool adding);
     std::optional<int> living_at(int x, int y);  // the living Bitzkey clicked at, if any
-    void select(int identifier);  // on the map and the graph alike
+    void select(int identifier);
+    void select_group(int realm);  // every living member of a colour group  // on the map and the graph alike
     void step_selection(int way);  // Tab: the next Bitzkey, Shift+Tab the one before
     // Copy the living Bitzkeys picked on the graph to the clipboard and leave, to start a new world with
     // them alone imported. Returns whether it left.
@@ -197,6 +198,7 @@ private:
     std::optional<std::pair<int, int>> square_;         // the map square under the pointer, listed in a popup
     std::optional<Rect> square_panel_;
     std::uint32_t square_since_ = 0;  // when the pointer came to this square
+    std::vector<std::pair<Rect, int>> square_lands_;    // each land claim in the popup, and whose group it is
     std::vector<std::pair<Rect, int>> square_rows_;     // each name in the popup, and whom it is
     std::string renewal_;  // the Bitzkeys to start a new world with, on leaving for one
     Rect export_button_;
