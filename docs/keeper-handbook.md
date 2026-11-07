@@ -65,3 +65,4 @@ Ask `/probe/regard` whether animals strike enemies more than chance, stay near f
 
 
 - `/probe/society` asks whether families, tribes, colour factions and leaders are forming. Read each distance against `strangers_mean_steps`.
+- `/probe/lands` shows the colour groups that hold land, how many of each species stand in their own land or trespass, the marks of the victor borne, and every war with its kills. A group needs Land size members to claim; Land size 0 turns lands off.

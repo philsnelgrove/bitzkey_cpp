@@ -219,9 +219,10 @@ private:
     bool hud_hidden_ = false;  // H: the map or globe alone, filling the window
     double globe_yaw_ = 0.0, globe_tilt_ = 0.35, globe_zoom_ = 1.0;
     std::optional<std::tuple<int, int, double, double>> turn_from_;  // a drag on the globe: where it began, and its turn then
-    Rect map_button_, globe_button_, blind_button_, lod_button_;
+    Rect map_button_, globe_button_, blind_button_, lod_button_, lands_button_;
     std::array<Rect, 4> species_buttons_{}, terrain_buttons_{};  // the filters, a row each beneath the view's buttons
     bool blind_ = false;  // neither map nor globe drawn, to spare the time
+    bool lands_ = true;   // each group's land shaded in its colour, contested land striped
     bool lod_ = true;     // the level of detail hides the smaller Bitzkeys zoomed out; off, every size shows from any altitude
     std::array<bool, 4> species_shown_{true, true, true, true};  // each species drawn, or filtered out: plants, grazers, ...
     std::array<bool, 4> terrain_shown_{true, true, true, true};  // each terrain drawn, or filtered out: terrestrial, aquatic, ...

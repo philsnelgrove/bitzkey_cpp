@@ -341,6 +341,8 @@ App::Result App::run() {
                     selected_id_.reset();
                 } else if (!hud_hidden_ && !exemplar_menu_ && lod_button_.contains(event.button.x, event.button.y)) {
                     lod_ = !lod_;
+                } else if (!hud_hidden_ && !exemplar_menu_ && lands_button_.contains(event.button.x, event.button.y)) {
+                    lands_ = !lands_;
                 } else if (!hud_hidden_ && !exemplar_menu_ && std::any_of(species_buttons_.begin(), species_buttons_.end(), [&](const Rect& button) {
                                return button.contains(event.button.x, event.button.y);
                            })) {
@@ -1252,12 +1254,14 @@ void App::draw_view_buttons(Canvas& canvas) {
     globe_button_ = Rect{map_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     blind_button_ = Rect{globe_button_.right() + UI(6), map_button_.y, UI(64), UI(18)};
     lod_button_ = Rect{blind_button_.right() + UI(18), map_button_.y, UI(104), UI(18)};
+    lands_button_ = Rect{lod_button_.right() + UI(6), map_button_.y, Canvas::text_width(font, tr("LANDS")) + UI(16), UI(18)};
     const auto draw_button = [&](const Rect& button, const char* label, bool on) {
         canvas.rect(button, on ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(4));
         canvas.label(font, label, on ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     };
     for (const auto& [button, label, on] : {std::tuple{map_button_, "MAP", !globe_ && !blind_}, std::tuple{globe_button_, "GLOBE", globe_ && !blind_},
-                                            std::tuple{blind_button_, "BLIND", blind_}, std::tuple{lod_button_, "LOD MANAGER", lod_}}) {
+                                            std::tuple{blind_button_, "BLIND", blind_}, std::tuple{lod_button_, "LOD MANAGER", lod_},
+                                            std::tuple{lands_button_, "LANDS", lands_}}) {
         draw_button(button, label, on);
     }
     constexpr std::array<const char*, 4> SPECIES_LABELS = {"PLANTS", "GRAZERS", "OMNIVORES", "PREDATORS"};
@@ -1590,6 +1594,40 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
                 const int variant = static_cast<int>((static_cast<unsigned>(x) * 73856093U ^ static_cast<unsigned>(y) * 19349663U) % GROUND_VARIANTS);
                 canvas.blit(ground_tile(simulation_->sea(x, y) ? Ground::Sea : land, cell_w, cell_h, variant),
                             static_cast<int>(py_round(rect.x + x * board.cell_width)), top);
+            }
+        }
+    }
+    if (lands_ && simulation_->land_patch() > 0) {  // each group's land in its colour, faintly; contested land striped in both
+        const int patch = simulation_->land_patch();
+        const auto cell_rect = [&](int x, int y) {
+            const int left = static_cast<int>(py_round(rect.x + x * board.cell_width)), top = static_cast<int>(py_round(rect.y + y * board.cell_height));
+            return Rect{left, top, static_cast<int>(py_round(rect.x + (x + 1) * board.cell_width)) - left, static_cast<int>(py_round(rect.y + (y + 1) * board.cell_height)) - top};
+        };
+        const auto tint = [&](int realm) {
+            const auto found = simulation_->realms().find(realm);
+            const Rgb rgb = found != simulation_->realms().end() ? color_from_word(found->second.ring) : Rgb{128, 128, 128};
+            return Color{static_cast<std::uint8_t>(rgb.r), static_cast<std::uint8_t>(rgb.g), static_cast<std::uint8_t>(rgb.b), 70};
+        };
+        for (int y = y0; y < y1; ++y) {
+            for (int x = x0; x < x1; ++x) {
+                const LandClaims* land = simulation_->claims_at(x, y);
+                if (!land || (*land)[0].realm < 0) continue;
+                const bool contested = (*land)[1].realm >= 0;
+                const int stripe = contested && ((x + y) / 2) % 2 ? 1 : 0;  // two cells wide, slanting
+                canvas.fill_rect(cell_rect(x, y), tint((*land)[static_cast<std::size_t>(stripe)].realm));
+                // Its border, where the next square isn't held alike
+                const LandClaims* east = x % patch == patch - 1 ? simulation_->claims_at(x + 1, y) : land;
+                const LandClaims* south = y % patch == patch - 1 ? simulation_->claims_at(x, y + 1) : land;
+                const LandClaims* west = x % patch == 0 ? simulation_->claims_at(x - 1, y) : land;
+                const LandClaims* north = y % patch == 0 ? simulation_->claims_at(x, y - 1) : land;
+                Color edge = tint((*land)[0].realm);
+                edge.a = 200;
+                const Rect cell = cell_rect(x, y);
+                const int thick = std::max(1, std::min(cell.w, cell.h) / 8);
+                if (!east || (*east)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.right() - thick, cell.y, thick, cell.h}, edge);
+                if (!west || (*west)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.y, thick, cell.h}, edge);
+                if (!south || (*south)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.bottom() - thick, cell.w, thick}, edge);
+                if (!north || (*north)[0].realm != (*land)[0].realm) canvas.fill_rect({cell.x, cell.y, cell.w, thick}, edge);
             }
         }
     }
