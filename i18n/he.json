@@ -1991,5 +1991,17 @@
 "Close this screen.": "סוגר את המסך הזה.",
 "The port to listen on for the main service.": "הפורט שבו להאזין לשירות הראשי.",
 "Go back without becoming a worker.": "לחזור בלי להפוך לעובד.",
-"Listen on the port above, and think for the main service once it adds this computer.": "מאזין בפורט שלמעלה וחושב עבור השירות הראשי ברגע שיוסיף את המחשב הזה."
+"Listen on the port above, and think for the main service once it adds this computer.": "מאזין בפורט שלמעלה וחושב עבור השירות הראשי ברגע שיוסיף את המחשב הזה.",
+"OFFER": "הצעה",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "מציע משהו משלו תמורת משהו שיש לאחר; האחר שוקל את העסקה ועשוי לקבל או לסרב.",
+"Trade misjudgement": "טעות הערכה במסחר",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "עד כמה בעל חיים עלול לטעות בהערכת שוויו של טובין בעסקה, לכל כיוון, כפול אחד פחות התבונה שלו",
+"Trade regard": "הערכה ממסחר",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "כמה ממשקלו של מעשה יש להצעה שהתקבלה על ההערכה, חסד לשני הכיוונים",
+"Trade joy": "שמחת מסחר",
+"pleasure each side takes in a deal made, the offer accepted": "ההנאה שכל צד חש בעסקה שנסגרה, כשההצעה התקבלה",
+"offered": "הציע",
+"thought better of an offer": "חזר בו מהצעה",
+"was refused": "נדחה",
+"traded": "סחר"
 }

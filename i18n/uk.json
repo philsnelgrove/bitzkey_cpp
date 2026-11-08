@@ -1991,5 +1991,17 @@
 "Close this screen.": "Закриває цей екран.",
 "The port to listen on for the main service.": "Порт, на якому слухати головну службу.",
 "Go back without becoming a worker.": "Повернутися, не ставши помічником.",
-"Listen on the port above, and think for the main service once it adds this computer.": "Слухає на порту вище й думає для головної служби, щойно вона додасть цей комп'ютер."
+"Listen on the port above, and think for the main service once it adds this computer.": "Слухає на порту вище й думає для головної служби, щойно вона додасть цей комп'ютер.",
+"OFFER": "Запропонувати",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "Пропонує щось своє в обмін на те, що має інший; той зважує угоду й може погодитися або відмовитися.",
+"Trade misjudgement": "Хибна оцінка в обміні",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "наскільки тварина може хибно оцінити вартість речі в угоді, в будь-який бік, помножене на один мінус її інтелект",
+"Trade regard": "Повага від обміну",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "яку частку ваги вчинку має прийнята пропозиція для поваги, доброта в обидва боки",
+"Trade joy": "Радість обміну",
+"pleasure each side takes in a deal made, the offer accepted": "задоволення, яке кожна сторона має від укладеної угоди, коли пропозицію прийнято",
+"offered": "запропонував",
+"thought better of an offer": "передумав щодо пропозиції",
+"was refused": "отримав відмову",
+"traded": "обмінявся"
 }

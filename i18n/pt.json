@@ -1991,5 +1991,17 @@
 "Close this screen.": "Fecha este ecrã.",
 "The port to listen on for the main service.": "A porta em que escutar o serviço principal.",
 "Go back without becoming a worker.": "Voltar sem se tornar trabalhador.",
-"Listen on the port above, and think for the main service once it adds this computer.": "Escuta na porta acima e pensa para o serviço principal assim que ele juntar este computador."
+"Listen on the port above, and think for the main service once it adds this computer.": "Escuta na porta acima e pensa para o serviço principal assim que ele juntar este computador.",
+"OFFER": "Oferecer",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "Oferece algo seu em troca de algo que outro tem; o outro pesa o negócio e pode aceitar ou recusar.",
+"Trade misjudgement": "Erro de avaliação na troca",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "quanto um animal pode avaliar mal o valor de um bem numa troca, para mais ou para menos, vezes um menos a sua inteligência",
+"Trade regard": "Estima pela troca",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "quanto do peso de um ato uma oferta aceita tem na estima, uma gentileza nos dois sentidos",
+"Trade joy": "Alegria da troca",
+"pleasure each side takes in a deal made, the offer accepted": "prazer que cada lado sente num negócio fechado, com a oferta aceita",
+"offered": "ofereceu",
+"thought better of an offer": "repensou uma oferta",
+"was refused": "foi recusado",
+"traded": "trocou"
 }

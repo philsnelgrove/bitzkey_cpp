@@ -1991,5 +1991,17 @@
 "Close this screen.": "यह स्क्रीन बंद करता है।",
 "The port to listen on for the main service.": "वह पोर्ट जिस पर मुख्य सेवा की प्रतीक्षा करनी है।",
 "Go back without becoming a worker.": "सहायक बने बिना वापस जाएँ।",
-"Listen on the port above, and think for the main service once it adds this computer.": "ऊपर के पोर्ट पर सुनता है, और मुख्य सेवा के इस कंप्यूटर को जोड़ते ही उसके लिए सोचता है।"
+"Listen on the port above, and think for the main service once it adds this computer.": "ऊपर के पोर्ट पर सुनता है, और मुख्य सेवा के इस कंप्यूटर को जोड़ते ही उसके लिए सोचता है।",
+"OFFER": "पेशकश",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "किसी दूसरे के पास की चीज़ के बदले अपनी कोई चीज़ पेश करता है; दूसरा सौदे को तौलकर उसे मान या ठुकरा सकता है।",
+"Trade misjudgement": "व्यापार में ग़लत आकलन",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "सौदे में कोई जीव किसी वस्तु के मूल्य का कितना ग़लत आकलन कर सकता है, किसी भी ओर, गुणा एक घटा उसकी बुद्धि",
+"Trade regard": "व्यापार से सम्मान",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "मानी गई पेशकश का सम्मान पर किसी कर्म के भार का कितना असर होता है, दोनों ओर एक दयालुता",
+"Trade joy": "व्यापार का आनंद",
+"pleasure each side takes in a deal made, the offer accepted": "पेशकश मान ली जाने पर, हुए सौदे से हर पक्ष को मिलने वाला आनंद",
+"offered": "पेशकश की",
+"thought better of an offer": "पेशकश पर फिर से सोचा",
+"was refused": "ठुकराया गया",
+"traded": "व्यापार किया"
 }

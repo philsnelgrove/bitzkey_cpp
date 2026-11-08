@@ -1991,5 +1991,17 @@
 "Close this screen.": "この画面を閉じる。",
 "The port to listen on for the main service.": "メインサービスを待ち受けるポート。",
 "Go back without becoming a worker.": "協力者にならずに戻る。",
-"Listen on the port above, and think for the main service once it adds this computer.": "上のポートで待ち受け、メインサービスがこのコンピューターを加えたらそのために考える。"
+"Listen on the port above, and think for the main service once it adds this computer.": "上のポートで待ち受け、メインサービスがこのコンピューターを加えたらそのために考える。",
+"OFFER": "申し出る",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "自分の物を差し出して、相手の持つ物と交換を申し出る。相手は取引を見積もり、受けるか断る。",
+"Trade misjudgement": "取引の見誤り",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "取引で動物が品の価値をどれだけ見誤りうるか（どちらの向きにも）。1から知能を引いた値を掛ける",
+"Trade regard": "取引による評価",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "受け入れられた申し出が評価に与える、行いの重みの割合。双方への親切",
+"Trade joy": "取引の喜び",
+"pleasure each side takes in a deal made, the offer accepted": "申し出が受け入れられ取引が成立したとき、双方が感じる喜び",
+"offered": "申し出た",
+"thought better of an offer": "申し出を考え直した",
+"was refused": "断られた",
+"traded": "取引した"
 }

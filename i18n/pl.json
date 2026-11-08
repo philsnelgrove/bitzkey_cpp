@@ -1991,5 +1991,17 @@
 "Close this screen.": "Zamyka ten ekran.",
 "The port to listen on for the main service.": "Port, na którym nasłuchiwać usługi głównej.",
 "Go back without becoming a worker.": "Wróć, nie stając się pracownikiem.",
-"Listen on the port above, and think for the main service once it adds this computer.": "Nasłuchuje na porcie powyżej i myśli dla usługi głównej, gdy tylko doda ona ten komputer."
+"Listen on the port above, and think for the main service once it adds this computer.": "Nasłuchuje na porcie powyżej i myśli dla usługi głównej, gdy tylko doda ona ten komputer.",
+"OFFER": "Zaoferuj",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "Oferuje coś swojego w zamian za coś, co ma inny; ten waży umowę i może ją przyjąć lub odrzucić.",
+"Trade misjudgement": "Błąd oceny w handlu",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "jak bardzo zwierzę może źle ocenić wartość dobra w umowie, w obie strony, razy jeden minus jego inteligencja",
+"Trade regard": "Szacunek z handlu",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "jaką część wagi czynu ma przyjęta oferta dla szacunku, uprzejmość w obie strony",
+"Trade joy": "Radość z handlu",
+"pleasure each side takes in a deal made, the offer accepted": "przyjemność, jaką każda strona czerpie z zawartej umowy, gdy oferta zostaje przyjęta",
+"offered": "zaoferował",
+"thought better of an offer": "rozmyślił się z ofertą",
+"was refused": "został odrzucony",
+"traded": "wymienił się"
 }

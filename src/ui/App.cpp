@@ -2062,7 +2062,8 @@ constexpr std::array<const char*, ACTION_COUNT> ACTION_ABOUT = {
     "Skin a body for its hide, to wear as armour.",
     "Demand a better possession from another, which may give it up or fight for it.",
     "Steal a better possession from another, which may fight to get it back.",
-    "Give a possession to a friend."};
+    "Give a possession to a friend.",
+    "Offer something of its own for something another has; the other weighs the deal and may accept or refuse."};
 constexpr std::array<const char*, 9> LIFE_ABOUT = {
     "How many of each species are alive.",
     "Average body size, from 0 to 7.",

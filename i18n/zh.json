@@ -1991,5 +1991,17 @@
 "Close this screen.": "关闭此界面。",
 "The port to listen on for the main service.": "监听主服务的端口。",
 "Go back without becoming a worker.": "不成为协助者就返回。",
-"Listen on the port above, and think for the main service once it adds this computer.": "在上方端口监听，主服务添加这台电脑后便为它思考。"
+"Listen on the port above, and think for the main service once it adds this computer.": "在上方端口监听，主服务添加这台电脑后便为它思考。",
+"OFFER": "提议",
+"Offer something of its own for something another has; the other weighs the deal and may accept or refuse.": "用自己的东西交换另一方拥有的东西；对方权衡这笔交易，可接受或拒绝。",
+"Trade misjudgement": "交易误判",
+"how far an animal may misjudge a good's worth in a deal, either way, times one less its intelligence": "动物在交易中对物品价值可能误判的幅度（高估或低估），乘以一减其智力",
+"Trade regard": "交易好感",
+"how much of a deed's weight an accepted offer has on regard, a kindness both ways": "被接受的提议对好感的影响，占一次行为分量的比例，双方互为善举",
+"Trade joy": "交易之乐",
+"pleasure each side takes in a deal made, the offer accepted": "提议被接受、交易达成时双方各自感到的愉悦",
+"offered": "提出交换",
+"thought better of an offer": "对提议改变了主意",
+"was refused": "被拒绝",
+"traded": "完成交易"
 }
