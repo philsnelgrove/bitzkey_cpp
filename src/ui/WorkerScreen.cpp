@@ -207,6 +207,7 @@ void WorkerScreen::draw(Canvas& canvas) {
     const int title = canvas.text(UI.font(Face::Sans, 26, true), "WORKER", BRIGHT, left, y);
     canvas.text(UI.font(Face::Sans, 12), about(), DIM, left + title + UI(16), y + UI(12));
     language_menu_.draw_button(canvas, card.right() - UI(24), y + UI(16));
+    tooltip(language_menu_.button(), "Choose the language shown.");
     y += UI(50);
 
     const std::string main = status_.value("main", std::string());
@@ -275,17 +276,22 @@ void WorkerScreen::draw(Canvas& canvas) {
     port_.draw(canvas, focus_ == &port_);
     change_button_ = {port_.rect.right() + UI(10), y + UI(4), UI(100), UI(30)};
     draw_button(canvas, change_button_, "CHANGE");
+    tooltip(change_button_, "Listen for the main service on this port instead.");
     y += UI(40);
     if (share_) y += share_->draw(canvas, left, y, width, focus_);
     apply_button_ = Rect{0, 0, UI(110), UI(34)}.topright_at(card.right() - UI(28), y);
     draw_button(canvas, apply_button_, "APPLY");
+    tooltip(apply_button_, "Apply the share settings above.");
     y += UI(44);
     if (SDL_GetTicks() < note_until_) canvas.text(UI.fitting(small, note_, width), note_, AMBER, left, y);
 
     stop_button_ = Rect{0, 0, UI(240), UI(42)}.midbottom_at(card.centerx(), card.bottom() - UI(24));
     draw_button(canvas, stop_button_, leaving ? "HANDING BACK..." : "STOP BEING A WORKER", Tone::Warning);
+    tooltip(stop_button_, "Hand the brains back to the main service and stop being a worker.");
     if (dialog_) dialog_->draw(canvas);
     language_menu_.draw_list(canvas);
+    if (dialog_ || language_menu_.open()) drop_tooltips();
+    draw_tooltips(canvas);
 }
 
 }  // namespace bitzkey::ui

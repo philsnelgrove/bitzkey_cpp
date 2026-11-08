@@ -1,6 +1,7 @@
 #include "ui/Canvas.hpp"
 #include "ui/Sound.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <SDL_ttf.h>
 
 #include "ui/Language.hpp"
+#include "ui/Ui.hpp"
 
 namespace bitzkey::ui {
 
@@ -278,6 +280,45 @@ std::vector<std::string> wrapped_lines(TTF_Font* font, std::string_view english,
     if (!line.empty()) lines.push_back(line);
     for (const std::string& each : lines) as_shown(each);
     return lines;
+}
+
+namespace {
+constexpr Uint32 TOOLTIP_DELAY = 450;  // milliseconds the pointer rests before a tooltip shows
+std::vector<std::pair<Rect, const char*>> tooltips;  // this frame's, the first drawn first
+const char* tooltip_shown = nullptr;                 // the one under the pointer, and since when
+Uint32 tooltip_since = 0;
+}  // namespace
+
+void tooltip(const Rect& area, const char* text) { tooltips.emplace_back(area, text); }
+
+void drop_tooltips() { tooltips.clear(); }
+
+void draw_tooltips(Canvas& canvas) {
+    // The first drawn under the pointer: a card's heading before the card.
+    int mouse_x = 0, mouse_y = 0;
+    SDL_GetMouseState(&mouse_x, &mouse_y);
+    const auto found = std::find_if(tooltips.begin(), tooltips.end(), [&](const auto& each) { return each.first.contains(mouse_x, mouse_y); });
+    const char* text = found != tooltips.end() ? found->second : nullptr;
+    tooltips.clear();
+    if (text != tooltip_shown) {
+        tooltip_shown = text;
+        tooltip_since = SDL_GetTicks();
+    }
+    if (!text || SDL_GetTicks() - tooltip_since < TOOLTIP_DELAY) return;
+    TTF_Font* font = UI.font(Face::Sans, 13);
+    const int padding = UI(9), width = UI(300), line = UI(18);
+    const std::vector<std::string> lines = wrapped_lines(font, text, width - 2 * padding);
+    Rect box{mouse_x + UI(14), mouse_y + UI(18), width, padding * 2 + line * static_cast<int>(lines.size())};
+    if (box.right() > canvas.width()) box.x = mouse_x - UI(14) - width;
+    if (box.bottom() > canvas.height()) box.y = mouse_y - UI(10) - box.h;
+    box = box.clamp({0, 0, canvas.width(), canvas.height()});
+    canvas.rect(box, {19, 26, 27}, 0, UI(6));
+    canvas.rect(box, {131, 205, 143}, 1, UI(6));
+    int y = box.y + padding;
+    for (const std::string& shown : lines) {
+        canvas.text(font, as_shown(shown), {211, 219, 201}, box.x + padding, y);
+        y += line;
+    }
 }
 
 }  // namespace bitzkey::ui

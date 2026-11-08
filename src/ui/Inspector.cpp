@@ -346,6 +346,8 @@ constexpr const char* BURN_ABOUT = "The energy its body and brain use each turn.
 
 const std::vector<std::pair<Rect, int>>& trait_spots() { return last_traits; }
 
+const char* temperament_about(int trait) { return TEMPERAMENT_ABOUT[static_cast<std::size_t>(trait)]; }
+
 void draw_trait_popup(Canvas& canvas, const Bitzkey& agent, int spot, bool known, int mouse_x, int mouse_y) {
     std::string name, value, about;
     if (spot < TEMPERAMENT_COUNT) {

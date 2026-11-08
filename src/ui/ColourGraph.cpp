@@ -567,6 +567,16 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
     canvas.label(font, "START A NEW WORLD WITH THE SELECTED", {220, 229, 211}, places.renew);
     canvas.rect(places.open, {44, 57, 52}, 0, UI(4));
     canvas.label(font, "OPEN CATALOG", {220, 229, 211}, places.open);
+    if (!menu_open_) {
+        tooltip(places.clear, "Unpick every Bitzkey picked on the graph.");
+        tooltip(places.copy, "Copy the Bitzkeys picked on the graph, or everyone alive if none are, to the clipboard as genomes. Works with CLEAR, which unpicks them.");
+        tooltip(places.save, "Save the Bitzkeys picked on the graph, or everyone alive if none are, to a file as genomes. Works with CLEAR, which unpicks them.");
+        tooltip(places.sort, "Choose the order of the Bitzkeys within each bar.");
+        if (places.map) tooltip(*places.map, "Close the graph and look over the map of the ended world.");
+        tooltip(places.catalog, "Save the Bitzkeys picked on the graph to the catalog.");
+        tooltip(places.renew, "Start a new world with the Bitzkeys picked on the graph.");
+        tooltip(places.open, "Look through the catalog of saved Bitzkeys.");
+    }
     const std::string hint = "Select: click, or drag a box (SHIFT adds, CTRL removes)    Time: drag the timeline, or right-click    "
                              "Zoom: wheel    Pan: right-drag    Z: all";
     canvas.text(UI.fitting(small, hint, places.open.x - panel.x - UI(36)), hint, {144, 170, 151}, panel.x + UI(24),

@@ -101,4 +101,10 @@ private:
 // any two characters in Chinese and Japanese.
 std::vector<std::string> wrapped_lines(TTF_Font* font, std::string_view text, int width);
 
+// Tooltips: each frame, every control says what it is where it was drawn (in English, translated as shown); once the
+// pointer has rested on one a moment, its tooltip shows over the rest. Each frame's are let go once drawn or dropped.
+void tooltip(const Rect& area, const char* text);
+void draw_tooltips(Canvas& canvas);
+void drop_tooltips();  // none shown this frame: a menu or dialog lies over them
+
 }  // namespace bitzkey::ui

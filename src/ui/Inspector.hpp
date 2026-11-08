@@ -37,6 +37,7 @@ constexpr int NEURODIVERGENCE_SPOT = 17, BODY_SPOT = 18, BURN_SPOT = 28;
 const std::vector<std::pair<Rect, int>>& trait_spots();
 // A popup, in larger text, of one trait: its name, its value, and what it governs.
 void draw_trait_popup(Canvas& canvas, const Bitzkey& agent, int spot, bool known, int mouse_x, int mouse_y);
+const char* temperament_about(int trait);  // what a temperament trait governs, in English
 
 // The details in a box beside the mouse, kept on the screen. Returns the box.
 Rect draw_tooltip(Canvas& canvas, const Bitzkey& agent, bool known, int mouse_x, int mouse_y,

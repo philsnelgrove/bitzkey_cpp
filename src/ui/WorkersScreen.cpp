@@ -293,6 +293,7 @@ void WorkersScreen::draw(Canvas& canvas) {
                 area.x + UI(52) + title, area.y + UI(33));
     canvas.text(UI.font(Face::Sans, 12), "/  " + about(), {144, 170, 151}, area.x + UI(60) + title + subtitle, area.y + UI(33));  // the version, and the cores
     language_menu_.draw_button(canvas, area.right() - UI(24), area.y + UI(36));
+    tooltip(language_menu_.button(), "Choose the language shown.");
     int y = area.y + UI(70);
     if (share_) draw_becoming(canvas, area, y);
     else draw_list(canvas, area, y);
@@ -301,6 +302,8 @@ void WorkersScreen::draw(Canvas& canvas) {
     }
     if (dialog_) dialog_->draw(canvas);
     language_menu_.draw_list(canvas);
+    if (dialog_ || language_menu_.open()) drop_tooltips();
+    draw_tooltips(canvas);
 }
 
 void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
@@ -360,6 +363,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
         canvas.text(cell, std::to_string(worker.value("brains", 0)), INK, columns[5], y);
         const Rect remove{columns[6], y - UI(3), UI(84), UI(24)};
         draw_button(canvas, remove, "REMOVE");
+        tooltip(remove, "Stop using this worker; the brains it holds come back.");
         rows_.push_back({host, port, remove});
         // Beneath: its message, and what went wrong, if anything.
         const std::string message = worker.value("message", std::string()), error = worker.value("error", std::string());
@@ -380,6 +384,9 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
     message_.rect = {port_.rect.right() + UI(8), y, add_button_.x - UI(8) - port_.rect.right() - UI(8), UI(32)};
     for (TextField* field : {&host_, &port_, &message_}) field->draw(canvas, focus_ == field);
     draw_button(canvas, add_button_, "ADD", Tone::Primary);
+    tooltip(host_.rect, "The worker's address: its IP or name on the network.");
+    tooltip(port_.rect, "The port the worker listens on.");
+    tooltip(add_button_, "Add the worker at this address and port; it takes a share of the brains.");
     y += UI(46);
     canvas.text(heading, "CHECKPOINTS", GREEN, left, y);
     y += UI(24);
@@ -389,6 +396,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
     const int turns = canvas.text(text, "turns", SOFT, checkpoint_.rect.right() + UI(10), y + UI(5));
     set_button_ = {checkpoint_.rect.right() + UI(20) + turns, y, UI(70), UI(32)};
     draw_button(canvas, set_button_, "SET");
+    tooltip(set_button_, "Set how often every brain is brought back from the workers, so none is lost should a worker fail.");
     y += UI(38);
     canvas.text(small, "Should a worker fail, its brains go to the others as they were at the last checkpoint.", FAINT, left, y);
     y += UI(30);
@@ -400,6 +408,7 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
     const int pace = canvas.text(text, "% of its pace", SOFT, host_share_.rect.right() + UI(10), y + UI(5));
     share_button_ = {host_share_.rect.right() + UI(20) + pace, y, UI(70), UI(32)};
     draw_button(canvas, share_button_, "SET");
+    tooltip(share_button_, "Set how hard this computer thinks, as a share of its pace. At 0 it only runs the world.");
     y += UI(38);
     canvas.text(small, "Brains are shared out by the pace each machine keeps on real turns. At 0, this computer only runs the world.", FAINT, left, y);
 
@@ -408,6 +417,8 @@ void WorkersScreen::draw_list(Canvas& canvas, const Rect& area, int& y) {
         close_button_.x - UI(10), close_button_.bottom());
     draw_button(canvas, become_button_, "BECOME A WORKER...");
     draw_button(canvas, close_button_, "CLOSE", Tone::Primary);
+    tooltip(become_button_, "Lend this computer's thinking to a world running elsewhere, instead of running one here.");
+    tooltip(close_button_, "Close this screen.");
 }
 
 void WorkersScreen::draw_becoming(Canvas& canvas, const Rect& area, int& y) {
@@ -442,6 +453,9 @@ void WorkersScreen::draw_becoming(Canvas& canvas, const Rect& area, int& y) {
     cancel_button_ = Rect{0, 0, UI(120), UI(40)}.bottomright_at(start_button_.x - UI(10), start_button_.bottom());
     draw_button(canvas, cancel_button_, "CANCEL");
     draw_button(canvas, start_button_, "BECOME A WORKER", Tone::Primary);
+    tooltip(worker_port_.rect, "The port to listen on for the main service.");
+    tooltip(cancel_button_, "Go back without becoming a worker.");
+    tooltip(start_button_, "Listen on the port above, and think for the main service once it adds this computer.");
 }
 
 }  // namespace bitzkey::ui

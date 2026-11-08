@@ -227,6 +227,7 @@ void Report::draw(Canvas& canvas) {
     }
     canvas.rect(places.close, {131, 205, 143}, 0, UI(6));
     canvas.label(UI.font(Face::Sans, 13, true), "CLOSE", {19, 26, 27}, places.close);
+    tooltip(places.close, "Close the report.");
 }
 
 }  // namespace bitzkey::ui

@@ -342,10 +342,14 @@ void Designer::draw(Canvas& canvas) {
         canvas.rect(button, filled ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
         canvas.label(bold, label, filled ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
+    tooltip(places.random, "Set every trait at random.");
+    tooltip(places.cancel, "Leave the designer without making a Bitzkey.");
+    tooltip(places.apply, "Make this Bitzkey and add it.");
     canvas.text_at(small,
                    "UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x5)   type a value or hex code   ENTER  apply   "
                    "ESC  cancel   F11  window",
                    {130, 152, 136}, [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(84)); });
+    draw_tooltips(canvas);
 }
 
 void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focused) {
@@ -370,6 +374,8 @@ void Designer::draw_row(Canvas& canvas, Field field, const Rect& row, bool focus
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.label(UI.font(Face::Sans, 22, true), sign, {220, 229, 211}, button);
     }
+    tooltip(minus, "Lower this value. LEFT does the same; with SHIFT, five at a time.");
+    tooltip(plus, "Raise this value. RIGHT does the same; with SHIFT, five at a time.");
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
     std::string shown = std::to_string(value);

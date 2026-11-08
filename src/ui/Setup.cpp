@@ -478,8 +478,21 @@ void SetupScreen::draw(Canvas& canvas) {
                    noting ? Color{238, 183, 110} : Color{130, 152, 136},
                    [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(14)); });
     language_menu_.draw_button(canvas, canvas.width() - UI(24), UI(31));
+    tooltip(language_menu_.button(), "Choose the language shown.");
+    tooltip(places.advanced, "The rules the new world will play by, to read and change. Amber while any differ from the defaults.");
+    tooltip(places.start, "Start the new world with these settings and any Bitzkeys in the import box.");
+    tooltip(places.quit, "Close Bitzkey.");
+    tooltip(places.world, "Load a world saved earlier with SAVE WORLD, and carry on where it left off.");
+    tooltip(places.worker, "Lend this computer's thinking to a world running elsewhere, instead of running one here.");
+    tooltip(places.catalog, "Pick Bitzkeys from the catalog to add to the import box.");
+    tooltip(places.design, "Design a Bitzkey trait by trait, to add to the import box.");
+    tooltip(places.paste, "Paste exported genomes from the clipboard into the import box (CTRL+V).");
+    tooltip(places.load, "Load exported genomes from a file into the import box.");
+    tooltip(places.clear, "Empty the import box.");
     language_menu_.draw_list(canvas);
     if (dialog_) dialog_->draw(canvas);
+    if (dialog_ || language_menu_.open()) drop_tooltips();
+    draw_tooltips(canvas);
 }
 
 void SetupScreen::draw_setting(Canvas& canvas, const Setting& setting, const Rect& row, bool focused) {
@@ -494,6 +507,8 @@ void SetupScreen::draw_setting(Canvas& canvas, const Setting& setting, const Rec
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.label(UI.font(Face::Sans, 22, true), sign, {220, 229, 211}, button);
     }
+    tooltip(minus, "Lower this value. LEFT does the same; with SHIFT, ten at a time.");
+    tooltip(plus, "Raise this value. RIGHT does the same; with SHIFT, ten at a time.");
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
     const std::string& text = form_.texts.at(setting.key);

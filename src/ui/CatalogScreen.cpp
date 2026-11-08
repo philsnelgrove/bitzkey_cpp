@@ -258,6 +258,14 @@ void CatalogScreen::draw(Canvas& canvas) {
         canvas.rect(button, active ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
         canvas.label(UI.font(Face::Sans, 13, true), label, active ? Color{19, 26, 27} : Color{220, 229, 211}, button);
     }
+    tooltip(places.remove, "Delete the chosen Bitzkeys from the catalog.");
+    tooltip(places.design, "Design a new Bitzkey trait by trait and add it to the catalog.");
+    tooltip(places.import, browsing_ ? "Paint the chosen Bitzkeys onto the map: hold the button down where they should go. Works with the list: choose them there first."
+                                     : "Add the chosen Bitzkeys to the new world's import box. Works with the list: choose them there first.");
+    tooltip(places.close, "Close the catalog.");
+    for (int index = scroll_; index < last; ++index) {
+        tooltip(row(index), "Click to choose it; SHIFT or CTRL+CLICK chooses several. The buttons below act on those chosen.");
+    }
     const std::string hint = !note_.empty() ? note_
                              : browsing_    ? "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  deploy    DELETE  remove    ESC  close"
                                             : "CLICK, SHIFT or CTRL+CLICK  choose    ENTER  add to import    DELETE  remove    ESC  close";
@@ -265,7 +273,11 @@ void CatalogScreen::draw(Canvas& canvas) {
         box.x = places.card.right() - UI(24) - box.w;
         box.y = places.list.bottom() + UI(6);
     });
-    if (dialog_) dialog_->draw(canvas);
+    if (dialog_) {
+        dialog_->draw(canvas);
+        drop_tooltips();
+    }
+    draw_tooltips(canvas);
 }
 
 }  // namespace bitzkey::ui

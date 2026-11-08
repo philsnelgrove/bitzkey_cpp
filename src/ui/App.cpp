@@ -1144,6 +1144,7 @@ void App::draw_exemplars(Canvas& canvas) {
             const int tx = heading.right() - UI(10), ty = heading.centery();
             canvas.polygon({{tx - UI(4), ty - UI(2)}, {tx + UI(4), ty - UI(2)}, {tx, ty + UI(3)}}, {220, 229, 211});
             exemplar_titles_.push_back(heading);
+            tooltip(heading, "Choose the statistic this card shows: the Bitzkey that stands out most by it.");
             if (!exemplar.agent) {
                 canvas.text(small, exemplar.said, {116, 139, 124}, card.x + UI(10), card.y + UI(28));
                 continue;
@@ -1158,6 +1159,7 @@ void App::draw_exemplars(Canvas& canvas) {
             canvas.text(small, fit(kind, card.right() - x - UI(6)), {231, 236, 222}, x, py - UI(8));
             canvas.text(small, exemplar.said, {149, 170, 150}, x, py + UI(8));
             exemplar_cards_.push_back({card, exemplar.agent->identifier});
+            tooltip(card, "The Bitzkey that stands out by this card's statistic. Click to select it.");
         }
     }
 }
@@ -1301,6 +1303,11 @@ void App::draw_view_buttons(Canvas& canvas) {
                                             std::tuple{lands_button_, "LANDS", lands_}}) {
         draw_button(button, label, on);
     }
+    tooltip(map_button_, "Show the world as a flat map. One of three views with GLOBE and BLIND: choosing one turns the others off.");
+    tooltip(globe_button_, "Show the world as a globe: drag with the right button to turn it, and the wheel zooms. One of three views with MAP and BLIND: choosing one turns the others off.");
+    tooltip(blind_button_, "Draw neither map nor globe, so the world runs faster. One of three views with MAP and GLOBE: choosing one turns the others off.");
+    tooltip(lod_button_, "Toggle: level of detail. On, the smaller Bitzkeys are hidden when zoomed out; off, every size shows at any zoom. For the map and the globe alike.");
+    tooltip(lands_button_, "Toggle: each colour group's land shaded in its colour on the map, and contested land marked WAR.");
     constexpr std::array<const char*, 4> SPECIES_LABELS = {"PLANTS", "GRAZERS", "OMNIVORES", "PREDATORS"};
     constexpr std::array<const char*, 4> TERRAIN_LABELS = {"TERRESTRIAL", "AQUATIC", "AVIAN", "AMPHIBIOUS"};
     for (const auto& [buttons, labels, shown, row] : {std::tuple{&species_buttons_, &SPECIES_LABELS, &species_shown_, 1},
@@ -1309,6 +1316,8 @@ void App::draw_view_buttons(Canvas& canvas) {
         for (std::size_t kind = 0; kind < buttons->size(); ++kind) {  // each as wide as its label in the language shown
             (*buttons)[kind] = Rect{left, map_button_.y + row * UI(21), Canvas::text_width(font, tr((*labels)[kind])) + UI(16), UI(18)};
             draw_button((*buttons)[kind], (*labels)[kind], (*shown)[kind]);
+            tooltip((*buttons)[kind], row == 1 ? "Toggle: show or hide this species on the map and globe. Works with the terrain filters below it: a Bitzkey shows only when both its species and its terrain are shown."
+                                            : "Toggle: show or hide Bitzkeys of this terrain on the map and globe. Works with the species filters above it: a Bitzkey shows only when both its species and its terrain are shown.");
             left = (*buttons)[kind].right() + UI(6);
         }
     }
@@ -1504,8 +1513,13 @@ void App::draw(Canvas& canvas) {
     canvas.fill({19, 26, 27});
     if (hud_hidden_) {  // the map or the globe alone, filling the window (H brings the rest back)
         draw_world(canvas);
-        if (dialog_) dialog_->draw(canvas);
+        drop_tooltips();
         if (report_) report_->draw(canvas);
+        if (dialog_) {
+            dialog_->draw(canvas);
+            drop_tooltips();
+        }
+        draw_tooltips(canvas);
         return;
     }
     draw_header(canvas);
@@ -1533,13 +1547,20 @@ void App::draw(Canvas& canvas) {
     }
     draw_exemplar_menu(canvas);  // over everything but the graph and dialogs
     language_menu_.draw_list(canvas);
+    if (language_menu_.open() || exemplar_menu_ || word_popup_ || trait_popup_) drop_tooltips();  // a menu or popup over them
     if (show_census_) {
+        drop_tooltips();  // the graph's own, over the rest
         const std::optional<std::string> note =
             SDL_GetTicks() < message_until_ ? std::optional<std::string>(message_) : std::nullopt;
         graph_.draw(canvas, *simulation_, note);
     }
-    if (dialog_) dialog_->draw(canvas);
+    if (dialog_ || report_) drop_tooltips();
     if (report_) report_->draw(canvas);
+    if (dialog_) {
+        dialog_->draw(canvas);
+        drop_tooltips();
+    }
+    draw_tooltips(canvas);
 }
 
 void App::open_death_report() {
@@ -1572,6 +1593,7 @@ void App::draw_header(Canvas& canvas) {
     const Color colour = playing_ ? Color{131, 205, 143} : Color{238, 183, 110};
     TTF_Font* font = UI.font(Face::Sans, 15);
     const int menu_left = language_menu_.draw_button(canvas, canvas.width() - UI(24), UI(31));
+    tooltip(language_menu_.button(), "Choose the language shown.");
     Rect label = Canvas::text_box(font, status);
     label.x = menu_left - label.w - UI(20);
     canvas.text(font, status, colour, label.x, UI(20));
@@ -1898,6 +1920,7 @@ void App::draw_sidebar(Canvas& canvas) {
         brains_button_ = Rect{x + width - UI(130), UI(299), UI(130), UI(26)};
         canvas.rect(*brains_button_, {44, 57, 52}, 0, UI(5));
         canvas.label(UI.font(Face::Sans, 13, true), "INSPECT BRAINS", {220, 229, 211}, *brains_button_);
+        tooltip(*brains_button_, "A table of the selected Bitzkey's brain: its chance of choosing each action in each standard situation. Pauses the world.");
     }
     canvas.text(small, "C  copy as JSON      A  export      K  catalog", {116, 139, 124}, x, UI(735));
     const bool chosen = std::any_of(export_list_.begin(), export_list_.end(),
@@ -1913,6 +1936,8 @@ void App::draw_sidebar(Canvas& canvas) {
     canvas.text_at(UI.font(Face::Sans, 13, true), chosen ? "REMOVE FROM EXPORT" : "ADD TO EXPORT",
                    chosen ? Color{238, 183, 110} : Color{220, 229, 211},
                    [&](Rect& box) { box.center_at(add_button_->centerx(), add_button_->centery()); });
+    tooltip(*add_button_, "Toggle: put the selected Bitzkey on the export list, or take it off. Works with EXPORT ALL SELECTED below, which saves everyone on the list.");
+    tooltip(*catalog_button_, "Save the selected Bitzkey to the catalog, to keep it and bring it into other worlds. OPEN CATALOG shows what the catalog holds.");
 }
 
 Rect App::insights_view() const {
@@ -1974,6 +1999,82 @@ bool App::scroll_event(const SDL_Event& event) {
     return false;
 }
 
+namespace {
+// What each entry of the insights panel is, for its tooltip: each action, then each line of LIFE.
+constexpr std::array<const char*, ACTION_COUNT> ACTION_ABOUT = {
+    "Eat the grass where it stands.",
+    "Go toward the nearest grass it sees, to eat.",
+    "Pick fruit from a plant beside it, leaving the plant unhurt.",
+    "Pull up a plant beside it and eat it whole, killing it.",
+    "Go to a body and eat from it.",
+    "Eat its fill from a fresh kill.",
+    "Rest, to recover stamina.",
+    "Court a mate nearby.",
+    "Mate with a willing partner beside it.",
+    "Chase down prey and strike it. For grazers, which eat no meat, it is solely military: a charge at a foe.",
+    "Strike an animal beside it: prey, a foe, or a trespasser in its land.",
+    "Strike back at one attacking it or a member of its herd.",
+    "Run from a hunter or other danger.",
+    "Move toward the middle of its herd.",
+    "Travel north, its full pace.",
+    "Travel south, its full pace.",
+    "Travel east, its full pace.",
+    "Travel west, its full pace.",
+    "Walk one step north.",
+    "Walk one step south.",
+    "Walk one step east.",
+    "Walk one step west.",
+    "Go back to a place it remembers finding food.",
+    "Feed its infants in sight, at no cost to itself.",
+    "Teach a younger one beside it what it knows.",
+    "Pick up meat to carry.",
+    "Pick up fruit to carry.",
+    "Put down the meat it carries.",
+    "Put down the fruit it carries.",
+    "Eat from a pile of food on the ground.",
+    "Eat food it is carrying.",
+    "Pick up a stone, for tools and fire.",
+    "Pick up a bone, for tools and armour.",
+    "Pick up wood, for tools, fire and building.",
+    "Put down the stone it carries.",
+    "Put down the bone it carries.",
+    "Put down the wood it carries.",
+    "Dress a body: cut it up into meat and bone.",
+    "Make a bone axe, a weapon.",
+    "Make armour of bone.",
+    "Make a wooden club, a weapon.",
+    "Make armour of wood.",
+    "Make a stone axe, the finest weapon.",
+    "Take a weapon or armour from a pile on the ground.",
+    "Put down its weapon.",
+    "Take off its armour and put it down.",
+    "Cut down a plant for wood.",
+    "Work the land, and sometimes dig up a stone.",
+    "Light a fire, for warmth and cooking.",
+    "Add wood to a fire to keep it burning.",
+    "Cook meat on a fire.",
+    "Build part of a shelter.",
+    "Eat a seed.",
+    "Plant a seed, to grow a new plant.",
+    "Lay road, quicker and easier to travel.",
+    "Crack bones for their marrow: a grazer's first taste of meat.",
+    "Enrich the land so more grass grows.",
+    "Skin a body for its hide, to wear as armour.",
+    "Demand a better possession from another, which may give it up or fight for it.",
+    "Steal a better possession from another, which may fight to get it back.",
+    "Give a possession to a friend."};
+constexpr std::array<const char*, 9> LIFE_ABOUT = {
+    "How many of each species are alive.",
+    "Average body size, from 0 to 7.",
+    "Average age, in turns.",
+    "Average generation: how many forebears lie between them and the world's first.",
+    "Average hunger: 0% is full, 100% starving.",
+    "Average health, as a share of each one's greatest.",
+    "Average number of children each has had.",
+    "Average herd instinct: how strongly they keep together.",
+    "Average rivalry: how crowded their hunting ground is with others of their kind. Hunters only."};
+}  // namespace
+
 void App::draw_insights(Canvas& canvas, int x, int width) {
     // What the animals are doing and what they are like, by species, scrolled within the sidebar.
     // Lengths are in design pixels from the top of the sidebar.
@@ -2006,10 +2107,16 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
             deaths_button_ = button.clip(view);
             canvas.rect(button, {44, 57, 52}, 0, UI(5));
             canvas.label(UI.font(Face::Sans, 13, true), "DEATH REPORT", {220, 229, 211}, button);
+            tooltip(*deaths_button_, "Every death in this world so far: by cause and species, who killed whom, what the killers were doing, and the deadliest killers.");
         }
     }
+    const auto row_hint = [&](double y, double height, const char* text) {  // an entry's tooltip, where it is in view
+        const Rect row{x, at(y), width, UI(height)}, view = insights_view();
+        if (row.bottom() > view.y && row.y < view.bottom()) tooltip(row.clip(view), text);
+    };
     double y = heading("BEHAVIOUR", "% of chances taken, recent turns", INSIGHTS_TOP + 11);
     for (int action = 0; action < ACTION_COUNT; ++action) {
+        row_hint(y, 17, ACTION_ABOUT[static_cast<std::size_t>(action)]);
         canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
         for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
             const auto rate = insights.rate(action, ANIMALS[index]);
@@ -2018,12 +2125,17 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
         y += 17;
     }
 
+    constexpr std::array<const char*, 3> BLOCK_ABOUT = {"The groups least likely to breed when they have the chance.",
+                                                        "The groups most likely to breed when they have the chance.",
+                                                        "The groups least likely to attack when they have the chance."};
+    std::size_t block = 0;
     const std::array<std::pair<const char*, std::vector<Insights::Extreme>>, 3> blocks = {
         std::pair{"LEAST KEEN TO BREED", insights.extremes(Breed, 3, true)},
         std::pair{"KEENEST TO BREED", insights.extremes(Breed, 2, false)},
         std::pair{"LEAST KEEN TO FIGHT", insights.extremes(Attack, 2, true)}};
     y += 6;
     for (const auto& [title, groups] : blocks) {
+        row_hint(y, 19, BLOCK_ABOUT[block++]);
         canvas.text(small, title, {220, 229, 211}, x, at(y));
         y += 19;
         if (groups.empty()) {
@@ -2071,7 +2183,9 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
              return ANIMALS[i] == Species::Grazer ? std::string("-") : percent(average(i, [](const Bitzkey& a) { return a.rivalry; }));
          }},
     };
+    std::size_t line = 0;
     for (const auto& [label, value] : rows) {
+        row_hint(y, 17, LIFE_ABOUT[line++]);
         canvas.text(small, label, {149, 170, 150}, x, at(y));
         for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
             canvas.text(mono, right4(value(index)), {231, 236, 222}, columns[index], at(y));
@@ -2081,6 +2195,7 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
 
     y = heading("TEMPERAMENT", "average now; green above inborn, amber below", y + 14);
     for (int trait = 0; trait < TEMPERAMENT_COUNT; ++trait) {
+        row_hint(y, 17, temperament_about(trait));
         canvas.text(small, upper(TEMPERAMENT[static_cast<std::size_t>(trait)]), {149, 170, 150}, x, at(y));
         for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
             const auto now = average(index, [trait](const Bitzkey& a) { return a.mind[static_cast<std::size_t>(trait)]; });
@@ -2104,6 +2219,7 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
     for (int action = 0; action < ACTION_COUNT; ++action) {
         const auto groups = insights.extremes(action, 1, false);
         if (groups.empty()) continue;
+        row_hint(y, 18, ACTION_ABOUT[static_cast<std::size_t>(action)]);
         canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
         canvas.text(small, fit(groups[0].label, width - UI(124)), {175, 192, 172}, x + UI(76), at(y));
         canvas.text(mono, py_percent(groups[0].share, 4), {231, 236, 222}, x + width - UI(40), at(y));
@@ -2165,6 +2281,11 @@ void App::draw_footer(Canvas& canvas) {
                                                                                                      height - UI(26));
     canvas.rect(workers_button_, pooled ? Color{131, 205, 143} : Color{44, 57, 52}, 0, UI(6));
     canvas.label(button_font, "WORKERS", pooled ? Color{19, 26, 27} : Color{220, 229, 211}, workers_button_);
+    tooltip(export_button_, "Export everyone on the export list to a file, the count showing how many. Works with ADD TO EXPORT in the sidebar, which puts the selected Bitzkey on the list.");
+    tooltip(open_button_, "Look through the catalog of saved Bitzkeys. Works with ADD TO CATALOG in the sidebar, which saves the selected one there.");
+    tooltip(advanced_button_, "This world's rules, to read and change. Amber while the world plays by changed rules.");
+    tooltip(save_button_, "Save the whole world to a file, to load and carry on later.");
+    tooltip(workers_button_, "Other computers running Bitzkey that share this world's thinking. Green while workers are helping.");
     const int left = std::max(UI(185), UI(22) + Canvas::text_width(small, turn_label) + UI(24));  // clear of the turn, however long
     const int room = workers_button_.x - left - UI(16);
     if (SDL_GetTicks() < message_until_) {

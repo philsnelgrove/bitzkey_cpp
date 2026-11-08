@@ -402,6 +402,9 @@ void AdvancedScreen::draw(Canvas& canvas) {
         canvas.rect(button, {44, 57, 52}, 0, UI(4));
         canvas.label(button_font, label, {220, 229, 211}, button);
     }
+    tooltip(places.reset, "Set the chosen rule back to its default.");
+    tooltip(places.reset_all, "Set every rule back to its default.");
+    tooltip(places.search, "Find rules by their name or description (CTRL+F).");
 
     const Rect& search = places.search;
     canvas.rect(search, {19, 26, 27}, 0, UI(4));
@@ -442,6 +445,8 @@ void AdvancedScreen::draw(Canvas& canvas) {
     canvas.label(bold, "APPLY", {19, 26, 27}, places.apply);
     canvas.rect(places.cancel, {44, 57, 52}, 0, UI(6));
     canvas.label(bold, "CANCEL", {220, 229, 211}, places.cancel);
+    tooltip(places.apply, "Play by these rules.");
+    tooltip(places.cancel, "Leave without changing any rule.");
     const bool noting = SDL_GetTicks() < note_until_;
     const std::string_view warning = rules::warning(form_.focused().key);  // the chosen rule's, in full
     canvas.text_at(small,
@@ -450,6 +455,7 @@ void AdvancedScreen::draw(Canvas& canvas) {
                                       : "CTRL+F  search   UP/DOWN  choose   LEFT/RIGHT  adjust (SHIFT x10)   PGUP/PGDN  jump   ENTER  apply   ESC  cancel",
                    noting || !warning.empty() ? Color{238, 183, 110} : Color{130, 152, 136},
                    [&](Rect& box) { box.midbottom_at(card.centerx(), card.bottom() - UI(14)); });
+    draw_tooltips(canvas);
 }
 
 void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Rect& row, bool focused) {
@@ -466,6 +472,10 @@ void AdvancedScreen::draw_rule(Canvas& canvas, const rules::Rule& rule, const Re
     for (const auto& [button, sign] : {std::pair{minus, "-"}, std::pair{plus, "+"}}) {
         canvas.rect(button, lock.empty() ? Color{44, 57, 52} : Color{34, 44, 42}, 0, UI(4));
         canvas.label(UI.font(Face::Sans, 22, true), sign, lock.empty() ? Color{220, 229, 211} : Color{96, 110, 100}, button);
+    }
+    if (lock.empty()) {
+        tooltip(minus, "Lower this value. LEFT does the same; with SHIFT, ten at a time.");
+        tooltip(plus, "Raise this value. RIGHT does the same; with SHIFT, ten at a time.");
     }
     canvas.rect(box, {19, 26, 27}, 0, UI(4));
     canvas.rect(box, focused ? Color{131, 205, 143} : Color{54, 68, 62}, 1, UI(4));
