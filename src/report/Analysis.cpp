@@ -536,6 +536,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "gave") return who + " first gave a possession to a friend.";
     if (event == "traded") return who + " first traded, an offer accepted.";
     if (event == "made_a_bow") return who + " first made a bow.";
+    if (event == "tutored") return who + " was first tutored in " + craft + ".";
     if (event == "hit_in_practice") return who + " first hit the mark with a bow, in practice.";
     if (event == "shot_with_a_bow") return who + " first shot one with a bow.";
     if (event == "a_call_helped") return who + " first called to one of its kind that then got away or found food.";
@@ -552,7 +553,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "discovered") return who + " first discovered " + craft + ".";
     if (event == "taught_by_parent") return who + " first had " + craft + " taught by a parent.";
     if (event == "taught_by_elder") return who + " first had " + craft + " taught by an elder: a guru.";
-    if (event == "watched") return who + " first learnt " + craft + " by watching one they held skilled.";
+    if (event == "watched") return who + " first learnt " + craft + " by watching one of their kind.";
     if (event == "made_taught") return who + " first made " + craft + " from a taught recipe.";
     if (event == "first_elder") return who + " had their first elder, old enough to teach.";
     if (event == "extinct") return who + " died out.";
