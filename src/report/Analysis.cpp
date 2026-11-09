@@ -535,6 +535,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "stole") return who + " first stole a possession.";
     if (event == "gave") return who + " first gave a possession to a friend.";
     if (event == "traded") return who + " first traded, an offer accepted.";
+    if (event == "recognised_a_leader") return who + " was first recognised a leader, the standout of enough of its kind.";
     if (event == "skinned") return who + " first wore a hide.";
     if (event == "caught_lying") return who + " was first seen fleeing a fight in a warrior's garb: a liar.";
     if (event == "ate_marrow") return who + " first crushed a bone for its marrow.";
