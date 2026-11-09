@@ -91,7 +91,8 @@ constexpr int LOOK_SHADES = 8;
 SDL_Surface* grass_tuft(int width, int height, bool sea);
 // A heap of meat or of fruit about (cx, cy), with how many portions it holds once there's room to read it.
 void draw_pile(Canvas& canvas, bool meat, int count, int cx, int cy, int half);
-void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius);  // a small shield at its lower left, a small tool at its upper right
+void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius);
+void draw_crown(Canvas& canvas, int x, int y, int radius);  // a leader's: a small gold crown above it  // a small shield at its lower left, a small tool at its upper right
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half);  // small marks along the foot of a square
 
 // The ground's texture, laid faintly over a square's colour: by its zone's usual temperature, or the sea.

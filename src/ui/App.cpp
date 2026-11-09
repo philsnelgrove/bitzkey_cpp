@@ -1823,6 +1823,7 @@ void App::draw_world(Canvas& canvas) {
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         draw_gear(canvas, agent->weapon ? agent->weapon : agent->carried_stone > 0 ? 4 : 0, agent->armour, px, py, radius);
+        if (agent->alive() && agent->leader) draw_crown(canvas, px, py, radius);  // recognised a leader
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             draw_reticle(canvas, px, py, static_cast<int>(std::lround((radius + RING_WIDTH + UI(3)) * reticle_pulse())));
         }

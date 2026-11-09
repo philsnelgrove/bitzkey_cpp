@@ -382,6 +382,14 @@ void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) 
     }
 }
 
+void draw_crown(Canvas& canvas, int x, int y, int radius) {
+    const int half = std::max(3, radius * 3 / 4), high = std::max(3, radius * 3 / 4);
+    const int foot = y - radius - RING_WIDTH - 1;  // its band just clear of the ring
+    canvas.polygon({{x - half, foot}, {x + half, foot}, {x + half, foot - high}, {x + half / 2, foot - high / 2}, {x, foot - high},
+                    {x - half / 2, foot - high / 2}, {x - half, foot - high}},
+                   Color{236, 190, 60});
+}
+
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half) {
     const int size = std::max(2, half / 2);
     const std::array<std::pair<int, Color>, 3> marks{{{stone, Color{136, 138, 142}}, {bone, Color{236, 226, 205}}, {wood, Color{122, 80, 44}}}};
