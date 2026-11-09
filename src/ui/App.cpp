@@ -797,7 +797,7 @@ void App::draw_square(Canvas& canvas) {
     else if (simulation_->site_at(tile_x, tile_y)) notes.push_back(format("SHELTER SITE %d/%d", simulation_->site_at(tile_x, tile_y), SHELTER_UNITS));
     if (simulation_->fire_at(tile_x, tile_y) > simulation_->turn()) notes.push_back(format("FIRE: %d TURNS LEFT", simulation_->fire_at(tile_x, tile_y) - simulation_->turn()));
     const auto pile = [&](PileKind kind) { return simulation_->pile_at(tile_x, tile_y, kind); };
-    const int cooked = pile(CookedMeatPile) + pile(CookedFruitPile), gear = pile(BoneAxePile) + pile(ClubPile) + pile(StoneAxePile) + pile(BoneArmourPile) + pile(WoodArmourPile);
+    const int cooked = pile(CookedMeatPile) + pile(CookedFruitPile), gear = pile(BoneAxePile) + pile(ClubPile) + pile(StoneAxePile) + pile(BoneArmourPile) + pile(WoodArmourPile) + pile(BowPile);
     if (pile(MeatPile) + pile(FruitPile) + cooked) notes.push_back(format("MEAT %d  FRUIT %d  COOKED %d", pile(MeatPile), pile(FruitPile), cooked));
     if (pile(StonePile) + pile(BonePile) + pile(WoodPile) + gear) notes.push_back(format("STONE %d  BONE %d  WOOD %d  GEAR %d", pile(StonePile), pile(BonePile), pile(WoodPile), gear));
     std::vector<int> claimants;  // the groups claiming its land, each a row with its colour, to pick the group by
@@ -1735,7 +1735,7 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             const int meat = simulation_->meat_pile_at(x, y), fruit = simulation_->fruit_pile_at(x, y);
             const int stone = simulation_->pile_at(x, y, StonePile), bone = simulation_->pile_at(x, y, BonePile), wood = simulation_->pile_at(x, y, WoodPile);
             int gear = 0;
-            for (const PileKind kind : {BoneAxePile, ClubPile, StoneAxePile, BoneArmourPile, WoodArmourPile}) gear += simulation_->pile_at(x, y, kind);
+            for (const PileKind kind : {BoneAxePile, ClubPile, StoneAxePile, BoneArmourPile, WoodArmourPile, BowPile}) gear += simulation_->pile_at(x, y, kind);
             const bool fire = simulation_->fire_at(x, y) > simulation_->turn();
             const bool shelter = simulation_->shelter_at(x, y), site = simulation_->site_at(x, y) > 0;
             if (!meat && !fruit && !stone && !bone && !wood && !gear && !fire && !shelter && !site) continue;
