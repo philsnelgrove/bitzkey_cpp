@@ -72,18 +72,33 @@ void bar(Canvas& canvas, int x, int y, int width, double value, Color color) {
 
 }  // namespace
 
+void draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive) {
+    draw_bitzkey(canvas, agent.dna, cx, cy, radius, ring, alive);
+    draw_gear(canvas, agent.weapon ? agent.weapon : agent.carried_stone > 0 ? 4 : 0, agent.armour, cx, cy, radius);
+    if (agent.alive() && agent.leader) draw_crown(canvas, cx, cy, radius, agent.rank);
+}
+
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width, bool known,
-                  std::optional<double> here, const std::string& note) {
+                  std::optional<double> here, const std::string& note, bool portrait) {
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
-    // At twice the size it has on the map, beside its name and its colours
-    draw_bitzkey(canvas, agent.dna, x + UI(16), at(16), 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), 2 * RING_WIDTH,
-                 agent.alive() || !known);
+    // At twice the size it has on the map, beside its name and its colours (unless drawn larger, behind, by the caller)
+    if (portrait) draw_portrait(canvas, agent, x + UI(16), at(16), 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), 2 * RING_WIDTH, agent.alive() || !known);
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
-    canvas.text(font, as_shown(format("#%03d  %s  %s", agent.identifier, upper(tr(species_name(agent.species))).c_str(),
-                                      upper(tr(agent.nocturnal ? "nocturnal" : "diurnal")).c_str())),
-                {238, 238, 220}, x + UI(40), at(0));
+    if (known && agent.alive() && agent.leader && agent.rank > 0) {  // a titled leader: its title in gold in its species' place (its icon shows that)
+        const std::string id = format("#%03d  ", agent.identifier);
+        const std::string title = as_shown(upper(tr(TITLES[static_cast<std::size_t>(std::clamp(agent.rank, 0, MAX_RANK))])));
+        canvas.text(font, id, {238, 238, 220}, x + UI(40), at(0));
+        const int after = x + UI(40) + Canvas::text_width(font, id);
+        canvas.text(font, title, {236, 190, 60}, after, at(0));
+        canvas.text(font, as_shown("  " + upper(tr(agent.nocturnal ? "nocturnal" : "diurnal"))), {238, 238, 220},
+                    after + Canvas::text_width(font, title), at(0));
+    } else {
+        canvas.text(font, as_shown(format("#%03d  %s  %s", agent.identifier, upper(tr(species_name(agent.species))).c_str(),
+                                          upper(tr(agent.nocturnal ? "nocturnal" : "diurnal")).c_str())),
+                    {238, 238, 220}, x + UI(40), at(0));
+    }
     {  // its terrain on the line below, at the right, clear of the species icon
         const std::string terrain = as_shown(upper(tr(terrain_name(agent.terrain))));
         canvas.text(small, terrain, {211, 219, 201}, x + width - Canvas::text_width(small, terrain), at(25));

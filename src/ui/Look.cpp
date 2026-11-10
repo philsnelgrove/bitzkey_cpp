@@ -8,6 +8,7 @@
 #include <set>
 
 #include "core/PyFormat.hpp"
+#include "core/Simulation.hpp"
 #include "ui/Icons.hpp"
 
 namespace bitzkey::ui {
@@ -382,12 +383,24 @@ void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) 
     }
 }
 
-void draw_crown(Canvas& canvas, int x, int y, int radius) {
+void draw_crown(Canvas& canvas, int x, int y, int radius, int rank) {
     const int half = std::max(3, radius * 3 / 4), high = std::max(3, radius * 3 / 4);
     const int foot = y - radius - RING_WIDTH - 1;  // its band just clear of the ring
     canvas.polygon({{x - half, foot}, {x + half, foot}, {x + half, foot - high}, {x + half / 2, foot - high / 2}, {x, foot - high},
                     {x - half / 2, foot - high / 2}, {x - half, foot - high}},
                    Color{236, 190, 60});
+    // A small star for each rank, in a row above it: a chief one, a king six.
+    const int stars = std::clamp(rank, 0, MAX_RANK), outer = std::max(2, radius / 3), inner = std::max(1, outer * 2 / 5);
+    const int cy = foot - high - outer - 2, step = 2 * outer + std::max(1, outer / 2);
+    for (int star = 0; star < stars; ++star) {
+        const int cx = x + (2 * star - (stars - 1)) * step / 2;
+        const auto at = [&](int point) {  // its ten points, out and in by turns, the first straight up
+            const double angle = -std::numbers::pi / 2 + point * std::numbers::pi / 5;
+            const int reach = point % 2 ? inner : outer;
+            return std::pair<int, int>{cx + static_cast<int>(std::lround(reach * std::cos(angle))), cy + static_cast<int>(std::lround(reach * std::sin(angle)))};
+        };
+        canvas.polygon({at(0), at(1), at(2), at(3), at(4), at(5), at(6), at(7), at(8), at(9)}, Color{250, 228, 140});
+    }
 }
 
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half) {

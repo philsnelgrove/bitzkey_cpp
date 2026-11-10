@@ -141,6 +141,10 @@ struct Screens {
         for (const auto& agent : app.simulation_->agents()) {
             if (agent->brain && agent->odds_offered) {
                 app.selected_id_ = agent->identifier;
+                agent->leader = true;  // dressed as a duke, so its crown, stars, gear and title show
+                agent->rank = 5;
+                agent->weapon = StoneAxe;
+                agent->armour = BoneArmour;
                 break;
             }
         }

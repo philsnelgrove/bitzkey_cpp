@@ -24,7 +24,9 @@ constexpr std::array<Color, 4> TEMPERATURE_COLOURS = {{{238, 160, 110}, {175, 19
 // only what its genes fix is shown, with `note` (how it died, say) beneath. `here` is the temperature
 // where it is.
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width,
-                  bool known = true, std::optional<double> here = std::nullopt, const std::string& note = {});
+                  bool known = true, std::optional<double> here = std::nullopt, const std::string& note = {}, bool portrait = true);
+// A Bitzkey as it looks on the map, at (cx, cy) and this size: its dot and ring, its gear, and a leader's crown and stars.
+void draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive);
 
 // Where the last details drew the mind's, body's and social background's colour chits, each with its hex.
 const std::array<Rect, 3>& genome_swatches();

@@ -1151,9 +1151,15 @@ void App::draw_exemplars(Canvas& canvas) {
             }
             const int radius = std::max(1, std::min(UI(16), height / 5));
             const int px = card.x + UI(10) + radius + RING_WIDTH, py = card.y + (height + UI(20)) / 2;
-            draw_bitzkey(canvas, exemplar.agent->dna, px, py, radius);
+            draw_portrait(canvas, *exemplar.agent, px, py, radius, RING_WIDTH, true);
             const int x = px + radius + UI(12);
-            canvas.text(small, format("#%03d", exemplar.agent->identifier), {231, 236, 222}, x, py - UI(24));
+            const std::string id = format("#%03d", exemplar.agent->identifier);
+            canvas.text(small, id, {231, 236, 222}, x, py - UI(24));
+            if (exemplar.agent->leader && exemplar.agent->rank > 0) {  // and its title, in gold
+                const std::string title = upper(tr(TITLES[static_cast<std::size_t>(std::clamp(exemplar.agent->rank, 0, MAX_RANK))]));
+                canvas.text(small, fit(title, card.right() - x - Canvas::text_width(small, id) - UI(14)), {236, 190, 60},
+                            x + Canvas::text_width(small, id) + UI(8), py - UI(24));
+            }
             const std::string kind = tr(terrain_name(exemplar.agent->terrain)) + " " +  // its own line, so a long name fits
                                      tr(SPECIES[static_cast<std::size_t>(exemplar.agent->species)]);
             canvas.text(small, fit(kind, card.right() - x - UI(6)), {231, 236, 222}, x, py - UI(8));
@@ -1823,7 +1829,7 @@ void App::draw_world(Canvas& canvas) {
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
         draw_gear(canvas, agent->weapon ? agent->weapon : agent->carried_stone > 0 ? 4 : 0, agent->armour, px, py, radius);
-        if (agent->alive() && agent->leader) draw_crown(canvas, px, py, radius);  // recognised a leader
+        if (agent->alive() && agent->leader) draw_crown(canvas, px, py, radius, agent->rank);  // recognised a leader, a star for each rank
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             draw_reticle(canvas, px, py, static_cast<int>(std::lround((radius + RING_WIDTH + UI(3)) * reticle_pulse())));
         }
@@ -1885,6 +1891,10 @@ void App::draw_sidebar(Canvas& canvas) {
         canvas.text(small, upper(SPECIES[index]), {149, 170, 150}, x, y);
         canvas.text(font, std::to_string(counts[index]), {231, 236, 222}, x + width - UI(32), y);
     }
+    if (const Bitzkey* chosen = show_insights_ ? nullptr : selected()) {  // its portrait, three times as large, behind the lines and words
+        const int radius = 6 * dot_radius(chosen->body[Size], UI(DOT_RADIUS_LARGEST));
+        draw_portrait(canvas, *chosen, x + radius + 3 * RING_WIDTH, UI(348) + radius / 3, radius, 6 * RING_WIDTH, chosen->alive());
+    }
     canvas.line(x, UI(286), x + width, UI(286), {54, 68, 62});
     add_button_.reset();
     catalog_button_.reset();
@@ -1906,7 +1916,7 @@ void App::draw_sidebar(Canvas& canvas) {
         return;
     }
 
-    draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y));
+    draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y), {}, false);
     {  // the mouse over a colour chit: that word, gene by gene
         int mouse_x = 0, mouse_y = 0;
         SDL_GetMouseState(&mouse_x, &mouse_y);
