@@ -2099,5 +2099,9 @@
 "how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "कोई प्राणी शत्रु पर वार करने या उसे भगाने को कितना कम महत्व देता है, उसकी सहनशीलता के गुणा; खाने के लिए शिकार अप्रभावित",
 "Graph restarted from turn {#}.": "ग्राफ़ बारी {#} से फिर शुरू हुआ।",
 "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "समय के साथ हर जीवित बिट्ज़की, अपने रंग में।    TAB  छल्ला / बिंदु / सामाजिक / प्रजाति    C  कॉपी    S  सहेजें    K  सूची    X  अभी से फिर शुरू    G या ESC  बंद करें",
-"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "समय के साथ हर जीवित बिट्ज़की, अपने रंग में।    TAB  छल्ला / बिंदु / सामाजिक / प्रजाति    C  कॉपी    S  सहेजें    K  सूची    X  अभी से फिर शुरू    G या ESC  नई दुनिया"
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "समय के साथ हर जीवित बिट्ज़की, अपने रंग में।    TAB  छल्ला / बिंदु / सामाजिक / प्रजाति    C  कॉपी    S  सहेजें    K  सूची    X  अभी से फिर शुरू    G या ESC  नई दुनिया",
+"Arable fruit": "जुती भूमि पर फल",
+"times as much fruit a plant on worked land bears each morning": "जुती भूमि पर पौधा हर सुबह कितने गुना फल देता है",
+"Fertilized fruit": "खाद वाले फल",
+"times as much again on worked land fed bone; the bone is spent": "हड्डी की खाद वाली जुती भूमि पर उसका और कितना गुना; हड्डी खर्च हो जाती है"
 }

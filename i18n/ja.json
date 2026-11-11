@@ -2099,5 +2099,9 @@
 "how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "動物が敵を打ったり追い払ったりすることをどれだけ低く見るか（寛容を掛ける）。食べるための狩りは変わらない",
 "Graph restarted from turn {#}.": "グラフをターン {#} から始め直しました。",
 "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "生きているビッツキーの推移、それぞれの色で。    TAB  輪 / 点 / 社会 / 種    C  コピー    S  保存    K  カタログ    X  今から始め直す    G または ESC  閉じる",
-"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "生きているビッツキーの推移、それぞれの色で。    TAB  輪 / 点 / 社会 / 種    C  コピー    S  保存    K  カタログ    X  今から始め直す    G または ESC  新しい世界"
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "生きているビッツキーの推移、それぞれの色で。    TAB  輪 / 点 / 社会 / 種    C  コピー    S  保存    K  カタログ    X  今から始め直す    G または ESC  新しい世界",
+"Arable fruit": "耕地の実り",
+"times as much fruit a plant on worked land bears each morning": "耕された土地の植物が毎朝つける実の倍率",
+"Fertilized fruit": "肥料の実り",
+"times as much again on worked land fed bone; the bone is spent": "骨を施した耕地でさらに何倍になるか。骨は使い切られる"
 }

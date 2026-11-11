@@ -2099,5 +2099,9 @@
 "how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "quanto meno un animale apprezza colpire o scacciare un nemico, per la sua tolleranza; cacciare per mangiare resta invariato",
 "Graph restarted from turn {#}.": "Grafico ricominciato dal turno {#}.",
 "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "Ogni Bitzkey vivo nel tempo, nel suo colore.    TAB  anello / punto / sociale / specie    C  copia    S  salva    K  catalogo    X  ricomincia da ora    G o ESC  chiudi",
-"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "Ogni Bitzkey vivo nel tempo, nel suo colore.    TAB  anello / punto / sociale / specie    C  copia    S  salva    K  catalogo    X  ricomincia da ora    G o ESC  nuovo mondo"
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "Ogni Bitzkey vivo nel tempo, nel suo colore.    TAB  anello / punto / sociale / specie    C  copia    S  salva    K  catalogo    X  ricomincia da ora    G o ESC  nuovo mondo",
+"Arable fruit": "Frutti su terra arabile",
+"times as much fruit a plant on worked land bears each morning": "quante volte più frutti porta ogni mattina una pianta su terra lavorata",
+"Fertilized fruit": "Frutti concimati",
+"times as much again on worked land fed bone; the bone is spent": "quante volte ancora di più su terra lavorata concimata con ossa; l'osso si consuma"
 }

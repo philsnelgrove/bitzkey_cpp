@@ -2099,5 +2099,9 @@
 "how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "наскільки менше тварина цінує вдарити чи вигнати ворога, помножено на її терпимість; полювання заради їжі не змінюється",
 "Graph restarted from turn {#}.": "Графік почато заново з ходу {#}.",
 "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "Кожен живий Біцкі з часом, у власному кольорі.    TAB  кільце / крапка / соціальне / вид    C  копіювати    S  зберегти    K  каталог    X  почати з цієї миті    G або ESC  закрити",
-"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "Кожен живий Біцкі з часом, у власному кольорі.    TAB  кільце / крапка / соціальне / вид    C  копіювати    S  зберегти    K  каталог    X  почати з цієї миті    G або ESC  новий світ"
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "Кожен живий Біцкі з часом, у власному кольорі.    TAB  кільце / крапка / соціальне / вид    C  копіювати    S  зберегти    K  каталог    X  почати з цієї миті    G або ESC  новий світ",
+"Arable fruit": "Плоди на ріллі",
+"times as much fruit a plant on worked land bears each morning": "у скільки разів більше плодів рослина на обробленій землі дає щоранку",
+"Fertilized fruit": "Плоди з добривом",
+"times as much again on worked land fed bone; the bone is spent": "у скільки разів більше ще на обробленій землі, удобреній кісткою; кістка витрачається"
 }

@@ -2099,5 +2099,9 @@
 "how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "动物对攻击或驱逐敌人的看重降低多少（乘以其宽容）；为食而猎不受影响",
 "Graph restarted from turn {#}.": "图表已从第 {#} 回合重新开始。",
 "Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "每个存活的比兹奇随时间的变化，各用其色。    TAB  环 / 点 / 社会 / 物种    C  复制    S  保存    K  目录    X  从现在重新开始    G 或 ESC  关闭",
-"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "每个存活的比兹奇随时间的变化，各用其色。    TAB  环 / 点 / 社会 / 物种    C  复制    S  保存    K  目录    X  从现在重新开始    G 或 ESC  新世界"
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "每个存活的比兹奇随时间的变化，各用其色。    TAB  环 / 点 / 社会 / 物种    C  复制    S  保存    K  目录    X  从现在重新开始    G 或 ESC  新世界",
+"Arable fruit": "耕地果实",
+"times as much fruit a plant on worked land bears each morning": "耕地上的植物每天早晨结果的倍数",
+"Fertilized fruit": "施肥果实",
+"times as much again on worked land fed bone; the bone is spent": "在施了骨肥的耕地上再翻多少倍；骨肥随之耗尽"
 }
