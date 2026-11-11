@@ -6,6 +6,8 @@
 #include <map>
 #include <numbers>
 #include <set>
+#include <tuple>
+#include <vector>
 
 #include "core/PyFormat.hpp"
 #include "core/Simulation.hpp"
@@ -95,6 +97,48 @@ void stroke(SDL_Surface* surface, double x1, double y1, double x2, double y2, Co
     }
 }
 
+// A filled shape, its edge softened by sampling each pixel four by four.
+void fill_shape(SDL_Surface* surface, const std::vector<std::pair<double, double>>& corners, Color colour) {
+    if (corners.size() < 3) return;
+    double left = corners[0].first, right = left, top = corners[0].second, bottom = top;
+    for (const auto& [x, y] : corners) {
+        left = std::min(left, x);
+        right = std::max(right, x);
+        top = std::min(top, y);
+        bottom = std::max(bottom, y);
+    }
+    const auto inside = [&](double px, double py) {
+        bool in = false;
+        for (std::size_t index = 0, last = corners.size() - 1; index < corners.size(); last = index++) {
+            const auto [x1, y1] = corners[index];
+            const auto [x2, y2] = corners[last];
+            if ((y1 > py) != (y2 > py) && px < x1 + (py - y1) * (x2 - x1) / (y2 - y1)) in = !in;
+        }
+        return in;
+    };
+    for (int y = static_cast<int>(std::floor(top)); y <= static_cast<int>(std::ceil(bottom)); ++y) {
+        for (int x = static_cast<int>(std::floor(left)); x <= static_cast<int>(std::ceil(right)); ++x) {
+            int hits = 0;
+            for (int sy = 0; sy < 4; ++sy) {
+                for (int sx = 0; sx < 4; ++sx) hits += inside(x + (sx + 0.5) / 4, y + (sy + 0.5) / 4);
+            }
+            paint(surface, x, y, colour, hits / 16.0);
+        }
+    }
+}
+
+// A filled oval, crisp at its edge, or with `soft` above 0 fading out over that share of its reach.
+void fill_oval(SDL_Surface* surface, double cx, double cy, double rx, double ry, Color colour, double soft = 0.0) {
+    if (rx <= 0 || ry <= 0) return;
+    for (int y = static_cast<int>(std::floor(cy - ry - 1)); y <= static_cast<int>(std::ceil(cy + ry + 1)); ++y) {
+        for (int x = static_cast<int>(std::floor(cx - rx - 1)); x <= static_cast<int>(std::ceil(cx + rx + 1)); ++x) {
+            const double off = std::hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+            const double coverage = soft > 0 ? std::clamp((1 - off) / soft, 0.0, 1.0) : std::clamp((1 - off) * std::min(rx, ry) + 0.5, 0.0, 1.0);
+            paint(surface, x, y, colour, coverage);
+        }
+    }
+}
+
 Color scaled(Color colour, double factor) {
     const auto channel = [factor](int value) { return static_cast<std::uint8_t>(std::clamp(std::lround(value * factor), 0L, 255L)); };
     return {channel(colour.r), channel(colour.g), channel(colour.b), colour.a};
@@ -123,7 +167,9 @@ Surface bitzkey_layer(Dna dna, int radius, int ring_width, bool alive) {
     // background's (or the dot's, too small for an icon) carrying the species icon in the dot's, a shine on the top
     // left and a soft shadow below to the right.
     const Chip chip = chip_of(radius, ring_width);
-    const int reach = chip.outer + static_cast<int>(std::ceil(chip.drop)) + 2;
+    // Its shadow, cast as if it floated a little above the ground: a soft oval below it, wider than tall.
+    const double shadow_x = chip.outer * 0.12, shadow_y = chip.outer * 0.78, shadow_w = chip.outer * 1.05, shadow_h = chip.outer * 0.42;
+    const int reach = static_cast<int>(std::ceil(std::max(chip.outer + chip.drop, std::max(shadow_y + shadow_h, shadow_x + shadow_w)))) + 2;
     Surface layer = make_surface(2 * reach + 1, 2 * reach + 1);
     SDL_Surface* target = layer.get();
     Color dot = to_color(color_from_word(mind_word(dna))), ring = to_color(color_from_word(body_word(dna)));
@@ -135,10 +181,10 @@ Surface bitzkey_layer(Dna dna, int radius, int ring_width, bool alive) {
     const Color face = icon ? social : dot, insert = mixed(ring, {255, 255, 255}, 0.55);
     const double centre = reach + 0.5, outer = chip.outer;
     SDL_LockSurface(target);
-    for (int y = 0; y < target->h; ++y) {  // the shadow, softened at its edge
+    for (int y = 0; y < target->h; ++y) {  // the shadow, darkest at its middle and fading out to its edge
         for (int x = 0; x < target->w; ++x) {
-            const double distance = std::hypot(x + 0.5 - centre - chip.drop, y + 0.5 - centre - chip.drop);
-            paint(target, x, y, {0, 0, 0, 255}, 0.38 * std::clamp((outer + 1 - distance) / (outer * 0.35 + 1), 0.0, 1.0));
+            const double off = std::hypot((x + 0.5 - centre - shadow_x) / shadow_w, (y + 0.5 - centre - shadow_y) / shadow_h);
+            if (off < 1) paint(target, x, y, {0, 0, 0, 255}, (alive ? 0.42 : 0.2) * (1 - off * off) * (1 - off * off));
         }
     }
     for (int y = 0; y < target->h; ++y) {  // the chip
@@ -409,6 +455,148 @@ void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int c
     for (int index = 0; index < 3; ++index) {
         if (marks[index].first) canvas.fill_rect({cx + (index - 1) * (size + half / 2) - size / 2, cy + half, size, size}, marks[index].second);
     }
+}
+
+namespace {
+
+constexpr Color BARK{104, 66, 36}, HEARTWOOD{214, 172, 112}, RINGS{150, 104, 58};
+
+// A log lying from (x1, y1) forward to its cut end at (x2, y2), `thick` across: bark with a lit top, and the end's rings.
+void log_at(SDL_Surface* target, double x1, double y1, double x2, double y2, double thick) {
+    stroke(target, x1, y1, x2, y2, BARK, thick);
+    stroke(target, x1, y1 - thick * 0.22, x2, y2 - thick * 0.22, mixed(BARK, {200, 150, 96}, 0.35), thick * 0.3);
+    fill_oval(target, x2, y2, thick * 0.38, thick * 0.5, HEARTWOOD);
+    fill_oval(target, x2, y2, thick * 0.2, thick * 0.27, RINGS);
+    fill_oval(target, x2, y2, thick * 0.07, thick * 0.09, HEARTWOOD);
+}
+
+// Logs in a pyramid, rows of `widest` up to one, their cut ends to the front.
+void log_stack(SDL_Surface* target, double s, int widest, double scale) {
+    const double thick = s * 0.16 * scale, back = s * 0.22 * scale;
+    for (int row = 0; row < widest; ++row) {
+        const int count = widest - row;
+        for (int index = 0; index < count; ++index) {
+            const double x = s * 0.5 + (index - (count - 1) / 2.0) * thick * 0.95, y = s * 0.78 - row * thick * 0.82;
+            log_at(target, x - back, y - back * 0.4, x, y, thick);
+        }
+    }
+}
+
+// A bone from one knobbed end to the other.
+void bone_at(SDL_Surface* target, double x1, double y1, double x2, double y2, double thick) {
+    constexpr Color BONE{238, 230, 210}, EDGE{150, 138, 116};
+    const double dx = x2 - x1, dy = y2 - y1, length = std::hypot(dx, dy), nx = -dy / length, ny = dx / length;
+    for (const auto& [colour, grow] : {std::pair{EDGE, 1.0}, std::pair{BONE, 0.0}}) {
+        stroke(target, x1, y1, x2, y2, colour, thick + grow * 1.2);
+        for (const auto& [ex, ey] : {std::pair{x1, y1}, std::pair{x2, y2}}) {
+            for (const double side : {1.0, -1.0}) {
+                fill_oval(target, ex + nx * thick * 0.55 * side, ey + ny * thick * 0.55 * side, thick * 0.62 + grow * 0.6,
+                          thick * 0.62 + grow * 0.6, colour);
+            }
+        }
+    }
+}
+
+// A rounded stone, darker beneath and lit from the top left.
+void stone_at(SDL_Surface* target, double cx, double cy, double rx, double ry) {
+    fill_oval(target, cx, cy, rx, ry, {92, 94, 98});
+    fill_oval(target, cx - rx * 0.12, cy - ry * 0.16, rx * 0.84, ry * 0.76, {142, 144, 148});
+    fill_oval(target, cx - rx * 0.35, cy - ry * 0.4, rx * 0.25, ry * 0.2, {206, 208, 212});
+}
+
+// A tongue of flame rising `tall` from a base `wide` across, its tip swayed `sway` to the side.
+void flame_at(SDL_Surface* target, double cx, double base, double wide, double tall, double sway, Color colour) {
+    constexpr int STEPS = 16;
+    std::vector<std::pair<double, double>> edge;
+    const auto half = [&](double u) { return wide / 2 * std::sqrt(std::max(0.0, std::sin(std::numbers::pi * u))) * (1 - 0.3 * u); };
+    for (int step = 0; step <= STEPS; ++step) {
+        const double u = static_cast<double>(step) / STEPS;
+        edge.emplace_back(cx + sway * u * u + half(u), base - tall * u);
+    }
+    for (int step = STEPS - 1; step > 0; --step) {
+        const double u = static_cast<double>(step) / STEPS;
+        edge.emplace_back(cx + sway * u * u - half(u), base - tall * u);
+    }
+    fill_shape(target, edge, colour);
+}
+
+Surface draw_prop_surface(Prop prop, int size, int frame) {
+    Surface sprite = make_surface(size, size);
+    SDL_Surface* target = sprite.get();
+    const double s = size;
+    const auto at = [s](double x, double y) { return std::pair{x * s, y * s}; };
+    SDL_LockSurface(target);
+    switch (prop) {
+        case Prop::Cabin: {  // a log cabin seen from the front and a little to the side, its roof pitched over a gable
+            constexpr Color FRONT{170, 118, 68}, SIDE{124, 82, 46}, ROOF{136, 64, 44}, ROOF_EDGE{90, 40, 28};
+            fill_oval(target, s * 0.52, s * 0.87, s * 0.44, s * 0.1, {0, 0, 0, 255}, 1.0);
+            fill_shape(target, {at(0.56, 0.56), at(0.86, 0.46), at(0.86, 0.77), at(0.56, 0.88)}, SIDE);
+            fill_shape(target, {at(0.14, 0.57), at(0.35, 0.34), at(0.56, 0.57), at(0.56, 0.88), at(0.14, 0.88)}, FRONT);
+            const double line = std::max(0.8, s * 0.014);
+            for (int course = 0; course < 4; ++course) {  // the logs of its walls
+                const double y = 0.63 + course * 0.065;
+                stroke(target, s * 0.14, s * y, s * 0.56, s * y, scaled(FRONT, 0.72), line);
+                stroke(target, s * 0.56, s * y, s * 0.86, s * (y - 0.1), scaled(SIDE, 0.72), line);
+            }
+            fill_shape(target, {at(0.285, 0.7), at(0.4, 0.7), at(0.4, 0.88), at(0.285, 0.88)}, {58, 36, 22});  // the door
+            fill_shape(target, {at(0.67, 0.6), at(0.77, 0.565), at(0.77, 0.65), at(0.67, 0.685)}, {244, 206, 112});  // a lit window
+            fill_shape(target, {at(0.35, 0.33), at(0.66, 0.21), at(0.89, 0.46), at(0.57, 0.58)}, ROOF);
+            stroke(target, s * 0.57, s * 0.58, s * 0.89, s * 0.46, ROOF_EDGE, s * 0.03);  // the eave
+            stroke(target, s * 0.11, s * 0.59, s * 0.35, s * 0.32, ROOF_EDGE, s * 0.035);  // the gable's ends
+            stroke(target, s * 0.35, s * 0.32, s * 0.58, s * 0.59, ROOF_EDGE, s * 0.035);
+            stroke(target, s * 0.36, s * 0.32, s * 0.66, s * 0.21, mixed(ROOF, {255, 220, 180}, 0.3), s * 0.02);  // the ridge
+            fill_shape(target, {at(0.7, 0.355), at(0.76, 0.335), at(0.76, 0.2), at(0.7, 0.22)}, {120, 116, 110});  // the chimney, standing on the roof
+            break;
+        }
+        case Prop::Site:  // a stack of logs waiting to be built, between two stakes
+            fill_oval(target, s * 0.5, s * 0.86, s * 0.42, s * 0.09, {0, 0, 0, 255}, 1.0);
+            for (const double x : {0.14, 0.86}) stroke(target, s * x, s * 0.42, s * x, s * 0.86, HEARTWOOD, std::max(1.0, s * 0.035));
+            log_stack(target, s, 3, 1.0);
+            break;
+        case Prop::Bones:
+            bone_at(target, s * 0.18, s * 0.72, s * 0.78, s * 0.36, s * 0.11);
+            bone_at(target, s * 0.22, s * 0.36, s * 0.8, s * 0.7, s * 0.11);
+            break;
+        case Prop::Logs:
+            log_stack(target, s, 2, 1.45);
+            break;
+        case Prop::Stones:
+            stone_at(target, s * 0.34, s * 0.66, s * 0.22, s * 0.16);
+            stone_at(target, s * 0.66, s * 0.7, s * 0.19, s * 0.14);
+            stone_at(target, s * 0.52, s * 0.44, s * 0.17, s * 0.14);
+            break;
+        case Prop::Fire: {  // flames over two crossed logs, in a glow, flickering frame by frame
+            fill_oval(target, s * 0.5, s * 0.62, s * 0.48, s * 0.4, {255, 150, 40, 120}, 1.0);
+            stroke(target, s * 0.22, s * 0.86, s * 0.78, s * 0.72, BARK, s * 0.09);
+            stroke(target, s * 0.22, s * 0.72, s * 0.78, s * 0.86, scaled(BARK, 0.8), s * 0.09);
+            const auto flicker = [frame](double phase) { return std::sin(frame * 1.9 + phase); };
+            const double base = s * 0.82;
+            flame_at(target, s * 0.36, base, s * 0.2, s * (0.34 + 0.05 * flicker(1)), s * 0.05 * flicker(2), {214, 52, 18});
+            flame_at(target, s * 0.64, base, s * 0.2, s * (0.32 + 0.05 * flicker(3)), s * 0.05 * flicker(4), {214, 52, 18});
+            flame_at(target, s * 0.5, base, s * 0.48, s * (0.66 + 0.06 * flicker(0)), s * 0.07 * flicker(5), {232, 74, 24});
+            flame_at(target, s * 0.5, base, s * 0.32, s * (0.48 + 0.05 * flicker(6)), s * 0.06 * flicker(7), {250, 146, 32});
+            flame_at(target, s * 0.5, base, s * 0.16, s * (0.28 + 0.04 * flicker(8)), s * 0.04 * flicker(9), {255, 230, 120});
+            break;
+        }
+    }
+    SDL_UnlockSurface(target);
+    return sprite;
+}
+
+}  // namespace
+
+SDL_Surface* prop_sprite(Prop prop, int size, int frame) {
+    static std::map<std::tuple<int, int, int>, Surface> kept;
+    size = std::max(4, size);
+    frame = prop == Prop::Fire ? frame % FLAME_FRAMES : 0;
+    auto [found, added] = kept.try_emplace(std::tuple{static_cast<int>(prop), size, frame});
+    if (added) found->second = draw_prop_surface(prop, size, frame);
+    return found->second.get();
+}
+
+void draw_prop(Canvas& canvas, Prop prop, int cx, int cy, int size, int frame) {
+    const int side = std::max(4, size);
+    canvas.blit(prop_sprite(prop, side, frame), cx - side / 2, cy - side / 2);
 }
 
 }  // namespace bitzkey::ui

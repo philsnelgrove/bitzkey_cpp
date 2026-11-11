@@ -503,7 +503,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
                 panel.x + UI(24), panel.y + UI(18));
     canvas.text(small,
                 std::string("Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    "
-                            "G or ESC  ") + (ended_ ? "new world" : "close"),
+                            "X  restart from now    G or ESC  ") + (ended_ ? "new world" : "close"),
                 {144, 170, 151}, panel.x + UI(24), panel.y + UI(54));
     for (const auto& [button, name] : {std::pair{places.clear, "CLEAR"}, std::pair{places.copy, "COPY"},
                                        std::pair{places.save, "SAVE"}}) {

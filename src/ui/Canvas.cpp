@@ -189,9 +189,10 @@ void Canvas::line(int x1, int y1, int x2, int y2, Color color, int width) {
     }
 }
 
-void Canvas::polygon(std::initializer_list<std::pair<int, int>> points, Color color) {
+void Canvas::polygon(std::initializer_list<std::pair<int, int>> points, Color color) { polygon(std::vector<std::pair<int, int>>(points), color); }
+
+void Canvas::polygon(const std::vector<std::pair<int, int>>& corners, Color color) {
     // Scanline fill, sampling each row through its middle, with the outline drawn too, as pygame does.
-    const std::vector<std::pair<int, int>> corners(points);
     if (corners.size() < 3) return;
     const std::uint32_t pixel = map(color);
     int top = corners[0].second, bottom = corners[0].second;

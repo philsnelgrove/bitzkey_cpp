@@ -290,6 +290,10 @@ App::Result App::run() {
                     else if (leave_graph()) return Result::Configure;
                 } else if (key == SDLK_TAB && show_census_) {
                     graph_.switch_part();
+                } else if (key == SDLK_x && show_census_) {  // the graph begun afresh from now, the world running on
+                    simulation_->restart_census();
+                    graph_.reset();
+                    say(format("Graph restarted from turn %d.", simulation_->turn()));
                 } else if (key == SDLK_c) {
                     if (show_census_) export_graph(false);
                     else copy_selected();
@@ -1748,12 +1752,29 @@ void App::draw_ground(Canvas& canvas, const Board& board, const Rect& view) {
             const int cx = static_cast<int>(py_round(rect.x + (x + 0.5) * board.cell_width));
             const int cy = static_cast<int>(py_round(rect.y + (y + 0.5) * board.cell_height));
             const int half = std::max(2, static_cast<int>(py_round(std::min(board.cell_width, board.cell_height) * 0.25)));
+            // Near enough, each drawn as itself: a cabin, a stack of logs to build with, bones, logs and stones along the foot
+            // of the square, and flames; further out, simple marks.
+            const int square = static_cast<int>(std::min(board.cell_width, board.cell_height));
+            const bool pictured = square >= PROP_DETAIL;
+            if (pictured && (shelter || site)) draw_prop(canvas, shelter ? Prop::Cabin : Prop::Site, cx, cy, square);
+            if (pictured) {
+                const int slot = std::max(4, square * 2 / 5);
+                const std::array<std::pair<int, Prop>, 3> heaps{{{stone, Prop::Stones}, {bone, Prop::Bones}, {wood, Prop::Logs}}};
+                for (int index = 0; index < 3; ++index) {
+                    if (heaps[index].first) draw_prop(canvas, heaps[index].second, cx + (index - 1) * slot, cy + square * 3 / 10, slot);
+                }
+            } else {
+                draw_materials(canvas, stone, bone, wood, cx, cy, half);
+            }
             if (meat) draw_pile(canvas, true, meat, fruit ? cx - half : cx, cy, half);
             if (fruit) draw_pile(canvas, false, fruit, meat ? cx + half : cx, cy, half);
-            draw_materials(canvas, stone, bone, wood, cx, cy, half);
             if (gear) canvas.fill_rect({cx - half / 2, cy - half, half, std::max(2, half / 2)}, Color{96, 130, 160});
-            if (shelter || site) canvas.rect({cx - half * 8 / 5, cy - half * 8 / 5, half * 16 / 5, half * 16 / 5}, Color{150, 110, 70}, shelter ? 2 : 1);
-            if (fire) canvas.circle(cx, cy, std::max(2, half * 7 / 10), Color{255, 120, 20});
+            if (!pictured && (shelter || site)) canvas.rect({cx - half * 8 / 5, cy - half * 8 / 5, half * 16 / 5, half * 16 / 5}, Color{150, 110, 70}, shelter ? 2 : 1);
+            if (fire && pictured) {  // each fire flickering in its own time
+                draw_prop(canvas, Prop::Fire, cx, cy - square / 10, square * 9 / 10, static_cast<int>(SDL_GetTicks() / FLICKER_MS) + x * 7 + y * 13);
+            } else if (fire) {
+                canvas.circle(cx, cy, std::max(2, half * 7 / 10), Color{255, 120, 20});
+            }
         }
     }
     {  // the night, a shadow over half the map's columns, wrapping round east to west

@@ -2096,5 +2096,8 @@
 "Empathy scruple": "Scrupule d'empathie",
 "how much less an animal values uprooting a plant, times its empathy, and a predator hunting, striking or feasting on the young or those carrying young": "combien un animal apprécie moins de déraciner une plante, fois son empathie, et un prédateur de chasser, frapper ou dévorer les petits ou les femelles pleines",
 "Tolerance scruple": "Scrupule de tolérance",
-"how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "combien un animal apprécie moins de frapper ou chasser un ennemi, fois sa tolérance ; chasser pour manger n'est pas touché"
+"how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "combien un animal apprécie moins de frapper ou chasser un ennemi, fois sa tolérance ; chasser pour manger n'est pas touché",
+"Graph restarted from turn {#}.": "Graphique recommencé au tour {#}.",
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "Chaque Bitzkey vivant au fil du temps, dans sa propre couleur.    TAB  anneau / point / social / espèce    C  copier    S  enregistrer    K  catalogue    X  recommencer maintenant    G ou ESC  fermer",
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "Chaque Bitzkey vivant au fil du temps, dans sa propre couleur.    TAB  anneau / point / social / espèce    C  copier    S  enregistrer    K  catalogue    X  recommencer maintenant    G ou ESC  nouveau monde"
 }

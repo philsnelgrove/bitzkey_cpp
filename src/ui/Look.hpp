@@ -95,6 +95,16 @@ void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius);
 void draw_crown(Canvas& canvas, int x, int y, int radius, int rank = 1);  // a leader's: a small gold crown above it, a star over it for each rank  // a small shield at its lower left, a small tool at its upper right
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half);  // small marks along the foot of a square
 
+// Things on the ground, each drawn once for a size, `size` pixels square, and kept: a log cabin for a shelter, a stack
+// of logs for a shelter's site, crossed bones, a few logs, a few stones, and a fire in one of FLAME_FRAMES flickers.
+enum class Prop { Cabin, Site, Bones, Logs, Stones, Fire };
+constexpr int FLAME_FRAMES = 4;
+constexpr int PROP_DETAIL = 12;  // squares this many pixels across or more show things as pictures
+constexpr std::uint32_t FLICKER_MS = 140;  // a fire's flicker, each frame this long
+SDL_Surface* prop_sprite(Prop prop, int size, int frame = 0);
+// Drawn centred on (cx, cy), `size` pixels across.
+void draw_prop(Canvas& canvas, Prop prop, int cx, int cy, int size, int frame = 0);
+
 // The ground's texture, laid faintly over a square's colour: by its zone's usual temperature, or the sea.
 enum class Ground { Sand, Meadow, Snow, Ice, Sea };
 constexpr int GROUND_VARIANTS = 4;

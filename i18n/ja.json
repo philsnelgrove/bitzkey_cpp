@@ -2096,5 +2096,8 @@
 "Empathy scruple": "共感のためらい",
 "how much less an animal values uprooting a plant, times its empathy, and a predator hunting, striking or feasting on the young or those carrying young": "動物が植物を根こそぎにすることをどれだけ低く見るか（共感を掛ける）、また捕食者が子や身ごもった者を狩り・打ち・食べること",
 "Tolerance scruple": "寛容のためらい",
-"how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "動物が敵を打ったり追い払ったりすることをどれだけ低く見るか（寛容を掛ける）。食べるための狩りは変わらない"
+"how much less an animal values striking a foe or driving one out, times its tolerance; hunting to eat is untouched": "動物が敵を打ったり追い払ったりすることをどれだけ低く見るか（寛容を掛ける）。食べるための狩りは変わらない",
+"Graph restarted from turn {#}.": "グラフをターン {#} から始め直しました。",
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  close": "生きているビッツキーの推移、それぞれの色で。    TAB  輪 / 点 / 社会 / 種    C  コピー    S  保存    K  カタログ    X  今から始め直す    G または ESC  閉じる",
+"Every Bitzkey alive over time, in its own colour.    TAB  ring / dot / social / species    C  copy    S  save    K  catalog    X  restart from now    G or ESC  new world": "生きているビッツキーの推移、それぞれの色で。    TAB  輪 / 点 / 社会 / 種    C  コピー    S  保存    K  カタログ    X  今から始め直す    G または ESC  新しい世界"
 }

@@ -69,6 +69,7 @@ public:
     void circle(int cx, int cy, int radius, Color color, int width = 0);
     void line(int x1, int y1, int x2, int y2, Color color, int width = 1);
     void polygon(std::initializer_list<std::pair<int, int>> points, Color color);  // filled
+    void polygon(const std::vector<std::pair<int, int>>& corners, Color color);
     void blit(SDL_Surface* source, int x, int y, std::uint8_t alpha = 255);
     // Limit drawing to a rectangle; none draws anywhere again.
     void set_clip(const std::optional<Rect>& area);

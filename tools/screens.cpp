@@ -16,6 +16,7 @@
 #include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
 #include "ui/Language.hpp"
+#include "ui/Look.hpp"
 #include "ui/Setup.hpp"
 #include "ui/Window.hpp"
 #include "ui/WorkerScreen.hpp"
@@ -278,6 +279,33 @@ struct Screens {
         app.show_census_ = true;
         app.draw(canvas);
         save(canvas, folder / "app-graph-years.bmp");
+        props(canvas, folder);
+    }
+
+    // Each thing on the ground, and a Bitzkey of each kind, at a few sizes on meadow and sand.
+    static void props(Canvas& canvas, const std::filesystem::path& folder) {
+        canvas.fill({112, 132, 96});
+        canvas.fill_rect({0, canvas.height() / 2, canvas.width(), canvas.height() / 2}, {196, 184, 140});
+        int x = 20;
+        for (const int size : {16, 32, 64, 128}) {
+            int y = 20;
+            for (const Prop prop : {Prop::Cabin, Prop::Site, Prop::Bones, Prop::Logs, Prop::Stones, Prop::Fire}) {
+                draw_prop(canvas, prop, x + size / 2, y + size / 2, size, 1);
+                y += size + 8;
+                if (y + size > canvas.height()) break;
+            }
+            x += size + 16;
+        }
+        int y = 40;
+        for (const Species species : {Species::Grazer, Species::Omnivore, Species::Predator}) {
+            int across = x + 20;
+            for (const int radius : {8, 16, 32}) {
+                draw_bitzkey(canvas, encode_dna(species), across + radius, y + radius, radius);
+                across += 2 * radius + 40;
+            }
+            y += 100;
+        }
+        save(canvas, folder / "props.bmp");
     }
 };
 
