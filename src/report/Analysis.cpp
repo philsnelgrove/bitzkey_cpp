@@ -529,6 +529,7 @@ std::string first_in_words(const std::string& event, const std::string& species,
     if (event == "planted") return who + " first planted a seed.";
     if (event == "fire_lit") return who + " lit their first fire.";
     if (event == "cooked") return who + " cooked for the first time.";
+    if (event == "stored_food") return who + " first stored food for their herd.";
     if (event == "shelter_finished") return who + " finished their first shelter.";
     if (event == "fought_over") return who + " first fought over a possession.";
     if (event == "won_a_fight") return who + " first won a fight over a possession.";
