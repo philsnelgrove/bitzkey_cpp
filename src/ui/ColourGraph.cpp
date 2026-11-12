@@ -157,9 +157,9 @@ void ColourGraph::select(const std::set<int>& picked, Mode mode) {
 }
 
 std::pair<int, int> ColourGraph::window() const {
-    if (!view_) return {0, now_};
-    if (pinned_) return {std::max(0, now_ - (view_->second - view_->first)), now_};  // kept at the latest turn
-    return {std::max(0, view_->first), std::min(now_, view_->second)};
+    if (!view_) return {start_, now_};  // from the first turn it holds: since the world began, or the graph restarted
+    if (pinned_) return {std::max(start_, now_ - (view_->second - view_->first)), now_};  // kept at the latest turn
+    return {std::max(start_, view_->first), std::min(now_, view_->second)};
 }
 
 int ColourGraph::turn_at(int x) const {
@@ -181,20 +181,20 @@ int ColourGraph::x_of(int turn) const {
 void ColourGraph::zoom(int notches, int x) {
     const auto [first, last] = window();
     const int span = last - first + 1;
-    const int whole = now_ + 1;
+    const int whole = now_ - start_ + 1;
     const int new_span = std::max(MIN_VIEW, static_cast<int>(py_round(span * std::pow(ZOOM_STEP, notches))));
     if (new_span >= whole) {
         view_.reset();
         return;
     }
     if (!view_ || pinned_) {  // reaching the latest turn, it stays pinned there, the living in view
-        view_ = std::pair{whole - new_span, whole - 1};
+        view_ = std::pair{now_ + 1 - new_span, now_};
         pinned_ = true;
         return;
     }
     const int centre = turn_at(x);
     int new_first = static_cast<int>(py_round(centre - static_cast<double>(centre - first) * new_span / span));
-    new_first = std::max(0, std::min(whole - new_span, new_first));
+    new_first = std::max(start_, std::min(now_ + 1 - new_span, new_first));
     view_ = std::pair{new_first, new_first + new_span - 1};
     pinned_ = view_->second >= now_;
 }
@@ -215,7 +215,7 @@ void ColourGraph::drag(int start_x, int start_y, std::pair<int, int> view, doubl
         const auto [first, last] = view;
         const int span = last - first + 1;
         const int shift = static_cast<int>(py_round(static_cast<double>(x - start_x) * span / std::max(1, chart.w)));
-        const int new_first = std::max(0, std::min(now_ + 1 - span, first - shift));
+        const int new_first = std::max(start_, std::min(now_ + 1 - span, first - shift));
         view_ = std::pair{new_first, new_first + span - 1};
         pinned_ = view_->second >= now_;
     }
@@ -226,7 +226,7 @@ void ColourGraph::pan(int notches) {
     if (!view_) return;
     const auto [first, last] = window();
     const int span = last - first + 1;
-    const int new_first = std::max(0, std::min(now_ + 1 - span, first + notches * std::max(1, span / 10)));
+    const int new_first = std::max(start_, std::min(now_ + 1 - span, first + notches * std::max(1, span / 10)));
     view_ = std::pair{new_first, new_first + span - 1};
     pinned_ = view_->second >= now_;
 }
@@ -490,6 +490,7 @@ void ColourGraph::draw(Canvas& canvas, const Simulation& simulation, const std::
         select(living, Mode::Replace);
     }
     now_ = simulation.turn();
+    start_ = simulation.census().snapshots().empty() ? 0 : std::min(now_, simulation.census().snapshots().front().turn);
     ended_ = simulation.ended();
     const Layout places = layout();
     const Rect &panel = places.panel, &chart = places.chart, &timeline = places.timeline;

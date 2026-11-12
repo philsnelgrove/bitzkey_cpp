@@ -666,9 +666,11 @@ void App::catalog_picked() {
 
 void App::edit_rules() {
     // Applied, they hold from this world's next turn, and for its restarts. Closing the window from there closes
-    // the program.
+    // the program. The world waits meanwhile, and plays on afterwards if it was playing.
+    const bool was_playing = playing_;
     playing_ = false;
     const auto [outcome, changed] = AdvancedScreen(window_, rules::current(), true).run();
+    playing_ = was_playing && !simulation_->ended();
     if (outcome == AdvancedScreen::Outcome::Quit) {
         SDL_Event quit{};
         quit.type = SDL_QUIT;
@@ -676,7 +678,7 @@ void App::edit_rules() {
     } else if (outcome == AdvancedScreen::Outcome::Apply && changed) {
         rules::apply(*changed);
         simulation_->rules_changed();
-        say(format("This world now plays by %zu rule%s changed from the defaults. Paused: SPACE plays on.", changed->size(),
+        say(format("This world now plays by %zu rule%s changed from the defaults.", changed->size(),
                    changed->size() != 1 ? "s" : ""));
     }
 }

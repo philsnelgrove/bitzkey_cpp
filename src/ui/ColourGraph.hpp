@@ -123,6 +123,7 @@ private:
     int width_ = 0, height_ = 0;
     int mouse_x_ = 0, mouse_y_ = 0;
     int now_ = 0;
+    int start_ = 0;  // the first turn the graph holds
     bool ended_ = false;  // whether the run is over, when last drawn
     std::optional<std::tuple<int, int, Uint16>> press_;  // where a press began, and its modifiers
     std::vector<Bar> bars_;
