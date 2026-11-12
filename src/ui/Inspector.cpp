@@ -236,6 +236,20 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     if (!agent.alive()) state += format("     MEAT LEFT %.0f", agent.meat);
     canvas.text(small, state, {145, 164, 146}, x, at(350));
     int next = 366;  // the line for what follows
+    if (known && agent.alive() && agent.brain && agent.has_last_senses && agent.last_call > Silent) {
+        // What it made of its last call: the senses that most moved it to call, and what it foresaw the call would change.
+        const CallIntent intent = call_intent(*agent.brain, agent.last_senses, agent.last_call, 3);
+        std::string line = agent.last_call == AlertCall ? tr("LAST CALL") + " " + tr("ALERT") + ":" : tr("LAST CALL") + format(" %d:", agent.last_call - FirstCall + 1);
+        for (const auto& [sense, raised] : intent.drivers) line += " " + std::string(SENSES[static_cast<std::size_t>(sense)]);
+        constexpr std::array<const char*, 4> THINGS = {"HUNGER", "HEALTH", "STAMINA", "FOOD"};
+        std::string foreseen;
+        for (std::size_t thing = 0; thing < THINGS.size(); ++thing) {
+            if (std::abs(intent.expects[thing]) >= 0.02) foreseen += format(" %s%s", tr(THINGS[thing]).c_str(), intent.expects[thing] > 0 ? "+" : "-");
+        }
+        if (!foreseen.empty()) line += "  ->" + foreseen;
+        canvas.text(small, as_shown(line), {175, 192, 172}, x, at(next));
+        next += 16;
+    }
     if (agent.alive() && agent.load()) {
         canvas.text(small, format("CARRYING %d MEAT, %d FRUIT, ROOM FOR %d", agent.carried_meat, agent.carried_fruit, agent.capacity()), {145, 164, 146}, x,
                     at(next));
