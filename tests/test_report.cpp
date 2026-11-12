@@ -2,6 +2,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -31,7 +32,8 @@ TEST_CASE("a save is reported on through the same routes as a running world") {
         CHECK(read.minds["minds"].contains("grazer"));
         CHECK(read.herds.size() == 3);
         REQUIRE(read.diary["entries"].size() >= 1);  // kept in the file
-        CHECK(read.diary["entries"].back()["event"] == "fire_lit");
+        CHECK(std::any_of(read.diary["entries"].begin(), read.diary["entries"].end(),
+                          [](const auto& entry) { return entry["event"] == "fire_lit"; }));  // noted, by the test or the world itself
 
         const report::Analysis analysis = report::analyse(read);
         REQUIRE(analysis.sections.size() == 15);
