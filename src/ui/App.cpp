@@ -2032,70 +2032,7 @@ bool App::scroll_event(const SDL_Event& event) {
 }
 
 namespace {
-// What each entry of the insights panel is, for its tooltip: each action, then each line of LIFE.
-constexpr std::array<const char*, ACTION_COUNT> ACTION_ABOUT = {
-    "Eat the grass where it stands.",
-    "Go toward the nearest grass it sees, to eat.",
-    "Pick fruit from a plant beside it, leaving the plant unhurt.",
-    "Pull up a plant beside it and eat it whole, killing it.",
-    "Go to a body and eat from it.",
-    "Eat its fill from a fresh kill.",
-    "Rest, to recover stamina.",
-    "Court a mate nearby.",
-    "Mate with a willing partner beside it.",
-    "Chase down prey and strike it. For grazers, which eat no meat, it is solely military: a charge at a foe.",
-    "Strike an animal beside it: prey, a foe, or a trespasser in its land.",
-    "Strike back at one attacking it or a member of its herd.",
-    "Run from a hunter or other danger.",
-    "Move toward the middle of its herd.",
-    "Travel north, its full pace.",
-    "Travel south, its full pace.",
-    "Travel east, its full pace.",
-    "Travel west, its full pace.",
-    "Walk one step north.",
-    "Walk one step south.",
-    "Walk one step east.",
-    "Walk one step west.",
-    "Go back to a place it remembers finding food.",
-    "Feed its infants in sight, at no cost to itself.",
-    "Teach a younger one beside it what it knows.",
-    "Pick up meat to carry.",
-    "Pick up fruit to carry.",
-    "Put down the meat it carries.",
-    "Put down the fruit it carries.",
-    "Eat from a pile of food on the ground.",
-    "Eat food it is carrying.",
-    "Pick up a stone, for tools and fire.",
-    "Pick up a bone, for tools and armour.",
-    "Pick up wood, for tools, fire and building.",
-    "Put down the stone it carries.",
-    "Put down the bone it carries.",
-    "Put down the wood it carries.",
-    "Dress a body: cut it up into meat and bone.",
-    "Make a bone axe, a weapon.",
-    "Make armour of bone.",
-    "Make a wooden club, a weapon.",
-    "Make armour of wood.",
-    "Make a stone axe, the finest weapon.",
-    "Take a weapon or armour from a pile on the ground.",
-    "Put down its weapon.",
-    "Take off its armour and put it down.",
-    "Cut down a plant for wood.",
-    "Work the land, and sometimes dig up a stone.",
-    "Light a fire, for warmth and cooking.",
-    "Add wood to a fire to keep it burning.",
-    "Cook meat on a fire.",
-    "Build part of a shelter.",
-    "Eat a seed.",
-    "Plant a seed, to grow a new plant.",
-    "Lay road, quicker and easier to travel.",
-    "Crack bones for their marrow: a grazer's first taste of meat.",
-    "Enrich the land so more grass grows.",
-    "Skin a body for its hide, to wear as armour.",
-    "Demand a better possession from another, which may give it up or fight for it.",
-    "Steal a better possession from another, which may fight to get it back.",
-    "Give a possession to a friend.",
-    "Offer something of its own for something another has; the other weighs the deal and may accept or refuse."};
+// What each line of LIFE in the insights panel is, for its tooltip (each action's is action_about).
 constexpr std::array<const char*, 9> LIFE_ABOUT = {
     "How many of each species are alive.",
     "Average body size, from 0 to 7.",
@@ -2148,14 +2085,21 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
         if (row.bottom() > view.y && row.y < view.bottom()) tooltip(row.clip(view), text);
     };
     double y = heading("BEHAVIOUR", "% of chances taken, recent turns", INSIGHTS_TOP + 11);
-    for (int action = 0; action < ACTION_COUNT; ++action) {
-        row_hint(y, 17, ACTION_ABOUT[static_cast<std::size_t>(action)]);
-        canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
-        for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
-            const auto rate = insights.rate(action, ANIMALS[index]);
-            canvas.text(mono, rate.share ? py_percent(*rate.share, 4) : "  -", {231, 236, 222}, columns[index], at(y));
+    const auto topic_heading = [&](int topic) {  // a topic's name over its actions
+        canvas.text(small, std::string(ACTION_TOPICS[static_cast<std::size_t>(topic)]), {220, 229, 211}, x, at(y + 4));
+        y += 21;
+    };
+    for (const auto& [topic, actions] : actions_by_topic()) {
+        topic_heading(topic);
+        for (const int action : actions) {
+            row_hint(y, 17, action_about(action));
+            canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
+            for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
+                const auto rate = insights.rate(action, ANIMALS[index]);
+                canvas.text(mono, rate.share ? py_percent(*rate.share, 4) : "  -", {231, 236, 222}, columns[index], at(y));
+            }
+            y += 17;
         }
-        y += 17;
     }
 
     constexpr std::array<const char*, 3> BLOCK_ABOUT = {"The groups least likely to breed when they have the chance.",
@@ -2249,15 +2193,20 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
     canvas.text(small, "the group most likely to take each chance", {116, 139, 124}, x, at(y + 36));
     y += 60;
     bool any = false;
-    for (int action = 0; action < ACTION_COUNT; ++action) {
-        const auto groups = insights.extremes(action, 1, false);
-        if (groups.empty()) continue;
-        row_hint(y, 18, ACTION_ABOUT[static_cast<std::size_t>(action)]);
-        canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
-        canvas.text(small, fit(groups[0].label, width - UI(124)), {175, 192, 172}, x + UI(76), at(y));
-        canvas.text(mono, py_percent(groups[0].share, 4), {231, 236, 222}, x + width - UI(40), at(y));
-        y += 18;
-        any = true;
+    for (const auto& [topic, actions] : actions_by_topic()) {
+        bool headed = false;
+        for (const int action : actions) {
+            const auto groups = insights.extremes(action, 1, false);
+            if (groups.empty()) continue;
+            if (!headed) topic_heading(topic);
+            headed = true;
+            row_hint(y, 18, action_about(action));
+            canvas.text(small, upper(ACTIONS[static_cast<std::size_t>(action)]), {149, 170, 150}, x, at(y));
+            canvas.text(small, fit(groups[0].label, width - UI(124)), {175, 192, 172}, x + UI(76), at(y));
+            canvas.text(mono, py_percent(groups[0].share, 4), {231, 236, 222}, x + width - UI(40), at(y));
+            y += 18;
+            any = true;
+        }
     }
     if (!any) {
         canvas.text(small, "not enough chances yet", {116, 139, 124}, x, at(y));

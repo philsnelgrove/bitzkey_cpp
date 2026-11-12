@@ -83,8 +83,12 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     TTF_Font* font = UI.font(Face::Sans, 15);
     TTF_Font* small = UI.font(Face::Sans, 12);
     TTF_Font* mono_small = UI.font(Face::Mono, 12);
-    // At twice the size it has on the map, beside its name and its colours (unless drawn larger, behind, by the caller)
-    if (portrait) draw_portrait(canvas, agent, x + UI(16), at(16), 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST)), 2 * RING_WIDTH, agent.alive() || !known);
+    // At twice the size it has on the map, beside its name and its colours (unless drawn larger, behind, by the caller): never
+    // so small that it loses its social background and icon, as the exemplar cards draw it, its ring in proportion.
+    if (portrait) {
+        const int radius = 2 * dot_radius(agent.body[Size], UI(DOT_RADIUS_LARGEST), UI(ICON_MIN_RADIUS));
+        draw_portrait(canvas, agent, x + UI(16), at(16), radius, std::max(RING_WIDTH, radius / 4), agent.alive() || !known);
+    }
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
     if (known && agent.alive() && agent.leader && agent.rank > 0) {  // a titled leader: its title in gold in its species' place (its icon shows that)
         const std::string id = format("#%03d  ", agent.identifier);
