@@ -25,8 +25,19 @@ constexpr std::array<Color, 4> TEMPERATURE_COLOURS = {{{238, 160, 110}, {175, 19
 // where it is.
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width,
                   bool known = true, std::optional<double> here = std::nullopt, const std::string& note = {}, bool portrait = true);
-// A Bitzkey as it looks on the map, at (cx, cy) and this size: its dot and ring, its gear, and a leader's crown and stars.
-void draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive);
+// What a portrait shows beside the Bitzkey itself: its herd's colour (none for no herd), the one it follows, and a wagon.
+struct PortraitMarks {
+    std::optional<Color> herd;
+    const Bitzkey* leader = nullptr;
+    bool wagon = false;
+};
+// Where a portrait drew what may be clicked: its herd's flag and its leader.
+struct PortraitSpots {
+    std::optional<Rect> flag, leader;
+};
+// A Bitzkey as it looks on the map, at (cx, cy) and this size: its dot and ring, its gear and hide, a leader's crown and
+// stars, and its herd's flag at its upper right and the one it follows at its upper left, small; and a wagon beside it.
+PortraitSpots draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive, const PortraitMarks& marks = {});
 
 // Where the last details drew the mind's, body's and social background's colour chits, each with its hex.
 const std::array<Rect, 3>& genome_swatches();

@@ -91,8 +91,13 @@ constexpr int LOOK_SHADES = 8;
 SDL_Surface* grass_tuft(int width, int height, bool sea);
 // A heap of meat or of fruit about (cx, cy), with how many portions it holds once there's room to read it.
 void draw_pile(Canvas& canvas, bool meat, int count, int cx, int cy, int half);
-void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius);
-void draw_crown(Canvas& canvas, int x, int y, int radius, int rank = 1);  // a leader's: a small gold crown above it, a star over it for each rank  // a small shield at its lower left, a small tool at its upper right
+void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius);  // a small shield at its lower left, a small tool at its lower right
+void draw_hide(Canvas& canvas, int hide, int x, int y, int radius);  // the hide it wears, a pelt below it, coloured as the animal it came from
+void draw_flag(Canvas& canvas, Color colour, int x, int y, int radius);  // its herd's flag at its upper right, in the herd's colour
+Rect flag_box(int x, int y, int radius);  // where draw_flag draws, to click
+void draw_wagon(Canvas& canvas, int x, int y, int size);  // a small wagon, centred at (x, y), about `size` across
+constexpr int MAP_MARKS_RADIUS = 6;  // a dot on the map this big, in design pixels, shows its herd's flag and its leader
+void draw_crown(Canvas& canvas, int x, int y, int radius, int rank = 1);  // a leader's: a small gold crown above it, a star over it for each rank
 void draw_materials(Canvas& canvas, int stone, int bone, int wood, int cx, int cy, int half);  // small marks along the foot of a square
 
 // Things on the ground, each drawn once for a size, `size` pixels square, and kept: a log cabin for a shelter, a stack

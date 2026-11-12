@@ -410,7 +410,7 @@ void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) 
         canvas.polygon({{cx - size, cy - size}, {cx + size, cy - size}, {cx + size, cy}, {cx, cy + size}, {cx - size, cy}}, colour);
     }
     if (!wields) return;
-    const int cx = x + radius, cy = y - radius * 3 / 5;
+    const int cx = x + radius, cy = y + radius * 3 / 5;  // at its lower right, the upper right its herd's flag's
     const Color colour = wields == 2 ? Color{122, 80, 44} : wields == 1 ? Color{236, 226, 205} : Color{136, 138, 142};
     // A point along the tool's handle, from its foot (-1) to its tip (1), and across it.
     const auto at = [&](double along, double across) {
@@ -429,12 +429,75 @@ void draw_gear(Canvas& canvas, int wields, int wears, int x, int y, int radius) 
     }
 }
 
+void draw_hide(Canvas& canvas, int hide, int x, int y, int radius) {
+    if (hide <= 0) return;
+    // A stretched pelt below it: four legs and a body, in the colour of the animal it came from, darker at its edge.
+    static constexpr std::array<Color, 4> PELTS = {{{0, 0, 0}, {201, 176, 128}, {139, 98, 62}, {118, 120, 128}}};
+    const Color pelt = PELTS[static_cast<std::size_t>(std::clamp(hide, 1, 3))], edge = scaled(pelt, 0.6);
+    const int w = std::max(3, radius / 2), h = std::max(2, radius * 3 / 8), cy = y + radius + h / 3;
+    const auto shape = [&](int grow) {
+        return std::vector<std::pair<int, int>>{{x - w / 2 - grow, cy - h - grow}, {x - w / 4, cy - h / 2}, {x + w / 4, cy - h / 2},
+                                                {x + w / 2 + grow, cy - h - grow}, {x + w / 2 - w / 6, cy}, {x + w / 2 + grow, cy + h + grow},
+                                                {x + w / 4, cy + h / 2}, {x - w / 4, cy + h / 2}, {x - w / 2 - grow, cy + h + grow},
+                                                {x - w / 2 + w / 6, cy}};
+    };
+    canvas.polygon(shape(1), edge);
+    canvas.polygon(shape(0), pelt);
+    if (hide == 3) {  // a predator's, striped
+        for (const int dx : {-w / 4, 0, w / 4}) canvas.line(x + dx, cy - h / 2, x + dx, cy + h / 2, edge, std::max(1, w / 10));
+    }
+}
+
+Rect flag_box(int x, int y, int radius) {
+    const int size = std::max(4, radius * 3 / 5);
+    return Rect{x + radius - size / 4, y - radius - size, size + size / 2, size + size / 2};
+}
+
+void draw_flag(Canvas& canvas, Color colour, int x, int y, int radius) {
+    // A pole at its upper right and a pennant flying from it, outlined to stand out on any ground.
+    const Rect box = flag_box(x, y, radius);
+    const int pole_x = box.x + 1, top = box.y, foot = box.bottom(), size = box.h * 2 / 3;
+    canvas.line(pole_x, top, pole_x, foot, Color{24, 30, 30}, std::max(2, size / 4));
+    canvas.line(pole_x, top, pole_x, foot, {222, 214, 196}, std::max(1, size / 8));
+    const std::vector<std::pair<int, int>> pennant{{pole_x, top}, {pole_x + size, top + size / 3}, {pole_x, top + size * 2 / 3}};
+    canvas.polygon({{pole_x - 1, top - 1}, {pole_x + size + 2, top + size / 3}, {pole_x - 1, top + size * 2 / 3 + 1}}, Color{24, 30, 30});
+    canvas.polygon(pennant, colour);
+    canvas.polygon({{pole_x, top}, {pole_x + size, top + size / 3}, {pole_x, top + size / 3}}, mixed(colour, {255, 255, 255}, 0.3));  // lit above
+}
+
+void draw_wagon(Canvas& canvas, int x, int y, int size) {
+    // A box on two wheels, its planks marked, as it stands beside one who drags it.
+    const Color wood{150, 104, 62}, dark{96, 64, 38}, wheel{70, 54, 40};
+    const int w = std::max(8, size), h = std::max(4, size * 2 / 5), left = x - w / 2, top = y - h / 2 - size / 8;
+    canvas.rect({left - 1, top - 1, w + 2, h + 2}, Color{24, 30, 30});
+    canvas.rect({left, top, w, h}, wood);
+    for (int plank = 1; plank < 3; ++plank) canvas.line(left + 1, top + plank * h / 3, left + w - 2, top + plank * h / 3, dark);
+    const int r = std::max(2, size / 5);
+    for (const int wx : {left + w / 4, left + w * 3 / 4}) {
+        canvas.circle(wx, top + h + r / 2, r + 1, Color{24, 30, 30});
+        canvas.circle(wx, top + h + r / 2, r, wheel);
+        canvas.circle(wx, top + h + r / 2, std::max(1, r / 3), {196, 176, 140});
+    }
+    canvas.line(left + w, top + h / 2, left + w + size / 3, top + h / 2 - size / 6, dark, std::max(1, size / 10));  // its shaft
+}
+
 void draw_crown(Canvas& canvas, int x, int y, int radius, int rank) {
     const int half = std::max(3, radius * 3 / 4), high = std::max(3, radius * 3 / 4);
     const int foot = y - radius - RING_WIDTH - 1;  // its band just clear of the ring
-    canvas.polygon({{x - half, foot}, {x + half, foot}, {x + half, foot - high}, {x + half / 2, foot - high / 2}, {x, foot - high},
-                    {x - half / 2, foot - high / 2}, {x - half, foot - high}},
-                   Color{236, 190, 60});
+    // Shaded gold: an outline, the body in a deeper gold, its left lit, a bright band along its foot with a jewel.
+    const auto points = [&](int grow) {
+        return std::vector<std::pair<int, int>>{{x - half - grow, foot + grow}, {x + half + grow, foot + grow}, {x + half + grow, foot - high - grow},
+                                                {x + half / 2, foot - high / 2 - grow}, {x, foot - high - grow}, {x - half / 2, foot - high / 2 - grow},
+                                                {x - half - grow, foot - high - grow}};
+    };
+    canvas.polygon(points(1), Color{92, 64, 14});
+    canvas.polygon(points(0), Color{206, 152, 36});
+    canvas.polygon({{x - half, foot}, {x, foot}, {x, foot - high}, {x - half / 2, foot - high / 2}, {x - half, foot - high}},
+                   Color{246, 204, 82});  // the lit side
+    const int band = std::max(1, high / 4);
+    canvas.fill_rect({x - half, foot - band, 2 * half + 1, band + 1}, Color{252, 226, 128});
+    for (const int tip : {x - half, x, x + half}) canvas.circle(tip, foot - high, std::max(1, half / 5), Color{255, 240, 170});  // its points' pearls
+    canvas.circle(x, foot - band / 2, std::max(1, half / 4), Color{196, 40, 52});  // a jewel
     // A small star for each rank, in a row above it: a chief one, a king six.
     const int stars = std::clamp(rank, 0, MAX_RANK), outer = std::max(2, radius / 3), inner = std::max(1, outer * 2 / 5);
     const int cy = foot - high - outer - 2, step = 2 * outer + std::max(1, outer / 2);

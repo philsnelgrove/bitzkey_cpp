@@ -15,6 +15,7 @@
 #include "ui/App.hpp"
 #include "ui/CatalogScreen.hpp"
 #include "ui/Designer.hpp"
+#include "ui/Inspector.hpp"
 #include "ui/Language.hpp"
 #include "ui/Look.hpp"
 #include "ui/Setup.hpp"
@@ -155,6 +156,30 @@ struct Screens {
         const double ms = (SDL_GetPerformanceCounter() - start) * 1000.0 / SDL_GetPerformanceFrequency() / 20;
         std::cout << "drawing a frame with " << app.simulation_->living().size() << " alive: " << ms << " ms\n";
         save(canvas, folder / "app-inspector.bmp");
+        {  // portraits at several sizes, with all their marks: hide, gear, crown, herd flag, leader, wagon
+            canvas.fill_rect({0, 0, canvas.width(), canvas.height()}, {27, 37, 37});
+            std::vector<Bitzkey*> sitters;
+            for (const auto& agent : app.simulation_->agents()) {
+                if (agent->alive() && agent->species != Species::Plant && sitters.size() < 4) sitters.push_back(agent.get());
+            }
+            int x = 80;
+            for (std::size_t index = 0; index < sitters.size(); ++index) {
+                Bitzkey& sitter = *sitters[index];
+                sitter.hide = static_cast<int>(index % 3) + 1;
+                sitter.weapon = index % 2 ? StoneAxe : Club;
+                sitter.leader = index == 0;
+                sitter.rank = 3;
+                PortraitMarks marks{Color{80, 160, 230}, sitters[(index + 1) % sitters.size()], index == 0};
+                int y = 60;
+                for (const int radius : {6, 12, 24, 48}) {
+                    y += radius * 2 + 40;
+                    draw_portrait(canvas, sitter, x, y, radius, std::max(RING_WIDTH, radius * 2 / 5), true, marks);
+                    y += radius * 2;
+                }
+                x += 240;
+            }
+            save(canvas, folder / "portraits.bmp");
+        }
         app.open_death_report();
         app.draw(canvas);
         save(canvas, folder / "app-deaths.bmp");

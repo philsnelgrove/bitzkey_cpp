@@ -443,6 +443,18 @@ void App::click(int x, int y) {
             return;
         }
     }
+    for (const auto& [box, identifier] : herd_flags_) {
+        if (box.contains(x, y)) {
+            select_herd(identifier);
+            return;
+        }
+    }
+    for (const auto& [box, identifier] : leader_chips_) {
+        if (box.contains(x, y)) {
+            select(identifier);
+            return;
+        }
+    }
     if (deaths_button_ && deaths_button_->contains(x, y)) {
         open_death_report();
     } else if (brains_button_ && brains_button_->contains(x, y)) {
@@ -1042,6 +1054,32 @@ void App::select_group(int realm) {
     show_insights_ = false;
 }
 
+PortraitMarks App::marks_of(const Bitzkey& agent, bool wagon) const {
+    PortraitMarks marks;
+    if (agent.species == Species::Plant || !agent.alive()) return marks;
+    if (const auto realm = simulation_->realms().find(agent.realm); agent.realm >= 0 && realm != simulation_->realms().end()) {
+        marks.herd = to_color(color_from_word(realm->second.ring));
+    }
+    if (agent.follows >= 0 && agent.follows != agent.identifier) {
+        if (const Bitzkey* leader = simulation_->find_agent(agent.follows); leader && leader->alive()) marks.leader = leader;
+    }
+    marks.wagon = wagon && agent.wagon >= 0;
+    return marks;
+}
+
+void App::select_herd(int identifier) {
+    const Bitzkey* agent = simulation_->find_agent(identifier);
+    if (!agent || agent->realm < 0) return;
+    std::set<int> herd;
+    for (const Bitzkey* other : simulation_->living()) {
+        if (other->realm == agent->realm) herd.insert(other->identifier);
+    }
+    graph_.select_all(herd);  // the map and the graph share one selection
+    selected_id_ = identifier;  // it stays in the inspector
+    show_insights_ = false;
+    say(format("Selected its herd: %zu.", herd.size()));
+}
+
 void App::select(int identifier) {
     selected_id_ = identifier;
     graph_.select_only(identifier);  // the map and the graph share one selection
@@ -1129,6 +1167,8 @@ void App::draw_exemplar_menu(Canvas& canvas) {
 void App::draw_exemplars(Canvas& canvas) {
     // Five cards a side, evenly spaced, each the living animal that stands out in its way; a click selects it.
     exemplar_cards_.clear();
+    herd_flags_.clear();  // drawn afresh each frame, with the cards and the panel
+    leader_chips_.clear();
     exemplar_titles_.clear();
     const std::vector<Exemplar> found = exemplars();
     TTF_Font* small = UI.font(Face::Sans, 12);
@@ -1157,7 +1197,9 @@ void App::draw_exemplars(Canvas& canvas) {
             }
             const int radius = std::max(1, std::min(UI(16), height / 5));
             const int px = card.x + UI(10) + radius + RING_WIDTH, py = card.y + (height + UI(20)) / 2;
-            draw_portrait(canvas, *exemplar.agent, px, py, radius, RING_WIDTH, true);
+            const PortraitSpots spots = draw_portrait(canvas, *exemplar.agent, px, py, radius, RING_WIDTH, true, marks_of(*exemplar.agent));
+            if (spots.flag) herd_flags_.emplace_back(*spots.flag, exemplar.agent->identifier);
+            if (spots.leader) leader_chips_.emplace_back(*spots.leader, marks_of(*exemplar.agent).leader->identifier);
             const int x = px + radius + UI(12);
             const std::string id = format("#%03d", exemplar.agent->identifier);
             canvas.text(small, id, {231, 236, 222}, x, py - UI(24));
@@ -1851,7 +1893,18 @@ void App::draw_world(Canvas& canvas) {
         }
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
-        draw_gear(canvas, agent->weapon ? agent->weapon : agent->carried_stone > 0 ? 4 : 0, agent->armour, px, py, radius);
+        if (agent->species != Species::Plant) {
+            draw_hide(canvas, agent->hide, px, py, radius);
+            draw_gear(canvas, agent->weapon ? agent->weapon : agent->carried_stone > 0 ? 4 : 0, agent->armour, px, py, radius);
+            if (radius >= UI(MAP_MARKS_RADIUS) && agent->alive()) {  // near enough to see its herd's flag and the one it follows
+                const PortraitMarks marks = marks_of(*agent);
+                if (marks.herd) draw_flag(canvas, *marks.herd, px, py, radius);
+                if (marks.leader) {
+                    const int small = std::max(2, radius * 2 / 5);
+                    draw_bitzkey(canvas, marks.leader->dna, px - radius + small / 2, py - radius + small / 2, small, 1, true);
+                }
+            }
+        }
         if (agent->alive() && agent->leader) draw_crown(canvas, px, py, radius, agent->rank);  // recognised a leader, a star for each rank
         if ((selected_id_ && agent->identifier == *selected_id_) || (agent->alive() && graph_.selection().contains(agent->identifier))) {
             draw_reticle(canvas, px, py, static_cast<int>(std::lround((radius + RING_WIDTH + UI(3)) * reticle_pulse())));
@@ -1915,8 +1968,13 @@ void App::draw_sidebar(Canvas& canvas) {
         canvas.text(font, std::to_string(counts[index]), {231, 236, 222}, x + width - UI(32), y);
     }
     if (const Bitzkey* chosen = show_insights_ ? nullptr : selected()) {  // its portrait, three times as large, behind the lines and words
-        const int radius = 6 * dot_radius(chosen->body[Size], UI(DOT_RADIUS_LARGEST));
-        draw_portrait(canvas, *chosen, x + radius + 3 * RING_WIDTH, UI(348) + radius / 3, radius, 6 * RING_WIDTH, chosen->alive());
+        // Its ring in proportion to it, and never so small that it loses its social background and icon.
+        const int radius = 6 * dot_radius(chosen->body[Size], UI(DOT_RADIUS_LARGEST), UI(ICON_MIN_RADIUS));
+        const int ring = std::max(RING_WIDTH, radius * 2 / 5);
+        const PortraitMarks marks = marks_of(*chosen, true);
+        const PortraitSpots spots = draw_portrait(canvas, *chosen, x + radius + ring + UI(6), UI(348) + radius / 3, radius, ring, chosen->alive(), marks);
+        if (spots.flag) herd_flags_.emplace_back(*spots.flag, chosen->identifier);
+        if (spots.leader) leader_chips_.emplace_back(*spots.leader, marks.leader->identifier);
     }
     canvas.line(x, UI(286), x + width, UI(286), {54, 68, 62});
     add_button_.reset();

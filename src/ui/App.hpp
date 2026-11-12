@@ -13,6 +13,7 @@
 #include "net/Pool.hpp"
 #include "net/ProbeServer.hpp"
 #include "net/Worker.hpp"
+#include "ui/Inspector.hpp"
 #include "ui/Canvas.hpp"
 #include "ui/ColourGraph.hpp"
 #include "ui/Dialog.hpp"
@@ -192,6 +193,10 @@ private:
     std::optional<Rect> catalog_button_;
     std::optional<std::tuple<int, int, bool>> marquee_from_;  // a left press on the map: where, and whether CTRL was down
     std::vector<std::pair<Rect, int>> exemplar_cards_;  // each card beside the map, and whom it shows
+    std::vector<std::pair<Rect, int>> herd_flags_;      // each herd flag drawn where it may be clicked, and whose herd
+    std::vector<std::pair<Rect, int>> leader_chips_;    // each leader drawn small, and who
+    PortraitMarks marks_of(const Bitzkey& agent, bool wagon = false) const;  // its herd's colour and its leader, for its portrait
+    void select_herd(int identifier);  // the whole of its herd on the map, it still in the inspector
     std::vector<Rect> exemplar_titles_;                 // each card's title, a menu of statistics, card by card
     std::optional<int> exemplar_menu_;                  // the card whose menu is open
     std::vector<std::pair<Rect, int>> menu_items_;      // the open menu's choices, and which statistic each is

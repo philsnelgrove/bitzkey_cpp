@@ -72,10 +72,25 @@ void bar(Canvas& canvas, int x, int y, int width, double value, Color color) {
 
 }  // namespace
 
-void draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive) {
+PortraitSpots draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive, const PortraitMarks& marks) {
+    PortraitSpots spots;
+    const int reach = radius + ring;  // its marks just clear of its ring
     draw_bitzkey(canvas, agent.dna, cx, cy, radius, ring, alive);
+    if (agent.species == Species::Plant) return spots;
+    draw_hide(canvas, agent.hide, cx, cy, reach);
     draw_gear(canvas, agent.weapon ? agent.weapon : agent.carried_stone > 0 ? 4 : 0, agent.armour, cx, cy, radius);
     if (agent.alive() && agent.leader) draw_crown(canvas, cx, cy, radius, agent.rank);
+    if (marks.herd) {
+        draw_flag(canvas, *marks.herd, cx, cy, reach);
+        spots.flag = flag_box(cx, cy, reach);
+    }
+    if (marks.leader) {  // the one it follows, small, at its upper left
+        const int small = std::max(3, reach * 2 / 5), lx = cx - reach + small / 2, ly = cy - reach + small / 2;
+        draw_bitzkey(canvas, marks.leader->dna, lx, ly, small, std::max(1, small / 3), marks.leader->alive());
+        spots.leader = Rect{lx - small - 2, ly - small - 2, 2 * small + 4, 2 * small + 4};
+    }
+    if (marks.wagon) draw_wagon(canvas, cx + reach + std::max(8, reach * 3 / 4), cy + reach / 2, std::max(10, reach));
+    return spots;
 }
 
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width, bool known,
