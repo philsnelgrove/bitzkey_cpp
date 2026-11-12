@@ -30,6 +30,7 @@ struct PortraitMarks {
     std::optional<Color> herd;
     const Bitzkey* leader = nullptr;
     bool wagon = false;
+    bool stars = true;  // a leader's stars over its crown; none where its title is written beside it
 };
 // Where a portrait drew what may be clicked: its herd's flag and its leader.
 struct PortraitSpots {
@@ -39,6 +40,9 @@ struct PortraitSpots {
 // stars, and its herd's flag at its upper right and the one it follows at its upper left, small; and a wagon beside it.
 PortraitSpots draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy, int radius, int ring, bool alive, const PortraitMarks& marks = {});
 
+// The room the last details left free, beside the social background's last row and above the body: where the panel
+// draws the selected Bitzkey's portrait.
+const Rect& portrait_room();
 // Where the last details drew the mind's, body's and social background's colour chits, each with its hex.
 const std::array<Rect, 3>& genome_swatches();
 // A popup of one of those words (0 mind, 1 body, 2 social): its hex, its binary, and its genes labelled.

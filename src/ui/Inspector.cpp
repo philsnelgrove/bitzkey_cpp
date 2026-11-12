@@ -79,7 +79,7 @@ PortraitSpots draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy
     if (agent.species == Species::Plant) return spots;
     draw_hide(canvas, agent.hide, cx, cy, reach);
     draw_gear(canvas, agent.weapon ? agent.weapon : agent.carried_stone > 0 ? 4 : 0, agent.armour, cx, cy, radius);
-    if (agent.alive() && agent.leader) draw_crown(canvas, cx, cy, radius, agent.rank);
+    if (agent.alive() && agent.leader) draw_crown(canvas, cx, cy, radius, marks.stars ? agent.rank : 0);
     if (marks.herd) {
         draw_flag(canvas, *marks.herd, cx, cy, reach);
         spots.flag = flag_box(cx, cy, reach);
@@ -93,11 +93,17 @@ PortraitSpots draw_portrait(Canvas& canvas, const Bitzkey& agent, int cx, int cy
     return spots;
 }
 
+namespace {
+Rect last_portrait_room{};
+}  // namespace
+
+const Rect& portrait_room() { return last_portrait_room; }
+
 void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::function<int(int)>& at, int width, bool known,
                   std::optional<double> here, const std::string& note, bool portrait) {
-    TTF_Font* font = UI.font(Face::Sans, 15);
-    TTF_Font* small = UI.font(Face::Sans, 12);
-    TTF_Font* mono_small = UI.font(Face::Mono, 12);
+    TTF_Font* font = UI.font(Face::Sans, 14);  // a point under the rest of the sidebar: the details are dense, and their tooltips say more
+    TTF_Font* small = UI.font(Face::Sans, 11);
+    TTF_Font* mono_small = UI.font(Face::Mono, 11);
     // At twice the size it has on the map, beside its name and its colours (unless drawn larger, behind, by the caller): never
     // so small that it loses its social background and icon, as the exemplar cards draw it, its ring in proportion.
     if (portrait) {
@@ -105,18 +111,19 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
         draw_portrait(canvas, agent, x + UI(16), at(16), radius, std::max(RING_WIDTH, radius / 4), agent.alive() || !known);
     }
     draw_icon(canvas, agent.species, x + width - UI(12), at(11), UI(9), {220, 229, 211});
+    const int head_x = portrait ? x + UI(40) : x;  // its name and colours after its portrait, or at the left when it is drawn below
     if (known && agent.alive() && agent.leader && agent.rank > 0) {  // a titled leader: its title in gold in its species' place (its icon shows that)
         const std::string id = format("#%03d  ", agent.identifier);
         const std::string title = as_shown(upper(tr(TITLES[static_cast<std::size_t>(std::clamp(agent.rank, 0, MAX_RANK))])));
-        canvas.text(font, id, {238, 238, 220}, x + UI(40), at(0));
-        const int after = x + UI(40) + Canvas::text_width(font, id);
+        canvas.text(font, id, {238, 238, 220}, head_x, at(0));
+        const int after = head_x + Canvas::text_width(font, id);
         canvas.text(font, title, {236, 190, 60}, after, at(0));
         canvas.text(font, as_shown("  " + upper(tr(agent.nocturnal ? "nocturnal" : "diurnal"))), {238, 238, 220},
                     after + Canvas::text_width(font, title), at(0));
     } else {
         canvas.text(font, as_shown(format("#%03d  %s  %s", agent.identifier, upper(tr(species_name(agent.species))).c_str(),
                                           upper(tr(agent.nocturnal ? "nocturnal" : "diurnal")).c_str())),
-                    {238, 238, 220}, x + UI(40), at(0));
+                    {238, 238, 220}, head_x, at(0));
     }
     {  // its terrain on the line below, at the right, clear of the species icon
         const std::string terrain = as_shown(upper(tr(terrain_name(agent.terrain))));
@@ -124,7 +131,7 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     }
     last_traits.clear();
     {  // its three colours as swatches, the hex beside each
-        int across = x + UI(40), part = 0;  // its three colours as chits: the mouse over one shows that word, gene by gene
+        int across = head_x, part = 0;  // its three colours as chits: the mouse over one shows that word, gene by gene
         for (const auto& [name, word] : {std::pair{"MIND", mind_word(agent.dna)}, std::pair{"BODY", body_word(agent.dna)},
                                          std::pair{"SOCIAL", social_word(agent.dna)}}) {
             const int swatch = UI(10), from = across;
@@ -178,6 +185,8 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
         }
         if (first == DOT_TRAIT_COUNT) {
             canvas.text(mono_small, "neurodiv.", {175, 192, 172}, left, at(62 + SOCIAL_TRAIT_COUNT * 14));
+            const int free_x = numbers + digits + UI(4);  // the room beside this last row and down to the body
+            last_portrait_room = Rect{free_x, at(52 + SOCIAL_TRAIT_COUNT * 14), x + width - free_x, at(204) - at(52 + SOCIAL_TRAIT_COUNT * 14)};
             last_traits.push_back({Rect{left, at(61 + SOCIAL_TRAIT_COUNT * 14), numbers + digits - left, UI(14)}, NEURODIVERGENCE_SPOT});
             canvas.text(mono_small, format("%2d", decode_neurodivergence(agent.dna)), {175, 192, 172}, numbers,
                         at(62 + SOCIAL_TRAIT_COUNT * 14));

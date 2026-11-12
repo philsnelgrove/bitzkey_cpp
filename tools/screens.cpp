@@ -147,6 +147,7 @@ struct Screens {
                 agent->rank = 5;
                 agent->weapon = StoneAxe;
                 agent->armour = BoneArmour;
+                agent->hide = 3;
                 break;
             }
         }

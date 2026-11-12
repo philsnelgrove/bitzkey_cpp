@@ -1967,15 +1967,6 @@ void App::draw_sidebar(Canvas& canvas) {
         canvas.text(small, upper(SPECIES[index]), {149, 170, 150}, x, y);
         canvas.text(font, std::to_string(counts[index]), {231, 236, 222}, x + width - UI(32), y);
     }
-    if (const Bitzkey* chosen = show_insights_ ? nullptr : selected()) {  // its portrait, three times as large, behind the lines and words
-        // Its ring in proportion to it, and never so small that it loses its social background and icon.
-        const int radius = 6 * dot_radius(chosen->body[Size], UI(DOT_RADIUS_LARGEST), UI(ICON_MIN_RADIUS));
-        const int ring = std::max(RING_WIDTH, radius * 2 / 5);
-        const PortraitMarks marks = marks_of(*chosen, true);
-        const PortraitSpots spots = draw_portrait(canvas, *chosen, x + radius + ring + UI(6), UI(348) + radius / 3, radius, ring, chosen->alive(), marks);
-        if (spots.flag) herd_flags_.emplace_back(*spots.flag, chosen->identifier);
-        if (spots.leader) leader_chips_.emplace_back(*spots.leader, marks.leader->identifier);
-    }
     canvas.line(x, UI(286), x + width, UI(286), {54, 68, 62});
     add_button_.reset();
     catalog_button_.reset();
@@ -1998,6 +1989,20 @@ void App::draw_sidebar(Canvas& canvas) {
     }
 
     draw_details(canvas, *agent, x, [](int offset) { return UI(332 + offset); }, width, true, simulation_->temperature(agent->y), {}, false);
+    {  // its portrait in the room the details leave beside the social background, as large as fits with its marks
+        const Rect room = portrait_room();
+        PortraitMarks marks = marks_of(*agent, true);
+        const bool wagon = marks.wagon;
+        marks.wagon = false;  // drawn to its left instead, under the social background, where there is room
+        // At the panel's right, below the last row and above the body's rows, its title written above instead of its stars.
+        marks.stars = false;
+        const int radius = UI(13), ring = std::max(RING_WIDTH, radius * 2 / 5);
+        const int cx = room.right() - radius - ring - UI(10), cy = UI(332 + 198);
+        const PortraitSpots spots = draw_portrait(canvas, *agent, cx, cy, radius, ring, agent->alive(), marks);
+        if (wagon) draw_wagon(canvas, cx - radius - ring - UI(26), room.bottom() - UI(10), UI(20));
+        if (spots.flag) herd_flags_.emplace_back(*spots.flag, agent->identifier);
+        if (spots.leader) leader_chips_.emplace_back(*spots.leader, marks.leader->identifier);
+    }
     {  // the mouse over a colour chit: that word, gene by gene
         int mouse_x = 0, mouse_y = 0;
         SDL_GetMouseState(&mouse_x, &mouse_y);
