@@ -28,6 +28,19 @@ FetchContent_Declare(vulkan_headers
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(vulkan_headers)
 
+# mimalloc, replacing the system allocator for new and delete: the brains' weight vectors are large, and the Windows
+# heap searches its free lists for each one, under one lock, while every core makes and frees them at once.
+set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
+set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+# Initialised with the C runtime, not before it: its early hook would run thread-local constructors too soon.
+set(MI_WIN_USE_FLS ON CACHE BOOL "" FORCE)
+FetchContent_Declare(mimalloc
+    URL https://github.com/microsoft/mimalloc/archive/refs/tags/v2.2.4.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(mimalloc)
+
 # doctest for the unit tests.
 FetchContent_Declare(doctest
     URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.12.tar.gz
@@ -58,8 +71,8 @@ add_library(bitzkey_core STATIC
     src/core/GpuBrains.cpp
     src/core/WorldFile.cpp
 )
-target_include_directories(bitzkey_core PUBLIC src)
-target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json PRIVATE Vulkan::Headers)
+target_include_directories(bitzkey_core PUBLIC src ${mimalloc_SOURCE_DIR}/include)
+target_link_libraries(bitzkey_core PUBLIC nlohmann_json::nlohmann_json mimalloc-static PRIVATE Vulkan::Headers)
 target_compile_definitions(bitzkey_core PUBLIC BITZKEY_VERSION="${BITZKEY_VERSION}")  # for every screen's header
 
 # Workers: sharing a world's thinking with other Bitzkeys (this app or the Linux daemon) over the network, as their
@@ -96,6 +109,7 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_ttf CONFIG REQUIRED)
 
 add_executable(bitzkey WIN32
+    src/core/Memory.cpp
     src/ui/main.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc"
     src/ui/Ui.cpp
@@ -127,7 +141,7 @@ add_custom_command(TARGET bitzkey POST_BUILD
     COMMAND_EXPAND_LISTS)
 
 # Screenshots of every screen, drawn off-screen, for checking the interface.
-add_executable(bitzkey_screens tools/screens.cpp
+add_executable(bitzkey_screens src/core/Memory.cpp tools/screens.cpp
     src/ui/Ui.cpp src/ui/Canvas.cpp src/ui/Sound.cpp src/ui/Window.cpp src/ui/Look.cpp src/ui/Icons.cpp src/ui/Dialog.cpp src/ui/Report.cpp src/ui/Setup.cpp
     src/ui/Advanced.cpp src/ui/Inspector.cpp src/ui/Designer.cpp src/ui/CatalogScreen.cpp src/ui/ColourGraph.cpp src/ui/App.cpp src/ui/Platform.cpp
     src/ui/Language.cpp src/ui/LanguageMenu.cpp src/ui/Fields.cpp src/ui/WorkersScreen.cpp src/ui/WorkerScreen.cpp)
@@ -144,6 +158,7 @@ add_library(bitzkey_report_core STATIC
 )
 target_link_libraries(bitzkey_report_core PUBLIC bitzkey_net)
 add_executable(bitzkey_report WIN32
+    src/core/Memory.cpp
     src/report/main.cpp
     src/report/Panel.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/bitzkey.rc"
@@ -154,11 +169,12 @@ add_custom_command(TARGET bitzkey_report POST_BUILD
     COMMAND_EXPAND_LISTS)
 
 # A command-line runner: run worlds headless, benchmark, trace, export.
-add_executable(bitzkey_cli src/cli/main.cpp)
+add_executable(bitzkey_cli src/cli/main.cpp src/core/Memory.cpp)
 target_link_libraries(bitzkey_cli PRIVATE bitzkey_net)
 
 # Unit tests.
 add_executable(bitzkey_tests
+    src/core/Memory.cpp
     tests/test_main.cpp
     tests/test_random.cpp
     tests/test_genome.cpp

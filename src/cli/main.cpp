@@ -687,6 +687,9 @@ int main(int argc, char** argv) {
             std::printf("ms a turn: upkeep %.2f  sense %.2f  think %.2f  learn %.2f  choose %.2f  act %.2f  after %.2f\n",
                         took.upkeep * each, took.sense * each, took.think * each, took.learn * each, took.choose * each,
                         took.act * each, took.after * each);
+            std::printf("parts a turn: index %.2f  births %.2f  witnessing %.2f  conceiving %.2f  witnessed_learning %.2f  teaching %.2f  cleanup %.2f\n",
+                        took.index * each, took.births * each, took.witnessing * each, took.conceiving * each,
+                        took.witnessed_learning * each, took.teaching * each, took.cleanup * each);
             // Within acting, the costliest actions first: ms a turn, how many took it a turn, and µs each.
             std::vector<int> order(ACTION_COUNT);
             std::iota(order.begin(), order.end(), 0);
