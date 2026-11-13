@@ -58,6 +58,9 @@ void usage() {
         "  --rules                     list the advanced rules, with their defaults and limits\n"
         "  --gpu                       think on every GPU found (the USE_GPU rule), in floats\n"
         "  --profile                   say at the end how long each part of a turn took\n"
+        "  --digest                    print a number for the whole world beside each report, to compare two runs\n"
+        "  --tiles-one-by-one          act the map's tiles one at a time (the same world, slower: a check)\n"
+        "  --guard                     count what acting animals touch beyond their tiles' reach (a check)\n"
         "  --probe PORT                serve the probe on 127.0.0.1:PORT while it runs, as the app does\n";
 }
 
@@ -484,7 +487,7 @@ private:
 int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
-    bool profile = false, year_length_given = false;
+    bool profile = false, year_length_given = false, digest = false;
     std::optional<int> probe_port;
     std::optional<std::string> trace_path, migration_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
     rules::Values changes;
@@ -504,6 +507,18 @@ int main(int argc, char** argv) {
             if (flag == "--rules") {
                 list_rules();
                 return 0;
+            }
+            if (flag == "--digest") {  // a number for the whole world beside each report, to compare two runs
+                digest = true;
+                continue;
+            }
+            if (flag == "--tiles-one-by-one") {  // the tiles acted one at a time: what side by side must equal
+                Simulation::tiles_one_by_one = true;
+                continue;
+            }
+            if (flag == "--guard") {  // count what acting animals touch beyond their tiles' reach
+                Simulation::guard_claims = true;
+                continue;
             }
             if (flag == "--profile") {  // where each turn's time goes, at the end
                 profile = true;
@@ -633,6 +648,13 @@ int main(int argc, char** argv) {
             if (diagnosis) diagnosis->before(world);
             if (ecology) ecology->before(world);
             world.advance();
+            if (const char* from = std::getenv("BITZKEY_DUMP_FROM"); from && world.turn() >= std::atoi(from)) {  // each animal, to compare two runs
+                std::ofstream out(std::string(std::getenv("BITZKEY_DUMP_TO")) + "." + std::to_string(world.turn()) + ".txt");
+                for (const Bitzkey* agent : world.living()) {
+                    out << agent->identifier << ' ' << static_cast<int>(agent->species) << ' ' << agent->x << ' ' << agent->y << ' ' << agent->health << ' '
+                        << agent->hunger << ' ' << agent->reward << ' ' << agent->stamina << ' ' << agent->known.size() << ' ' << agent->last_action << '\n';
+                }
+            }
             if (diagnosis) diagnosis->after(world);
             if (ecology) ecology->after(world);
             if (migration) migration->after(world);
@@ -647,6 +669,7 @@ int main(int argc, char** argv) {
                 for (const Bitzkey* agent : world.living()) counts[static_cast<int>(agent->species)] += 1;
                 std::printf("turn %5d  plants %4d  grazers %5d  omnivores %5d  predators %5d  %7.2f ms/turn\n",
                             world.turn(), counts[0], counts[1], counts[2], counts[3], ms);
+                if (digest) std::printf("           digest %016llx\n", static_cast<unsigned long long>(world.digest()));
                 if (world.has_sea()) {  // and each species by terrain: land, sea, air, both
                     int terrains[4][4] = {};
                     for (const Bitzkey* agent : world.living()) terrains[static_cast<int>(agent->species)][static_cast<int>(agent->terrain)] += 1;
@@ -669,6 +692,8 @@ int main(int argc, char** argv) {
         }
         const double total = std::chrono::duration<double>(Clock::now() - start).count();
         std::printf("%d turns in %.2f s (%.2f ms/turn)\n", world.turn() - first_turn, total, total * 1000 / std::max(1, world.turn() - first_turn));
+        if (digest) std::printf("digest %016llx\n", static_cast<unsigned long long>(world.digest()));
+        if (Simulation::guard_claims) std::printf("claim breaches %lld\n", Simulation::claim_breaches.load());
         if (diagnosis) {
             const std::string summary = diagnosis->summary() + "\n" + ecology->summary();
             std::ofstream(*diagnose_path + ".summary.txt") << summary;
@@ -690,6 +715,9 @@ int main(int argc, char** argv) {
             std::printf("parts a turn: index %.2f  births %.2f  witnessing %.2f  conceiving %.2f  witnessed_learning %.2f  teaching %.2f  cleanup %.2f\n",
                         took.index * each, took.births * each, took.witnessing * each, took.conceiving * each,
                         took.witnessed_learning * each, took.teaching * each, took.cleanup * each);
+            std::printf("tiles a turn: upkeep ahead %.2f  laid %.2f  worked %.2f  beyond %.2f  seen %.2f;  acting laid %.2f  worked %.2f  beyond %.2f\n",
+                        took.ahead * each, took.tiles[0][0] * each, took.tiles[0][1] * each, took.tiles[0][2] * each, took.upkeep_seen * each,
+                        took.tiles[1][0] * each, took.tiles[1][1] * each, took.tiles[1][2] * each);
             // Within acting, the costliest actions first: ms a turn, how many took it a turn, and µs each.
             std::vector<int> order(ACTION_COUNT);
             std::iota(order.begin(), order.end(), 0);
