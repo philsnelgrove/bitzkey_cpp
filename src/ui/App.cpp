@@ -2167,31 +2167,6 @@ void App::draw_insights(Canvas& canvas, int x, int width) {
         }
     }
 
-    constexpr std::array<const char*, 3> BLOCK_ABOUT = {"The groups least likely to breed when they have the chance.",
-                                                        "The groups most likely to breed when they have the chance.",
-                                                        "The groups least likely to attack when they have the chance."};
-    std::size_t block = 0;
-    const std::array<std::pair<const char*, std::vector<Insights::Extreme>>, 3> blocks = {
-        std::pair{"LEAST KEEN TO BREED", insights.extremes(Breed, 3, true)},
-        std::pair{"KEENEST TO BREED", insights.extremes(Breed, 2, false)},
-        std::pair{"LEAST KEEN TO FIGHT", insights.extremes(Attack, 2, true)}};
-    y += 6;
-    for (const auto& [title, groups] : blocks) {
-        row_hint(y, 19, BLOCK_ABOUT[block++]);
-        canvas.text(small, title, {220, 229, 211}, x, at(y));
-        y += 19;
-        if (groups.empty()) {
-            canvas.text(small, "not enough chances yet", {116, 139, 124}, x, at(y));
-            y += 18;
-        }
-        for (const auto& group : groups) {
-            canvas.text(small, group.label, {175, 192, 172}, x, at(y));
-            canvas.text(mono, py_percent(group.share, 4), {231, 236, 222}, x + width - UI(40), at(y));
-            y += 18;
-        }
-        y += 8;
-    }
-
     std::array<std::vector<const Bitzkey*>, 3> members;
     for (const Bitzkey* agent : simulation_->living()) {
         for (std::size_t index = 0; index < ANIMALS.size(); ++index) {
