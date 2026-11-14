@@ -2,6 +2,10 @@
 
 #include "ui/Language.hpp"
 
+#include <algorithm>
+
+#include "core/About.hpp"
+
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -173,6 +177,27 @@ void write_file(const std::filesystem::path& path, std::string_view text) {
     std::ofstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("can't write " + utf8_name(path));
     file << text;
+}
+
+void use_cores(int cores) {
+    cores = std::clamp(cores, 1, hardware_cores());
+    chosen_cores() = cores;
+#ifdef _WIN32
+    // The parallel work runs on Windows' thread pool, whose threads keep to the process's cores: the first `cores` of those
+    // the system offers. Results do not depend on it.
+    DWORD_PTR process = 0, system = 0;
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &process, &system) || !system) return;
+    DWORD_PTR mask = 0;
+    int kept = 0;
+    for (int bit = 0; bit < static_cast<int>(8 * sizeof(DWORD_PTR)) && kept < cores; ++bit) {
+        const DWORD_PTR one = static_cast<DWORD_PTR>(1) << bit;
+        if (system & one) {
+            mask |= one;
+            ++kept;
+        }
+    }
+    if (mask) SetProcessAffinityMask(GetCurrentProcess(), mask);
+#endif
 }
 
 }  // namespace bitzkey::ui

@@ -32,4 +32,7 @@ void write_file(const std::filesystem::path& path, std::string_view text);  // t
 std::filesystem::path path_from_utf8(std::string_view text);
 std::string utf8_name(const std::filesystem::path& path);  // the file name, for messages
 
+// Keep the simulation to this many of the computer's cores (all of them past its count), from now on.
+void use_cores(int cores);
+
 }  // namespace bitzkey::ui

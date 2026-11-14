@@ -35,7 +35,7 @@ struct Setting {
     bool optional = false;     // may be left blank, meaning "none"
     std::string_view blank;    // what a blank optional setting shows
 };
-extern const std::array<Setting, 10> SETTINGS;
+extern const std::array<Setting, 11> SETTINGS;
 
 using Defaults = std::map<std::string, std::optional<int>, std::less<>>;
 
@@ -52,6 +52,7 @@ public:
     const std::vector<Imported>& imports(std::string* error = nullptr) const;
     bool can_start() const;
     Simulation::Settings values() const;
+    int cores() const;  // the cores chosen for the simulation
     void select(int index);
     void move(int offset) { select(focus + offset); }
     void adjust(int steps);
@@ -91,6 +92,7 @@ public:
     const rules::Values& rules() const { return rules_; }
     // The saved world loaded to carry on, when LOAD WORLD started the run; taken, it is gone.
     std::unique_ptr<Simulation> take_loaded() { return std::move(loaded_); }
+    int cores() const { return form_.cores(); }  // the cores chosen for the simulation
 
 private:
     friend struct Screens;  // the screenshot tool

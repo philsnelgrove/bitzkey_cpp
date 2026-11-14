@@ -8,6 +8,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
+#include "core/About.hpp"
 #include "core/GpuBrains.hpp"
 #include "core/Rules.hpp"
 #include "core/Simulation.hpp"
@@ -38,7 +39,8 @@ struct Options {
                          {"population_cap", std::nullopt},
                          {"mind_mutation", static_cast<int>(100 * MIND_MUTATION_CHANCE)},
                          {"body_mutation", static_cast<int>(100 * BODY_MUTATION_CHANCE)},
-                         {"year_length", DEFAULT_YEAR_LENGTH}};
+                         {"year_length", DEFAULT_YEAR_LENGTH},
+                         {"cores", default_cores()}};  // three quarters of the computer's, to start with
     bool windowed = false;
     std::optional<int> probe;  // --probe PORT: serve the probe on this port of this computer
 };
@@ -117,6 +119,7 @@ int main(int argc, char** argv) {
             };
             std::optional<Simulation::Settings> settings = configure();
             while (settings) {
+                use_cores(setup.cores());  // the cores chosen on the panel, for this world
                 std::unique_ptr<Simulation> loaded = setup.take_loaded();
                 if (!loaded) rules::apply(setup.rules());  // the advanced rules hold for this world and its restarts; a world loaded brought its own
                 App::Result result;

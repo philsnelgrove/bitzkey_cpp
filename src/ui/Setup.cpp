@@ -20,7 +20,7 @@
 
 namespace bitzkey::ui {
 
-const std::array<Setting, 10> SETTINGS = {{
+const std::array<Setting, 11> SETTINGS = {{
     {"width", "Grid width", "cells across the world", 10, MAX_GRID, 10},
     {"height", "Grid height", "cells down the world", 10, MAX_GRID, 10},
     {"population", "Bitzkeys", "spawned at the start, a random mix of species", 0, MAX_POPULATION, 10},
@@ -32,6 +32,7 @@ const std::array<Setting, 10> SETTINGS = {{
     {"mind_mutation", "Mind mutation", "mind mutations a birth carries: 0 none, 50 about 1.5, 100 three", 0, 100, 5},
     {"body_mutation", "Body mutation", "percent chance a birth flips one body gene: 0 stable, 100 always", 0, 100, 5},
     {"year_length", "Year length", "turns in a year, of four seasons; a day is 24 turns, an hour each, and lifespans are counted in years", 32, 86400, 240},
+    {"cores", "Cores", "processor cores the simulation works on; a world unfolds the same on any number", 1, hardware_cores(), 1},
 }};
 
 namespace {
@@ -79,6 +80,10 @@ bool SetupForm::can_start() const {
     std::string error;
     imports(&error);
     return error.empty();
+}
+
+int SetupForm::cores() const {
+    return *value(*std::find_if(SETTINGS.begin(), SETTINGS.end(), [](const Setting& s) { return s.key == "cores"; }));
 }
 
 Simulation::Settings SetupForm::values() const {
