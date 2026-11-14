@@ -239,7 +239,11 @@ void draw_details(Canvas& canvas, const Bitzkey& agent, int x, const std::functi
     if (known && agent.alive() && agent.brain && agent.has_last_senses && agent.last_call > Silent) {
         // What it made of its last call: the senses that most moved it to call, and what it foresaw the call would change.
         const CallIntent intent = call_intent(*agent.brain, agent.last_senses, agent.last_call, 3);
-        std::string line = agent.last_call == AlertCall ? tr("LAST CALL") + " " + tr("ALERT") + ":" : tr("LAST CALL") + format(" %d:", agent.last_call - FirstCall + 1);
+        std::string said = format("%d", agent.last_call - FirstCall + 1);  // its sounds in order, as 2-5-1
+        for (const int sound : agent.last_sounds) {
+            if (sound >= 0) said += format("-%d", sound + 1);
+        }
+        std::string line = agent.last_call == AlertCall ? tr("LAST CALL") + " " + tr("ALERT") + ":" : tr("LAST CALL") + " " + said + ":";
         for (const auto& [sense, raised] : intent.drivers) line += " " + std::string(SENSES[static_cast<std::size_t>(sense)]);
         constexpr std::array<const char*, 4> THINGS = {"HUNGER", "HEALTH", "STAMINA", "FOOD"};
         std::string foreseen;
