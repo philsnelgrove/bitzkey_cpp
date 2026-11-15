@@ -169,6 +169,11 @@ add_custom_command(TARGET bitzkey_report POST_BUILD
     COMMAND_EXPAND_LISTS)
 
 # A command-line runner: run worlds headless, benchmark, trace, export.
+# Call bench: two real brains in a toy signalling game (tools/call_bench.cpp); touches no world.
+add_executable(bitzkey_call_bench tools/call_bench.cpp src/core/Memory.cpp)
+target_link_libraries(bitzkey_call_bench PRIVATE bitzkey_core)
+target_include_directories(bitzkey_call_bench PRIVATE src)
+
 add_executable(bitzkey_cli src/cli/main.cpp src/core/Memory.cpp)
 target_link_libraries(bitzkey_cli PRIVATE bitzkey_net)
 
