@@ -30,6 +30,11 @@ namespace {
 struct Options {
     int facts = 2, seeds = 10, trials = 200000, window = 2000;
     double needed = 0.25, reward = 1.0, noise = 1.0, empathy = 0.5, temperature = 0.5, intellect = 0.5;
+    int population = 2;  // brains; each trial a speaker and a different listener drawn at random (2 with --swap: a pair)
+    double relevance = 1.0;  // share of moments with news that matters to the listener
+    int life = 0;      // calls made and heard before a brain dies, replaced by a child of two others (Brain::inherit); 0 never
+    double copy = 0.0;   // chance the listener also learns to make the call it heard where the speaker made it
+    std::string copy_value = "learnt";  // the copied call valued as the speaker's brain values it ("learnt") or 0 ("zero")
     std::string mode = "empathy";
     bool silence = true, swap = true, deaf = false;  // deaf: the control, listeners never hear
 };
@@ -70,7 +75,19 @@ struct Result {
 
 Result run(const Options& o, std::uint64_t seed) {
     PyRandom rng(seed);
-    Brain brains[2] = {Brain::random(rng), Brain::random(rng)};
+    std::vector<Brain> brains;
+    for (int each = 0; each < std::max(2, o.population); ++each) brains.push_back(Brain::random(rng));
+    std::vector<int> lived(brains.size(), 0);
+    const auto age = [&](int who) {  // one more call made or heard; at the end of its life, a child takes its place
+        if (o.life <= 0 || ++lived[static_cast<std::size_t>(who)] < o.life) return;
+        const int count = static_cast<int>(brains.size());
+        int first = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(count - 1)));
+        if (first >= who) ++first;
+        int second = first;  // with only two brains, the other alone
+        while (count >= 3 && (second == first || second == who)) second = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(count)));
+        brains[static_cast<std::size_t>(who)] = Brain::inherit(brains[static_cast<std::size_t>(first)], brains[static_cast<std::size_t>(second)], rng);
+        lived[static_cast<std::size_t>(who)] = 0;
+    };
     const double rate = LEARNING_RATE * (LEARNING_FLOOR + o.intellect * (1 + LEARNING_BOOST * o.intellect));
     std::vector<int> calls{call_output(Silent)};
     for (int call = FirstCall; call < CALL_OPTIONS; ++call) calls.push_back(call_output(call));
@@ -89,26 +106,45 @@ Result run(const Options& o, std::uint64_t seed) {
         return senses;
     };
     for (long trial = 1; trial <= o.trials; ++trial) {
-        const int speaking = o.swap ? static_cast<int>(rng.randbelow(2)) : 0;
-        Brain& speaker = brains[speaking];
-        Brain& listener = brains[1 - speaking];
+        int speaking = 0, listening = 1;
+        if (o.population > 2) {
+            speaking = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.population)));
+            listening = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.population - 1)));
+            if (listening >= speaking) ++listening;
+        } else if (o.swap) {
+            speaking = static_cast<int>(rng.randbelow(2));
+            listening = 1 - speaking;
+        }
+        Brain& speaker = brains[static_cast<std::size_t>(speaking)];
+        Brain& listener = brains[static_cast<std::size_t>(listening)];
         const int fact = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.facts)));
         Senses spoken = noisy();
-        spoken[static_cast<std::size_t>(FACT_SENSES[fact])] = 1.0;
-        const int call_out = pick(speaker.values(spoken), calls, rng);
+        // Only a share of moments carry news that matters (--relevance); in the rest the speaker senses nothing special,
+        // and nothing the listener does pays more than anything else.
+        const bool news = o.relevance >= 1 || rng.random() < o.relevance;
+        if (news) spoken[static_cast<std::size_t>(FACT_SENSES[fact])] = 1.0;
+        const Values speaker_values = speaker.values(spoken);
+        const int call_out = pick(speaker_values, calls, rng);
         const int call = call_out - ACTION_COUNT;
         Senses heard = noisy();
         if (call >= FirstCall && !o.deaf) heard[static_cast<std::size_t>(heard_sense(call, 0))] = 1.0;  // heard, loud
         const Values listened = listener.values(heard);
         const int action = pick(listened, actions, rng);
-        const double gained = action == fact ? o.reward : 0.0;
+        const double gained = news && action == fact ? o.reward : 0.0;
         listener.learn(heard, action, gained, rate);
+        // Copying: the listener also learns to make the call it heard where the speaker made it (as body language does).
+        if (call >= FirstCall && !o.deaf && o.copy > 0 && rng.random() < o.copy) {
+            listener.learn(spoken, call_out, o.copy_value == "zero" ? 0.0 : speaker_values[call_out], rate);
+        }
         if (o.mode == "shared") {
             speaker.learn(spoken, call_out, gained, rate);
         } else {
             speaker.learn(spoken, call_out, o.empathy * (gained - listened[action]), rate);
             if (o.silence && call >= FirstCall) speaker.learn(spoken, call_output(Silent), 0.0, rate);
         }
+        age(speaking);
+        age(listening);
+        if (!news) continue;  // measured on the moments that matter
         ++said[fact][static_cast<std::size_t>(call < FirstCall ? 0 : call - FirstCall + 1)];  // silence, then the five
         ++done[fact][action];
         right += action == fact;
@@ -146,12 +182,18 @@ int main(int argc, char** argv) {
         else if (key == "--silence") o.silence = value != "0";
         else if (key == "--swap") o.swap = value != "0";
         else if (key == "--deaf") o.deaf = value != "0";
+        else if (key == "--population") o.population = std::stoi(value);
+        else if (key == "--copy") o.copy = std::stod(value);
+        else if (key == "--life") o.life = std::stoi(value);
+        else if (key == "--relevance") o.relevance = std::stod(value);
+        else if (key == "--copy-value") o.copy_value = value;
         else { std::fprintf(stderr, "unknown option %s\n", key.c_str()); return 2; }
     }
     if (o.facts < 2 || o.facts > 4) { std::fprintf(stderr, "--facts 2..4\n"); return 2; }
     TEMPERATURE = o.temperature;
-    std::printf("mode %s facts %d reward %g noise %g empathy %g temperature %g intellect %g silence %d swap %d\n", o.mode.c_str(),
-                o.facts, o.reward, o.noise, o.empathy, o.temperature, o.intellect, o.silence, o.swap);
+    std::printf("mode %s facts %d reward %g noise %g empathy %g temperature %g intellect %g silence %d swap %d population %d copy %g (%s)\n",
+                o.mode.c_str(), o.facts, o.reward, o.noise, o.empathy, o.temperature, o.intellect, o.silence, o.swap,
+                o.population, o.copy, o.copy_value.c_str());
     int converged = 0;
     std::vector<long> times;
     for (int seed = 1; seed <= o.seeds; ++seed) {
