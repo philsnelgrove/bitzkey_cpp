@@ -51,7 +51,8 @@ struct Options {
     double cost = 0.0;
     // Speak as you'd understand: a call's lesson also gains this much x how well the speaker's OWN foresight, hearing
     // that call, foresees what it senses now (the fact's sense, there or not), beyond the mean over all it might say.
-    double obverter = 0.0;   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
+    double obverter = 0.0;
+    bool against_silence = false;  // --obverter-base silence: the call against silence alone, not the mean of all it might say   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
     double seen = 1.0;
     double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
 };
@@ -156,6 +157,7 @@ Result run(const Options& o, std::uint64_t seed) {
         }
         double mean = 0;
         for (const double f : fit) mean += f / fit.size();
+        if (o.against_silence) mean = fit[0];  // silence is the first option
         return fit[static_cast<std::size_t>(mine)] - mean;
     };
     for (long trial = 1; trial <= o.trials; ++trial) {
@@ -319,6 +321,7 @@ int main(int argc, char** argv) {
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
+        else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--seen") o.seen = std::stod(value);
         else if (key == "--predict") o.predict = std::stod(value);
