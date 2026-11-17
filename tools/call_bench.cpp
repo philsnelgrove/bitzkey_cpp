@@ -48,7 +48,10 @@ struct Options {
     // each sound as its loudest maker made it, as in the world; each speaker sees the news only with chance --seen.
     int voices = 1;
     bool apart = false;  // each voice (up to 3) heard on its own senses (the utterance senses, one place each), not merged
-    double cost = 0.0;   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
+    double cost = 0.0;
+    // Speak as you'd understand: a call's lesson also gains this much x how well the speaker's OWN foresight, hearing
+    // that call, foresees what it senses now (the fact's sense, there or not), beyond the mean over all it might say.
+    double obverter = 0.0;   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
     double seen = 1.0;
     double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
 };
@@ -135,6 +138,26 @@ Result run(const Options& o, std::uint64_t seed) {
         }
         return false;
     };
+    const auto understood = [&](Brain& self, int out, bool saw, int fact) {
+        std::vector<double> fit;
+        int mine = 0;
+        for (const int option : calls) {
+            const int sound = option - ACTION_COUNT;
+            Senses hear = noisy();
+            if (sound >= FirstCall) {
+                if (o.apart) hear[static_cast<std::size_t>(utterance_sense(0, sound - FirstCall))] = 1.0;
+                else hear[static_cast<std::size_t>(heard_sense(sound, 0))] = 1.0;
+            }
+            const Values v = self.values(hear);
+            double error = 0;
+            for (int k = 0; k < o.facts; ++k) error += std::abs(v[FORESIGHT + k] - (saw && k == fact ? 1.0 : 0.0)) / o.facts;
+            if (option == out) mine = static_cast<int>(fit.size());
+            fit.push_back(-error);
+        }
+        double mean = 0;
+        for (const double f : fit) mean += f / fit.size();
+        return fit[static_cast<std::size_t>(mine)] - mean;
+    };
     for (long trial = 1; trial <= o.trials; ++trial) {
         if (o.voices > 1 || o.seen < 1) {  // several voices, not all of whom saw it
             const int listening = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.population)));
@@ -177,7 +200,8 @@ Result run(const Options& o, std::uint64_t seed) {
             }
             for (std::size_t v = 0; v < voices.size(); ++v) {  // each voice credited alike with what its listener made of it
                 Brain& speaker = brains[static_cast<std::size_t>(voices[v])];
-                const double paid = outs[v] - ACTION_COUNT >= FirstCall ? o.cost : 0.0;
+                double paid = outs[v] - ACTION_COUNT >= FirstCall ? o.cost : 0.0;
+                if (o.obverter > 0) paid -= o.obverter * understood(speaker, outs[v], saw[v], fact);
                 if (o.mode == "shared") speaker.learn(spokens[v], outs[v], gained - paid, rate);
                 else {
                     speaker.learn(spokens[v], outs[v], o.empathy * (gained - listened[action]) - paid, rate);
@@ -249,10 +273,11 @@ Result run(const Options& o, std::uint64_t seed) {
         if (call >= FirstCall && !o.deaf && o.copy > 0 && rng.random() < o.copy) {
             listener.learn(spoken, call_out, o.copy_value == "zero" ? 0.0 : speaker_values[call_out], rate);
         }
+        const double obverted = o.obverter > 0 ? o.obverter * understood(speaker, call_out, news, fact) : 0.0;
         if (o.mode == "shared") {
-            speaker.learn(spoken, call_out, gained + o.influence * influence, rate);
+            speaker.learn(spoken, call_out, gained + o.influence * influence + obverted, rate);
         } else {
-            speaker.learn(spoken, call_out, o.empathy * (gained - listened[action]) + o.influence * influence, rate);
+            speaker.learn(spoken, call_out, o.empathy * (gained - listened[action]) + o.influence * influence + obverted, rate);
             if (o.silence && call >= FirstCall) speaker.learn(spoken, call_output(Silent), 0.0, rate);
         }
         age(speaking);
@@ -293,6 +318,7 @@ int main(int argc, char** argv) {
         else if (key == "--copy-value") o.copy_value = value;
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
+        else if (key == "--obverter") o.obverter = std::stod(value);
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--seen") o.seen = std::stod(value);
         else if (key == "--predict") o.predict = std::stod(value);
