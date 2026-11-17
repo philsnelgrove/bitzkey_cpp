@@ -37,6 +37,13 @@ struct Options {
     std::string copy_value = "learnt";  // the copied call valued as the speaker's brain values it ("learnt") or 0 ("zero")
     std::string mode = "empathy";
     bool silence = true, swap = true, deaf = false;  // deaf: the control, listeners never hear
+    // Foresight of the outside: the listener's foresight outputs also learn what it will itself sense next (the fact's
+    // sense, 1 or 0), at this share of FORESIGHT_LEARNING's rate; no reward in it, a lesson every time it hears.
+    double predict = 0.0;
+    // Drive to be heeded: the speaker's call is taught this much x how far its call moved the listener's odds (KL of
+    // its odds against their mean over every call it might have made, silence too). No meaning picked.
+    double influence = 0.0;
+    double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
 };
 
 constexpr int FACT_SENSES[] = {SenseThreatCloseness, SenseCarrionCloseness, SenseHerdSuccess, SenseHerdFailure};
@@ -57,10 +64,10 @@ double mutual_information(const std::vector<std::vector<int>>& counts) {
     return bits;
 }
 
-int pick(const Values& values, const std::vector<int>& options, PyRandom& rng) {
+int pick(const Values& values, const std::vector<int>& options, PyRandom& rng, double temperature = -1) {
     double roll = rng.random();
     int chosen = options.back();
-    for (const auto& [option, chance] : choice_odds(values, options)) {
+    for (const auto& [option, chance] : temperature > 0 ? choice_odds(values, options, temperature) : choice_odds(values, options)) {
         roll -= chance;
         chosen = option;
         if (roll < 0) break;
@@ -124,22 +131,45 @@ Result run(const Options& o, std::uint64_t seed) {
         const bool news = o.relevance >= 1 || rng.random() < o.relevance;
         if (news) spoken[static_cast<std::size_t>(FACT_SENSES[fact])] = 1.0;
         const Values speaker_values = speaker.values(spoken);
-        const int call_out = pick(speaker_values, calls, rng);
+        const int call_out = pick(speaker_values, calls, rng, o.call_temperature);
         const int call = call_out - ACTION_COUNT;
         Senses heard = noisy();
         if (call >= FirstCall && !o.deaf) heard[static_cast<std::size_t>(heard_sense(call, 0))] = 1.0;  // heard, loud
         const Values listened = listener.values(heard);
         const int action = pick(listened, actions, rng);
         const double gained = news && action == fact ? o.reward : 0.0;
+        double influence = 0.0;
+        if (o.influence > 0 && !o.deaf) {  // before it learns: how far this call moved it, against all it might have heard
+            std::vector<std::vector<double>> odds;
+            for (const int other : calls) {
+                const int sound = other - ACTION_COUNT;
+                Senses would = heard;
+                for (int c = FirstCall; c < CALL_OPTIONS; ++c) would[static_cast<std::size_t>(heard_sense(c, 0))] = 0;
+                if (sound >= FirstCall) would[static_cast<std::size_t>(heard_sense(sound, 0))] = 1.0;
+                std::vector<double> row(actions.size(), 0.0);
+                for (const auto& [option, chance] : choice_odds(listener.values(would), actions)) row[static_cast<std::size_t>(option)] = chance;
+                odds.push_back(row);
+            }
+            const std::vector<double>& mine = odds[static_cast<std::size_t>(call < FirstCall ? 0 : call - FirstCall + 1)];
+            for (std::size_t a = 0; a < actions.size(); ++a) {
+                double mean = 0;
+                for (const auto& row : odds) mean += row[a] / odds.size();
+                if (mine[a] > 0) influence += mine[a] * std::log2(mine[a] / mean);
+            }
+        }
         listener.learn(heard, action, gained, rate);
+        if (o.predict > 0) {  // what it will sense next: the fact's sense, there or not
+            for (int k = 0; k < o.facts; ++k)
+                listener.learn(heard, FORESIGHT + k, news && k == fact ? 1.0 : 0.0, rate * FORESIGHT_LEARNING * o.predict);
+        }
         // Copying: the listener also learns to make the call it heard where the speaker made it (as body language does).
         if (call >= FirstCall && !o.deaf && o.copy > 0 && rng.random() < o.copy) {
             listener.learn(spoken, call_out, o.copy_value == "zero" ? 0.0 : speaker_values[call_out], rate);
         }
         if (o.mode == "shared") {
-            speaker.learn(spoken, call_out, gained, rate);
+            speaker.learn(spoken, call_out, gained + o.influence * influence, rate);
         } else {
-            speaker.learn(spoken, call_out, o.empathy * (gained - listened[action]), rate);
+            speaker.learn(spoken, call_out, o.empathy * (gained - listened[action]) + o.influence * influence, rate);
             if (o.silence && call >= FirstCall) speaker.learn(spoken, call_output(Silent), 0.0, rate);
         }
         age(speaking);
@@ -149,6 +179,9 @@ Result run(const Options& o, std::uint64_t seed) {
         ++done[fact][action];
         right += action == fact;
         if (++in_window == o.window) {
+            if (std::getenv("BENCH_TABLES")) {
+                for (int f = 0; f < o.facts; ++f) { std::printf("    fact %d calls", f); for (int c : said[f]) std::printf(" %d", c); std::printf(" | actions"); for (int c : done[f]) std::printf(" %d", c); std::printf("\n"); }
+            }
             result.call_bits = mutual_information(said);
             result.action_bits = mutual_information(done);
             result.accuracy = right / static_cast<double>(in_window);
@@ -187,10 +220,14 @@ int main(int argc, char** argv) {
         else if (key == "--life") o.life = std::stoi(value);
         else if (key == "--relevance") o.relevance = std::stod(value);
         else if (key == "--copy-value") o.copy_value = value;
+        else if (key == "--predict") o.predict = std::stod(value);
+        else if (key == "--influence") o.influence = std::stod(value);
+        else if (key == "--call-temperature") o.call_temperature = std::stod(value);
         else { std::fprintf(stderr, "unknown option %s\n", key.c_str()); return 2; }
     }
     if (o.facts < 2 || o.facts > 4) { std::fprintf(stderr, "--facts 2..4\n"); return 2; }
     TEMPERATURE = o.temperature;
+    std::printf("predict %g influence %g call-temperature %g relevance %g life %d\n", o.predict, o.influence, o.call_temperature, o.relevance, o.life);
     std::printf("mode %s facts %d reward %g noise %g empathy %g temperature %g intellect %g silence %d swap %d population %d copy %g (%s)\n",
                 o.mode.c_str(), o.facts, o.reward, o.noise, o.empathy, o.temperature, o.intellect, o.silence, o.swap,
                 o.population, o.copy, o.copy_value.c_str());
