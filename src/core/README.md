@@ -1262,7 +1262,7 @@ Default **16**; from 1 to 30, in steps of 1.
 
 Hunger each sound of a call costs its caller, the alert among them.
 
-Default **0.3**; from 0 to 5, in steps of 0.3.
+Default **0.3**; from 0 to 5, in steps of 0.05.
 
 #### 6.24.2 Call length (`CALL_LENGTH`)
 
