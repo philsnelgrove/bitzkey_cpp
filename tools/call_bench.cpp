@@ -37,6 +37,8 @@ struct Options {
     double relevance = 1.0;  // share of moments with news that matters to the listener
     int life = 0;      // calls made and heard before a brain dies, replaced by a child of two others (Brain::inherit); 0 never
     double copy = 0.0;   // chance the listener also learns to make the call it heard where the speaker made it
+    double joint = 0.0;  // joint attention: chance the listener sees a caller's focus (what it saw) and learns to make its sound there
+    bool joint_blind = false;  // the control: it copies the sound where it is itself, not seeing the caller's focus
     std::string copy_value = "learnt";  // the copied call valued as the speaker's brain values it ("learnt") or 0 ("zero")
     std::string mode = "empathy";
     bool silence = true, swap = true, deaf = false;  // deaf: the control, listeners never hear
@@ -243,6 +245,7 @@ Result run(const Options& o, std::uint64_t seed) {
             std::vector<Senses> spokens;
             std::vector<std::vector<double>> weights_of;  // per voice, how its speak-as-heard fit weighs each fact
             std::vector<int> outs;
+            std::vector<double> feels;  // per voice, how it valued the call it made
             std::vector<bool> saw;
             for (const int who : voices) {
                 Senses spoken = noisy();
@@ -293,6 +296,7 @@ Result run(const Options& o, std::uint64_t seed) {
                     sense = std::max(sense, loudness);
                 }
                 spokens.push_back(spoken);
+                feels.push_back(felt[static_cast<std::size_t>(out)]);
                 outs.push_back(out);
                 saw.push_back(sees);
             }
@@ -332,6 +336,14 @@ Result run(const Options& o, std::uint64_t seed) {
                         speaker.learn(spokens[v], sound_output(1, seconds[v]), o.empathy * (gained - listened[action]) - paid, rate);
                     if (o.silence && outs[v] - ACTION_COUNT >= FirstCall) speaker.learn(spokens[v], call_output(Silent), 0.0, rate);
                 }
+            }
+            // Joint attention: the listener follows a caller's gaze to what it saw, and learns to make its sound there (as the
+            // caller valued it); blind, it copies the sound where it is itself. Judged above, before it learns.
+            for (std::size_t v = 0; o.joint > 0 && !o.deaf && v < voices.size(); ++v) {
+                if (outs[v] - ACTION_COUNT < FirstCall || !saw[v] || rng.random() >= o.joint) continue;
+                Senses where = o.joint_blind ? noisy() : spokens[v];
+                listener.learn(where, outs[v], feels[v], rate);
+                if (o.sounds >= 2) listener.learn(where, sound_output(1, seconds[v]), feels[v], rate);
             }
             for (const int who : voices) age(who);
             age(listening);
@@ -450,6 +462,8 @@ int main(int argc, char** argv) {
         else if (key == "--life") o.life = std::stoi(value);
         else if (key == "--relevance") o.relevance = std::stod(value);
         else if (key == "--copy-value") o.copy_value = value;
+        else if (key == "--joint") o.joint = std::stod(value);
+        else if (key == "--joint-blind") o.joint_blind = value != "0";
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
