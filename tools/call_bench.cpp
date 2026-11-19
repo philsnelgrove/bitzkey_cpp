@@ -64,6 +64,10 @@ struct Options {
     // drifts to a random sound with chance --tilt-drift at each birth. No reward; only a bias in what comes out.
     double tilt = 0.0, tilt_drift = 0.01;
     double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
+    // Naming, the urge to tell: --itch raises the value of every sound alike (any call over silence) for a voice that
+    // holds news its listener lacks; no sound is favoured. --relief: a voice that saw and called is relieved by this
+    // much when its listener turns to the thing (its action fits the fact); no sound rewarded, only being understood.
+    double itch = 0.0, relief = 0.0;
 };
 
 constexpr int FACT_SENSES[] = {SenseThreatCloseness, SenseCarrionCloseness, SenseHerdSuccess, SenseHerdFailure};
@@ -197,6 +201,8 @@ Result run(const Options& o, std::uint64_t seed) {
                 const bool sees = news && (o.seen >= 1 || rng.random() < o.seen);
                 if (sees) spoken[static_cast<std::size_t>(FACT_SENSES[fact])] = 1.0;
                 Values felt = brains[static_cast<std::size_t>(who)].values(spoken);
+                if (sees && o.itch > 0)
+                    for (int c = FirstCall; c < CALL_OPTIONS; ++c) felt[static_cast<std::size_t>(call_output(c))] += o.itch;
                 if (sees && o.tilt > 0) felt[static_cast<std::size_t>(call_output(cue[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)]))] += o.tilt;
                 const int out = pick(felt, calls, rng, o.call_temperature);
                 const int call = out - ACTION_COUNT;
@@ -239,6 +245,7 @@ Result run(const Options& o, std::uint64_t seed) {
                 double paid = outs[v] - ACTION_COUNT >= FirstCall ? o.cost : 0.0;
                 if (o.obverter > 0) paid -= o.obverter * understood(speaker, outs[v], saw[v], fact);
                 if (o.heeded > 0 && outs[v] - ACTION_COUNT >= FirstCall) paid -= o.heeded * heed;
+                if (o.relief > 0 && saw[v] && outs[v] - ACTION_COUNT >= FirstCall && action == fact) paid -= o.relief;
                 if (o.mode == "shared") speaker.learn(spokens[v], outs[v], gained - paid, rate);
                 else {
                     speaker.learn(spokens[v], outs[v], o.empathy * (gained - listened[action]) - paid, rate);
@@ -359,6 +366,8 @@ int main(int argc, char** argv) {
         else if (key == "--obverter") o.obverter = std::stod(value);
         else if (key == "--heeded") o.heeded = std::stod(value);
         else if (key == "--tilt") o.tilt = std::stod(value);
+        else if (key == "--itch") o.itch = std::stod(value);
+        else if (key == "--relief") o.relief = std::stod(value);
         else if (key == "--tilt-drift") o.tilt_drift = std::stod(value);
         else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
