@@ -38,7 +38,9 @@ struct Options {
     int life = 0;      // calls made and heard before a brain dies, replaced by a child of two others (Brain::inherit); 0 never
     double copy = 0.0;   // chance the listener also learns to make the call it heard where the speaker made it
     double joint = 0.0;  // joint attention: chance the listener sees a caller's focus (what it saw) and learns to make its sound there
-    bool joint_blind = false;  // the control: it copies the sound where it is itself, not seeing the caller's focus
+    bool joint_blind = false;
+    double listen_gain = 1.0;  // heard sounds' loudness among the listener's senses, times this
+    double listen_rate = 1.0;  // the listener's foresight learns this much faster on turns it heard a call  // the control: it copies the sound where it is itself, not seeing the caller's focus
     std::string copy_value = "learnt";  // the copied call valued as the speaker's brain values it ("learnt") or 0 ("zero")
     std::string mode = "empathy";
     bool silence = true, swap = true, deaf = false;  // deaf: the control, listeners never hear
@@ -115,7 +117,7 @@ int pick(const Values& values, const std::vector<int>& options, PyRandom& rng, d
 
 struct Result {
     long converged = -1;
-    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0;  // foresaw: the listener's foresight tops at the true fact
+    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0, foresaw_seer = 0, foresaw_other = 0, blind_calls = 0;  // foresaw split by whether a seer called; blind_calls: share of calls made by those who saw nothing  // foresaw: the listener's foresight tops at the true fact
 };
 
 Result run(const Options& o, std::uint64_t seed) {
@@ -159,7 +161,8 @@ Result run(const Options& o, std::uint64_t seed) {
         for (int k = 0; k < o.facts; ++k) if ((roll -= fact_weights[static_cast<std::size_t>(k)]) < 0) return k;
         return o.facts - 1;
     };
-    int right = 0, in_window = 0, foreseen = 0;
+    int right = 0, in_window = 0, foreseen = 0, seer_heard = 0, seer_foreseen = 0;
+    long calls_made = 0, calls_blind = 0;
     Result result;
     const auto noisy = [&] {
         Senses senses{};
@@ -181,10 +184,14 @@ Result run(const Options& o, std::uint64_t seed) {
             result.action_bits = mutual_information(done);
             result.accuracy = right / static_cast<double>(in_window);
             result.foresaw = foreseen / static_cast<double>(in_window);
+            result.foresaw_seer = seer_heard ? seer_foreseen / static_cast<double>(seer_heard) : 0.0;
+            result.foresaw_other = in_window > seer_heard ? (foreseen - seer_foreseen) / static_cast<double>(in_window - seer_heard) : 0.0;
+            result.blind_calls = calls_made ? calls_blind / static_cast<double>(calls_made) : 0.0;
             if (result.converged < 0 && result.action_bits >= needed) result.converged = trial;
             for (auto& row : said) std::fill(row.begin(), row.end(), 0);
             for (auto& row : done) std::fill(row.begin(), row.end(), 0);
-            right = in_window = foreseen = 0;
+            right = in_window = foreseen = seer_heard = seer_foreseen = 0;
+            calls_made = calls_blind = 0;
             if (result.converged >= 0 && trial >= result.converged + 5L * o.window) return true;  // held a while: enough
         }
         return false;
@@ -192,6 +199,7 @@ Result run(const Options& o, std::uint64_t seed) {
     // A call as heard: its first sound, and with --sounds 2 the second too, on the world's utterance senses.
     const auto hear_call = [&](Senses& senses, int sound, int second, double loudness) {
         if (sound < FirstCall) return;
+        loudness *= o.listen_gain;  // a listener attending to the speaker: heard sounds weigh more among its senses
         if (o.sounds >= 2) {
             senses[static_cast<std::size_t>(heard_sense(sound, 0))] = std::max(senses[static_cast<std::size_t>(heard_sense(sound, 0))], loudness);
             senses[static_cast<std::size_t>(utterance_sense(0, sound - FirstCall))] = loudness;
@@ -319,9 +327,17 @@ Result run(const Options& o, std::uint64_t seed) {
             const int action = pick(listened, actions, rng);
             const double gained = news && action == fact ? o.reward : 0.0;
             listener.learn(heard, action, gained, rate);
+            bool any_call = false, seer_called = false;
+            for (std::size_t v = 0; v < voices.size(); ++v) {
+                if (outs[v] - ACTION_COUNT < FirstCall) continue;
+                any_call = true;
+                seer_called = seer_called || saw[v];
+                ++calls_made;
+                calls_blind += !saw[v];
+            }
             if (o.predict > 0) {
                 for (int k = 0; k < o.facts; ++k)
-                    listener.learn(heard, fact_output(k), news && k == fact ? 1.0 : 0.0, rate * FORESIGHT_LEARNING * o.predict);
+                    listener.learn(heard, fact_output(k), news && k == fact ? 1.0 : 0.0, rate * FORESIGHT_LEARNING * o.predict * (any_call ? o.listen_rate : 1.0));
             }
             for (std::size_t v = 0; v < voices.size(); ++v) {  // each voice credited alike with what its listener made of it
                 Brain& speaker = brains[static_cast<std::size_t>(voices[v])];
@@ -361,6 +377,7 @@ Result run(const Options& o, std::uint64_t seed) {
                 int best = 0;  // what the listener foresees most, of all the facts
                 for (int k = 1; k < o.facts; ++k) if (listened[fact_output(k)] > listened[fact_output(best)]) best = k;
                 foreseen += best == fact;
+                if (seer_called) { ++seer_heard; seer_foreseen += best == fact; }
             }
             if (close_window(trial)) break;
             continue;
@@ -464,6 +481,8 @@ int main(int argc, char** argv) {
         else if (key == "--copy-value") o.copy_value = value;
         else if (key == "--joint") o.joint = std::stod(value);
         else if (key == "--joint-blind") o.joint_blind = value != "0";
+        else if (key == "--listen-gain") o.listen_gain = std::stod(value);
+        else if (key == "--listen-rate") o.listen_rate = std::stod(value);
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
@@ -504,9 +523,9 @@ int main(int argc, char** argv) {
     std::vector<long> times;
     for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
         const Result r = run(o, static_cast<std::uint64_t>(seed));
-        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f\n", seed,
+        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f, seer %.2f, other %.2f, blind calls %.2f\n", seed,
                     r.converged >= 0 ? ("code by trial " + std::to_string(r.converged)).c_str() : "no code", r.call_bits,
-                    r.action_bits, r.accuracy, r.foresaw);
+                    r.action_bits, r.accuracy, r.foresaw, r.foresaw_seer, r.foresaw_other, r.blind_calls);
         if (r.converged >= 0) { ++converged; times.push_back(r.converged); }
         std::fflush(stdout);
     }
