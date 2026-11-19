@@ -1,3 +1,4 @@
+#include <array>
 // Call bench: can two real Bitzkey brains, learning by the world's own rule, settle on a code of calls?
 //
 // A toy signalling game, touching no world. Each trial one brain (the speaker) senses a hidden fact, one of K, among
@@ -58,6 +59,10 @@ struct Options {
     double heeded = 0.0;
     bool against_silence = false;  // --obverter-base silence: the call against silence alone, not the mean of all it might say   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
     double seen = 1.0;
+    // --tilt: ritualisation. Seeing a fact tilts the value of one sound by this much, involuntarily (the body's cue):
+    // which sound goes with which fact is drawn at random for the species each run, inherited from a parent, and
+    // drifts to a random sound with chance --tilt-drift at each birth. No reward; only a bias in what comes out.
+    double tilt = 0.0, tilt_drift = 0.01;
     double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
 };
 
@@ -100,6 +105,12 @@ Result run(const Options& o, std::uint64_t seed) {
     std::vector<Brain> brains;
     for (int each = 0; each < std::max(2, o.population); ++each) brains.push_back(Brain::random(rng));
     std::vector<int> lived(brains.size(), 0);
+    std::vector<std::array<int, 4>> cue(brains.size());  // per brain: the sound each fact tilts it towards
+    {
+        std::array<int, 4> species{};
+        for (int& c : species) c = FirstCall + static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(CALL_OPTIONS - FirstCall)));
+        for (auto& c : cue) c = species;
+    }
     const auto age = [&](int who) {  // one more call made or heard; at the end of its life, a child takes its place
         if (o.life <= 0 || ++lived[static_cast<std::size_t>(who)] < o.life) return;
         const int count = static_cast<int>(brains.size());
@@ -109,6 +120,9 @@ Result run(const Options& o, std::uint64_t seed) {
         while (count >= 3 && (second == first || second == who)) second = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(count)));
         brains[static_cast<std::size_t>(who)] = Brain::inherit(brains[static_cast<std::size_t>(first)], brains[static_cast<std::size_t>(second)], rng);
         lived[static_cast<std::size_t>(who)] = 0;
+        cue[static_cast<std::size_t>(who)] = cue[static_cast<std::size_t>(first)];
+        for (int& c : cue[static_cast<std::size_t>(who)])
+            if (o.tilt > 0 && rng.random() < o.tilt_drift) c = FirstCall + static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(CALL_OPTIONS - FirstCall)));
     };
     const double rate = LEARNING_RATE * (LEARNING_FLOOR + o.intellect * (1 + LEARNING_BOOST * o.intellect));
     std::vector<int> calls{call_output(Silent)};
@@ -182,7 +196,9 @@ Result run(const Options& o, std::uint64_t seed) {
                 Senses spoken = noisy();
                 const bool sees = news && (o.seen >= 1 || rng.random() < o.seen);
                 if (sees) spoken[static_cast<std::size_t>(FACT_SENSES[fact])] = 1.0;
-                const int out = pick(brains[static_cast<std::size_t>(who)].values(spoken), calls, rng, o.call_temperature);
+                Values felt = brains[static_cast<std::size_t>(who)].values(spoken);
+                if (sees && o.tilt > 0) felt[static_cast<std::size_t>(call_output(cue[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)]))] += o.tilt;
+                const int out = pick(felt, calls, rng, o.call_temperature);
                 const int call = out - ACTION_COUNT;
                 const double loudness = o.voices == 1 ? 1.0 : 0.5 + 0.5 * rng.random();
                 if (call >= FirstCall && !o.deaf && o.apart) {
@@ -342,6 +358,8 @@ int main(int argc, char** argv) {
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
         else if (key == "--heeded") o.heeded = std::stod(value);
+        else if (key == "--tilt") o.tilt = std::stod(value);
+        else if (key == "--tilt-drift") o.tilt_drift = std::stod(value);
         else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--seen") o.seen = std::stod(value);
