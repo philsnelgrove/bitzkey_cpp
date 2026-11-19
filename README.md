@@ -12,6 +12,12 @@ This is the Windows desktop version: the same simulation as the Python original,
 
 Download the installer from the [latest release](https://github.com/philsnelgrove/bitzkey_cpp/releases/latest).
 
+## The brain
+
+[![A 3D model of the Bitzkey brain](docs/brain-model.png)](docs/brain-model.html)
+
+Each Bitzkey thinks with one neural network: 236 senses in, 147 values out. Inborn intellect decides what lies between: more hidden layers up to an intellect of 4, then wider ones. Short-term memory is a loop of 16 neurons carried from one choice to the next; long-term memory is the learnt weights and a mental map of remembered places. Download [docs/brain-model.html](docs/brain-model.html) and open it in a browser to turn the model and grow it from intellect 0 to 7.
+
 A C++20 port of the Python Bitzkey artificial ecology. The Python project in `../bitzkey` is
 untouched; this is a separate project.
 
