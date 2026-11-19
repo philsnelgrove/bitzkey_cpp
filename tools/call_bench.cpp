@@ -53,6 +53,9 @@ struct Options {
     // Speak as you'd understand: a call's lesson also gains this much x how well the speaker's OWN foresight, hearing
     // that call, foresees what it senses now (the fact's sense, there or not), beyond the mean over all it might say.
     double obverter = 0.0;
+    // --heeded: a calling voice learns this times how much nearer the real listener's foresight came to the truth with
+    // the calls it heard than with none (negative when they misled); no meaning rewarded, only being understood.
+    double heeded = 0.0;
     bool against_silence = false;  // --obverter-base silence: the call against silence alone, not the mean of all it might say   // taken from a call's lesson (silence free), so those with nothing to say may learn to keep quiet
     double seen = 1.0;
     double call_temperature = -1;  // calls picked at this temperature (the world's CALL_TEMPERATURE); -1: as actions
@@ -194,6 +197,20 @@ Result run(const Options& o, std::uint64_t seed) {
             }
             Brain& listener = brains[static_cast<std::size_t>(listening)];
             const Values listened = listener.values(heard);
+            double heed = 0.0;
+            if (o.heeded > 0) {  // the listener's foresight with these calls, against with no call heard
+                Senses quiet = heard;
+                for (int call = FirstCall; call < CALL_OPTIONS; ++call)
+                    for (int h = 0; h < HEARD_SENSES; ++h) quiet[static_cast<std::size_t>(heard_sense(call, h))] = 0;
+                if (o.apart)
+                    for (int v = 0; v < MAX_SOUNDS; ++v)
+                        for (int c = 0; c < CALL_COUNT; ++c) quiet[static_cast<std::size_t>(utterance_sense(v, c))] = 0;
+                const Values hushed = listener.values(quiet);
+                for (int k = 0; k < o.facts; ++k) {
+                    const double truth = news && k == fact ? 1.0 : 0.0;
+                    heed += (std::abs(hushed[FORESIGHT + k] - truth) - std::abs(listened[FORESIGHT + k] - truth)) / o.facts;
+                }
+            }
             const int action = pick(listened, actions, rng);
             const double gained = news && action == fact ? o.reward : 0.0;
             listener.learn(heard, action, gained, rate);
@@ -205,6 +222,7 @@ Result run(const Options& o, std::uint64_t seed) {
                 Brain& speaker = brains[static_cast<std::size_t>(voices[v])];
                 double paid = outs[v] - ACTION_COUNT >= FirstCall ? o.cost : 0.0;
                 if (o.obverter > 0) paid -= o.obverter * understood(speaker, outs[v], saw[v], fact);
+                if (o.heeded > 0 && outs[v] - ACTION_COUNT >= FirstCall) paid -= o.heeded * heed;
                 if (o.mode == "shared") speaker.learn(spokens[v], outs[v], gained - paid, rate);
                 else {
                     speaker.learn(spokens[v], outs[v], o.empathy * (gained - listened[action]) - paid, rate);
@@ -323,6 +341,7 @@ int main(int argc, char** argv) {
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
+        else if (key == "--heeded") o.heeded = std::stod(value);
         else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--seen") o.seen = std::stod(value);
@@ -331,6 +350,7 @@ int main(int argc, char** argv) {
         else if (key == "--call-temperature") o.call_temperature = std::stod(value);
         else { std::fprintf(stderr, "unknown option %s\n", key.c_str()); return 2; }
     }
+    if (o.heeded > 0 && o.voices < 2 && o.seen >= 1) { std::fprintf(stderr, "--heeded needs --voices 2+ or --seen < 1\n"); return 2; }
     if (o.facts < 2 || o.facts > 4) { std::fprintf(stderr, "--facts 2..4\n"); return 2; }
     TEMPERATURE = o.temperature;
     if (o.apart && o.voices > MAX_SOUNDS) { std::fprintf(stderr, "--apart hears at most %d voices\n", MAX_SOUNDS); return 2; }
