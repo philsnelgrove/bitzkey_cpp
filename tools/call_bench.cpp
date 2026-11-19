@@ -29,6 +29,7 @@ using namespace bitzkey;
 namespace {
 
 struct Options {
+    int first_seed = 1;  // --first-seed: run seeds from this one (one seed per process, in parallel)
     int facts = 2, seeds = 10, trials = 200000, window = 2000;
     double needed = 0.25, reward = 1.0, noise = 1.0, empathy = 0.5, temperature = 0.5, intellect = 0.5;
     int population = 2;  // brains; each trial a speaker and a different listener drawn at random (2 with --swap: a pair)
@@ -301,6 +302,7 @@ int main(int argc, char** argv) {
         const std::string key = argv[at], value = argv[at + 1];
         if (key == "--facts") o.facts = std::stoi(value);
         else if (key == "--seeds") o.seeds = std::stoi(value);
+        else if (key == "--first-seed") o.first_seed = std::stoi(value);
         else if (key == "--trials") o.trials = std::stoi(value);
         else if (key == "--window") o.window = std::stoi(value);
         else if (key == "--needed") o.needed = std::stod(value);
@@ -339,7 +341,7 @@ int main(int argc, char** argv) {
                 o.population, o.copy, o.copy_value.c_str());
     int converged = 0;
     std::vector<long> times;
-    for (int seed = 1; seed <= o.seeds; ++seed) {
+    for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
         const Result r = run(o, static_cast<std::uint64_t>(seed));
         std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f\n", seed,
                     r.converged >= 0 ? ("code by trial " + std::to_string(r.converged)).c_str() : "no code", r.call_bits,
