@@ -85,7 +85,7 @@ struct Options {
     // there was news); when that thing next surprises it, the remembered sounds are lifted by e (a habit, not a lesson;
     // not inherited). --echo-blind 1, the control: the call is remembered against a thing drawn at random.
     double echo = 0.0;
-    bool echo_blind = false, echo_even = false;
+    bool echo_blind = false, echo_even = false, echo_odds = false;
 };
 
 constexpr int FACT_SENSES[] = {SenseThreatCloseness, SenseCarrionCloseness, SenseHerdSuccess, SenseHerdFailure};
@@ -291,9 +291,12 @@ Result run(const Options& o, std::uint64_t seed) {
                     for (double& s : surprise) s += 1e-3;  // none wholly out
                 }
                 weights_of.push_back(surprise);
+                const Values plain = felt;  // before any echo: --echo-odds keeps the odds of calling, and of stopping, as these give
+                bool echoed = false;
                 if (sees && o.echo > 0) {  // speak as heard: the sounds last heard before this thing come readier
                     const auto [first, then] = heard_for[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)];
                     if (first >= FirstCall) {
+                        echoed = true;
                         // --echo-even 1: the others among its kind lowered by as much in all, so it picks which sound, not
                         // whether to call (silence and the sum of the sounds untouched)
                         const double others = o.echo_even ? o.echo / (CALL_OPTIONS - FirstCall - 1) : 0.0;
@@ -307,14 +310,27 @@ Result run(const Options& o, std::uint64_t seed) {
                     }
                 }
                 if (sees && o.tilt > 0) felt[static_cast<std::size_t>(call_output(cue[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)]))] += o.tilt;
-                const int out = pick(felt, calls, rng, o.call_temperature);
+                // --echo-odds 1: whether to call, and whether to stop after one sound, by the values without the echo; which
+                // sound, by the values with it. The echo picks which sound, never whether.
+                const bool by_odds = o.echo_odds && echoed;
+                const auto chance_of = [&](const Values& v, const std::vector<int>& options, int option) {
+                    for (const auto& [o2, c] : o.call_temperature > 0 ? choice_odds(v, options, o.call_temperature) : choice_odds(v, options))
+                        if (o2 == option) return c;
+                    return 0.0;
+                };
+                std::vector<int> sounds_only(calls.begin() + 1, calls.end());  // calls without silence (silence first)
+                int out;
+                if (by_odds) out = rng.random() < chance_of(plain, calls, call_output(Silent)) ? call_output(Silent) : pick(felt, sounds_only, rng, o.call_temperature);
+                else out = pick(felt, calls, rng, o.call_temperature);
                 const int call = out - ACTION_COUNT;
                 const double loudness = o.voices == 1 ? 1.0 : 0.5 + 0.5 * rng.random();
                 int second = -1;
                 if (o.sounds >= 2 && call >= FirstCall) {  // it stops, or runs on to a second sound, by its brain
-                    std::vector<int> places;
+                    std::vector<int> places, go_on;
                     for (int s = -1; s < CALL_COUNT; ++s) places.push_back(sound_output(1, s));
-                    second = pick(felt, places, rng, o.call_temperature) - sound_output(1, 0);
+                    go_on.assign(places.begin() + 1, places.end());
+                    if (by_odds) second = rng.random() < chance_of(plain, places, sound_output(1, -1)) ? -1 : pick(felt, go_on, rng, o.call_temperature) - sound_output(1, 0);
+                    else second = pick(felt, places, rng, o.call_temperature) - sound_output(1, 0);
                     if (second < 0) second = -1;
                 }
                 seconds.push_back(second);
@@ -516,6 +532,7 @@ int main(int argc, char** argv) {
         else if (key == "--echo") o.echo = std::stod(value);
         else if (key == "--echo-blind") o.echo_blind = value != "0";
         else if (key == "--echo-even") o.echo_even = value != "0";
+        else if (key == "--echo-odds") o.echo_odds = value != "0";
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
