@@ -81,6 +81,11 @@ struct Options {
     std::string itch_by = "see", judge = "mean";
     double skew = 0.0;  // --skew s: fact k drawn with weight 1/(k+1)^s (a few common, many rare); 0 all alike
     int sounds = 1;     // --sounds 2: a call may run to a second sound (stop or one of five), as in the world
+    // --echo e: speak as heard. A listener remembers the last call it heard before a thing came to it (the fact, when
+    // there was news); when that thing next surprises it, the remembered sounds are lifted by e (a habit, not a lesson;
+    // not inherited). --echo-blind 1, the control: the call is remembered against a thing drawn at random.
+    double echo = 0.0;
+    bool echo_blind = false, echo_even = false;
 };
 
 constexpr int FACT_SENSES[] = {SenseThreatCloseness, SenseCarrionCloseness, SenseHerdSuccess, SenseHerdFailure};
@@ -125,6 +130,8 @@ Result run(const Options& o, std::uint64_t seed) {
     std::vector<Brain> brains;
     for (int each = 0; each < std::max(2, o.population); ++each) brains.push_back(Brain::random(rng));
     std::vector<int> lived(brains.size(), 0);
+    // per brain, per fact: the call last heard before it (first sound, second or -1); -1 none
+    std::vector<std::vector<std::pair<int, int>>> heard_for(brains.size(), std::vector<std::pair<int, int>>(static_cast<std::size_t>(o.facts), {-1, -1}));
     std::vector<std::array<int, 4>> cue(brains.size());  // per brain: the sound each fact tilts it towards
     {
         std::array<int, 4> species{};
@@ -140,6 +147,7 @@ Result run(const Options& o, std::uint64_t seed) {
         while (count >= 3 && (second == first || second == who)) second = static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(count)));
         brains[static_cast<std::size_t>(who)] = Brain::inherit(brains[static_cast<std::size_t>(first)], brains[static_cast<std::size_t>(second)], rng);
         lived[static_cast<std::size_t>(who)] = 0;
+        for (auto& h : heard_for[static_cast<std::size_t>(who)]) h = {-1, -1};
         cue[static_cast<std::size_t>(who)] = cue[static_cast<std::size_t>(first)];
         for (int& c : cue[static_cast<std::size_t>(who)])
             if (o.tilt > 0 && rng.random() < o.tilt_drift) c = FirstCall + static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(CALL_OPTIONS - FirstCall)));
@@ -283,6 +291,21 @@ Result run(const Options& o, std::uint64_t seed) {
                     for (double& s : surprise) s += 1e-3;  // none wholly out
                 }
                 weights_of.push_back(surprise);
+                if (sees && o.echo > 0) {  // speak as heard: the sounds last heard before this thing come readier
+                    const auto [first, then] = heard_for[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)];
+                    if (first >= FirstCall) {
+                        // --echo-even 1: the others among its kind lowered by as much in all, so it picks which sound, not
+                        // whether to call (silence and the sum of the sounds untouched)
+                        const double others = o.echo_even ? o.echo / (CALL_OPTIONS - FirstCall - 1) : 0.0;
+                        for (int c = FirstCall; c < CALL_OPTIONS; ++c)
+                            felt[static_cast<std::size_t>(call_output(c))] += c == first ? o.echo : -others;
+                        if (o.sounds >= 2) {
+                            const double rest = o.echo_even ? o.echo / CALL_COUNT : 0.0;  // stop and the five, less its own
+                            for (int s = -1; s < CALL_COUNT; ++s)
+                                felt[static_cast<std::size_t>(sound_output(1, s))] += s == then ? o.echo : -rest;
+                        }
+                    }
+                }
                 if (sees && o.tilt > 0) felt[static_cast<std::size_t>(call_output(cue[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)]))] += o.tilt;
                 const int out = pick(felt, calls, rng, o.call_temperature);
                 const int call = out - ACTION_COUNT;
@@ -361,6 +384,13 @@ Result run(const Options& o, std::uint64_t seed) {
                 listener.learn(where, outs[v], feels[v], rate);
                 if (o.sounds >= 2) listener.learn(where, sound_output(1, seconds[v]), feels[v], rate);
             }
+            if (o.echo > 0 && news && !o.deaf)  // the listener remembers the first calling voice's call
+                for (std::size_t v = 0; v < voices.size(); ++v) {
+                    if (outs[v] - ACTION_COUNT < FirstCall) continue;
+                    const int about = o.echo_blind ? static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.facts))) : fact;
+                    heard_for[static_cast<std::size_t>(listening)][static_cast<std::size_t>(about)] = {outs[v] - ACTION_COUNT, seconds[v]};
+                    break;
+                }
             for (const int who : voices) age(who);
             age(listening);
             if (!news) continue;
@@ -483,6 +513,9 @@ int main(int argc, char** argv) {
         else if (key == "--joint-blind") o.joint_blind = value != "0";
         else if (key == "--listen-gain") o.listen_gain = std::stod(value);
         else if (key == "--listen-rate") o.listen_rate = std::stod(value);
+        else if (key == "--echo") o.echo = std::stod(value);
+        else if (key == "--echo-blind") o.echo_blind = value != "0";
+        else if (key == "--echo-even") o.echo_even = value != "0";
         else if (key == "--voices") o.voices = std::stoi(value);
         else if (key == "--apart") o.apart = value != "0";
         else if (key == "--obverter") o.obverter = std::stod(value);
