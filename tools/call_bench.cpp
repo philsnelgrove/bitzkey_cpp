@@ -122,7 +122,7 @@ int pick(const Values& values, const std::vector<int>& options, PyRandom& rng, d
 
 struct Result {
     long converged = -1;
-    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0, foresaw_seer = 0, foresaw_other = 0, blind_calls = 0;  // foresaw split by whether a seer called; blind_calls: share of calls made by those who saw nothing  // foresaw: the listener's foresight tops at the true fact
+    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0, foresaw_seer = 0, foresaw_other = 0, blind_calls = 0, right_seer = 0, best_seer = 0;  // right_seer: the listener's action right when a seer called; best_seer: its best action (highest value) right then  // foresaw split by whether a seer called; blind_calls: share of calls made by those who saw nothing  // foresaw: the listener's foresight tops at the true fact
 };
 
 Result run(const Options& o, std::uint64_t seed) {
@@ -169,7 +169,7 @@ Result run(const Options& o, std::uint64_t seed) {
         for (int k = 0; k < o.facts; ++k) if ((roll -= fact_weights[static_cast<std::size_t>(k)]) < 0) return k;
         return o.facts - 1;
     };
-    int right = 0, in_window = 0, foreseen = 0, seer_heard = 0, seer_foreseen = 0;
+    int right = 0, in_window = 0, foreseen = 0, seer_heard = 0, seer_foreseen = 0, seer_right = 0, seer_best = 0;
     long calls_made = 0, calls_blind = 0;
     Result result;
     const auto noisy = [&] {
@@ -194,11 +194,13 @@ Result run(const Options& o, std::uint64_t seed) {
             result.foresaw = foreseen / static_cast<double>(in_window);
             result.foresaw_seer = seer_heard ? seer_foreseen / static_cast<double>(seer_heard) : 0.0;
             result.foresaw_other = in_window > seer_heard ? (foreseen - seer_foreseen) / static_cast<double>(in_window - seer_heard) : 0.0;
+            result.right_seer = seer_heard ? seer_right / static_cast<double>(seer_heard) : 0.0;
+            result.best_seer = seer_heard ? seer_best / static_cast<double>(seer_heard) : 0.0;
             result.blind_calls = calls_made ? calls_blind / static_cast<double>(calls_made) : 0.0;
             if (result.converged < 0 && result.action_bits >= needed) result.converged = trial;
             for (auto& row : said) std::fill(row.begin(), row.end(), 0);
             for (auto& row : done) std::fill(row.begin(), row.end(), 0);
-            right = in_window = foreseen = seer_heard = seer_foreseen = 0;
+            right = in_window = foreseen = seer_heard = seer_foreseen = seer_right = seer_best = 0;
             calls_made = calls_blind = 0;
             if (result.converged >= 0 && trial >= result.converged + 5L * o.window) return true;  // held a while: enough
         }
@@ -423,7 +425,9 @@ Result run(const Options& o, std::uint64_t seed) {
                 int best = 0;  // what the listener foresees most, of all the facts
                 for (int k = 1; k < o.facts; ++k) if (listened[fact_output(k)] > listened[fact_output(best)]) best = k;
                 foreseen += best == fact;
-                if (seer_called) { ++seer_heard; seer_foreseen += best == fact; }
+                int top = 0;  // the action it values most
+                for (int a = 1; a < o.facts; ++a) if (listened[a] > listened[top]) top = a;
+                if (seer_called) { ++seer_heard; seer_foreseen += best == fact; seer_right += action == fact; seer_best += top == fact; }
             }
             if (close_window(trial)) break;
             continue;
@@ -573,9 +577,9 @@ int main(int argc, char** argv) {
     std::vector<long> times;
     for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
         const Result r = run(o, static_cast<std::uint64_t>(seed));
-        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f, seer %.2f, other %.2f, blind calls %.2f\n", seed,
+        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f, seer %.2f, other %.2f, blind calls %.2f, seer acted %.2f, seer best %.2f\n", seed,
                     r.converged >= 0 ? ("code by trial " + std::to_string(r.converged)).c_str() : "no code", r.call_bits,
-                    r.action_bits, r.accuracy, r.foresaw, r.foresaw_seer, r.foresaw_other, r.blind_calls);
+                    r.action_bits, r.accuracy, r.foresaw, r.foresaw_seer, r.foresaw_other, r.blind_calls, r.right_seer, r.best_seer);
         if (r.converged >= 0) { ++converged; times.push_back(r.converged); }
         std::fflush(stdout);
     }
