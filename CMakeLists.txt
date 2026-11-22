@@ -173,6 +173,9 @@ add_custom_command(TARGET bitzkey_report POST_BUILD
 add_executable(bitzkey_call_bench tools/call_bench.cpp src/core/Memory.cpp)
 target_link_libraries(bitzkey_call_bench PRIVATE bitzkey_core)
 target_include_directories(bitzkey_call_bench PRIVATE src)
+add_executable(bitzkey_goal_bench tools/goal_bench.cpp src/core/Memory.cpp)
+target_link_libraries(bitzkey_goal_bench PRIVATE bitzkey_core)
+target_include_directories(bitzkey_goal_bench PRIVATE src)
 
 add_executable(bitzkey_cli src/cli/main.cpp src/core/Memory.cpp)
 target_link_libraries(bitzkey_cli PRIVATE bitzkey_net)
