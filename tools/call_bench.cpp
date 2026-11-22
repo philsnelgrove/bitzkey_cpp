@@ -86,6 +86,7 @@ struct Options {
     // not inherited). --echo-blind 1, the control: the call is remembered against a thing drawn at random.
     double echo = 0.0;
     int busy = 0;  // --busy n: other lessons per brain per trial (see busy_lessons)
+    double habituate = 0.0, habit_rate = 0.3;  // --habituate h, --habit-rate r (see habituate)
     double focus = 1.0;  // --focus d: things out of focus sensed x d (1: off)
     std::string focus_by = "surprise";  // --focus-by surprise|random
     bool focus_sense = false;  // --focus-sense 1: also sense how surprised it is by the thing in focus
@@ -251,6 +252,21 @@ Result run(const Options& o, std::uint64_t seed) {
         for (int k = 0; k < o.facts; ++k)
             if (k != held) senses[static_cast<std::size_t>(fact_sense(k))] *= o.focus;
     };
+    // --habituate h: getting used to things. Each brain keeps, per thing, a running mean of how near it has sensed it
+    // (at --habit-rate a sensing); it senses each thing by how far it now stands above that mean, weighed h against
+    // the plain level. What lingers fades; what is new stands out. No meaning given.
+    std::vector<std::vector<double>> used_to(brains.size(), std::vector<double>(static_cast<std::size_t>(o.facts), 0.0));
+    const auto habituate = [&](Senses& senses, int who) {
+        if (o.habituate <= 0) return;
+        auto& mean = used_to[static_cast<std::size_t>(who)];
+        for (int k = 0; k < o.facts; ++k) {
+            double& level = senses[static_cast<std::size_t>(fact_sense(k))];
+            double& m = mean[static_cast<std::size_t>(k)];
+            const double fresh = std::max(0.0, level - m);
+            m += o.habit_rate * (level - m);
+            level = (1.0 - o.habituate) * level + o.habituate * fresh;
+        }
+    };
     const auto close_window = [&](long trial) {  // a window full: measure, and say whether the code has held a while
         if (++in_window == o.window) {
             if (std::getenv("BENCH_TABLES")) {
@@ -328,6 +344,7 @@ Result run(const Options& o, std::uint64_t seed) {
             const bool news = o.relevance >= 1 || rng.random() < o.relevance;
             Senses heard = noisy();
             surround(heard, listening);
+            habituate(heard, listening);
             focus_on(heard, brains[static_cast<std::size_t>(listening)], false, fact);
             std::vector<int> seconds;  // per voice, its second sound (0..4), -1 none
             std::vector<Senses> spokens;
@@ -340,6 +357,7 @@ Result run(const Options& o, std::uint64_t seed) {
                 surround(spoken, who);
                 const bool sees = news && (o.seen >= 1 || rng.random() < o.seen);
                 if (sees) spoken[static_cast<std::size_t>(fact_sense(fact))] = 1.0;
+                habituate(spoken, who);
                 focus_on(spoken, brains[static_cast<std::size_t>(who)], sees, fact);
                 Values felt = brains[static_cast<std::size_t>(who)].values(spoken);
                 // Its own surprise at each fact: how far what it senses is from what it would expect, not seeing.
@@ -631,6 +649,8 @@ int main(int argc, char** argv) {
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--busy") o.busy = std::stoi(value);
         else if (key == "--crowd") o.crowd = std::stod(value);
+        else if (key == "--habituate") o.habituate = std::stod(value);
+        else if (key == "--habit-rate") o.habit_rate = std::stod(value);
         else if (key == "--focus") o.focus = std::stod(value);
         else if (key == "--focus-by") o.focus_by = value;
         else if (key == "--focus-sense") o.focus_sense = value != "0";
