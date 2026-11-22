@@ -1888,7 +1888,8 @@ void App::draw_world(Canvas& canvas) {
         }
         ++drawn;
         if (hearing && agent->alive() && agent->call != Silent && agent->call_turn == simulation_->turn() && view.contains(px, py)) {
-            const double loudness = CALL_VOLUME * (0.3 + 0.7 * nearness) * (0.25 + 0.75 * agent->physique(Size));
+            const double whisper = agent->spoke_alone() ? 0.25 : 1.0;  // said to one alone, beside it
+            const double loudness = whisper * CALL_VOLUME * (0.3 + 0.7 * nearness) * (0.25 + 0.75 * agent->physique(Size));
             heard.push_back({agent->call, loudness, (px - view.centerx()) / (view.w / 2.0)});
         }
         const int radius = dot_radius(agent->body[Size], largest, smallest);
