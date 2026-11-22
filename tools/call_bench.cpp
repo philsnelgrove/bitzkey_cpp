@@ -87,6 +87,11 @@ struct Options {
     double echo = 0.0;
     int busy = 0;  // --busy n: other lessons per brain per trial (see busy_lessons)
     double lexicon = 0.0, lexicon_keep = 0.98, lexicon_inherit = 0.5;  // --lexicon, --lexicon-keep, --lexicon-inherit
+    int vocab = 0;  // --vocab n: words a hearer keeps (see read_word)
+    double prime = 1.0;  // --prime p: the meant thing's sense raised to p x sureness
+    double prime_heard = 0.0;  // --prime-heard n: primes only once the word's (fading) tally reaches n
+    double prime_share = 0.0;  // --prime-share s: ...and its usual meaning holds at least this share
+    bool vocab_blind = false;
     bool lexicon_blind = false;
     double habituate = 0.0, habit_rate = 0.3;  // --habituate h, --habit-rate r (see habituate)
     double focus = 1.0;  // --focus d: things out of focus sensed x d (1: off)
@@ -132,7 +137,7 @@ int pick(const Values& values, const std::vector<int>& options, PyRandom& rng, d
 
 struct Result {
     long converged = -1;
-    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0, foresaw_seer = 0, foresaw_other = 0, blind_calls = 0, right_seer = 0, best_seer = 0;  // right_seer: the listener's action right when a seer called; best_seer: its best action (highest value) right then  // foresaw split by whether a seer called; blind_calls: share of calls made by those who saw nothing  // foresaw: the listener's foresight tops at the true fact
+    double call_bits = 0, action_bits = 0, accuracy = 0, foresaw = 0, foresaw_seer = 0, foresaw_other = 0, blind_calls = 0, right_seer = 0, best_seer = 0, calling = 0;  // calling: share of chances to call taken  // right_seer: the listener's action right when a seer called; best_seer: its best action (highest value) right then  // foresaw split by whether a seer called; blind_calls: share of calls made by those who saw nothing  // foresaw: the listener's foresight tops at the true fact
 };
 
 Result run(const Options& o, std::uint64_t seed) {
@@ -149,6 +154,52 @@ Result run(const Options& o, std::uint64_t seed) {
     constexpr int SECOND_CHOICES = CALL_COUNT + 1;
     struct Words { std::array<double, CALL_COUNT> first{}; std::array<double, SECOND_CHOICES> second{}; };
     std::vector<std::vector<Words>> lexicon(brains.size(), std::vector<Words>(static_cast<std::size_t>(o.facts)));
+    // --vocab n: the hearer's words. Each brain keeps up to n words (a whole call: first sound and second, or stop), each
+    // with a fading tally (--lexicon-keep) of which fact came after it heard it; full, it forgets its least-held word.
+    // Hearing a word it knows, it senses how sure it is of what the word meant (one sense), and, by --prime, the meant
+    // thing's sense is raised to that sureness: it looks for it. --vocab-blind 1: tallied against a fact at random.
+    struct Word { int id = -1; std::vector<double> tally; };
+    std::vector<std::vector<Word>> vocab(brains.size());
+    const auto word_id = [](int call, int second) { return (call - FirstCall) * (CALL_COUNT + 1) + (second + 1); };
+    const auto learn_word = [&](int who, int id, int about) {
+        auto& words = vocab[static_cast<std::size_t>(who)];
+        Word* w = nullptr;
+        for (Word& each : words) if (each.id == id) w = &each;
+        if (!w) {
+            if (static_cast<int>(words.size()) >= o.vocab) {  // full: the least-held word forgotten
+                std::size_t least = 0;
+                double least_sum = 1e300;
+                for (std::size_t i = 0; i < words.size(); ++i) {
+                    double s = 0;
+                    for (double t : words[i].tally) s += t;
+                    if (s < least_sum) { least_sum = s; least = i; }
+                }
+                words.erase(words.begin() + static_cast<long>(least));
+            }
+            words.push_back({id, std::vector<double>(static_cast<std::size_t>(o.facts), 0.0)});
+            w = &words.back();
+        }
+        for (double& t : w->tally) t *= o.lexicon_keep;
+        w->tally[static_cast<std::size_t>(about)] += 1.0;
+    };
+    const auto read_word = [&](Senses& senses, int who, int id) {  // hearing a word: what it usually meant
+        for (const Word& w : vocab[static_cast<std::size_t>(who)]) {
+            if (w.id != id) continue;
+            double total = 0, top = 0;
+            int meant = 0;
+            for (int k = 0; k < o.facts; ++k) {
+                total += w.tally[static_cast<std::size_t>(k)];
+                if (w.tally[static_cast<std::size_t>(k)] > top) { top = w.tally[static_cast<std::size_t>(k)]; meant = k; }
+            }
+            if (total <= 0) return;
+            const double sure = top / total * std::min(1.0, total / 5.0);
+            senses[static_cast<std::size_t>(fact_sense(OUTSIDE_SEEN - 2))] = sure;  // a slot no fact uses
+            double& seen = senses[static_cast<std::size_t>(fact_sense(meant))];
+            if (total >= o.prime_heard && top / total >= o.prime_share)  // primed only once the word is settled
+                seen = std::max(seen, o.prime * sure);
+            return;
+        }
+    };
     const auto tally = [&](int who, int about, int call, int second) {
         Words& w = lexicon[static_cast<std::size_t>(who)][static_cast<std::size_t>(about)];
         for (double& t : w.first) t *= o.lexicon_keep;
@@ -172,6 +223,9 @@ Result run(const Options& o, std::uint64_t seed) {
         brains[static_cast<std::size_t>(who)] = Brain::inherit(brains[static_cast<std::size_t>(first)], brains[static_cast<std::size_t>(second)], rng);
         lived[static_cast<std::size_t>(who)] = 0;
         for (auto& h : heard_for[static_cast<std::size_t>(who)]) h = {-1, -1};
+        vocab[static_cast<std::size_t>(who)] = vocab[static_cast<std::size_t>(first)];  // a parent's words, held half as firmly
+        for (auto& w : vocab[static_cast<std::size_t>(who)])
+            for (double& t : w.tally) t *= o.lexicon_inherit;
         for (std::size_t k = 0; k < lexicon[static_cast<std::size_t>(who)].size(); ++k) {  // taught some of a parent's words
             Words& child = lexicon[static_cast<std::size_t>(who)][k];
             const Words& parent = lexicon[static_cast<std::size_t>(first)][k];
@@ -200,7 +254,7 @@ Result run(const Options& o, std::uint64_t seed) {
         return o.facts - 1;
     };
     int right = 0, in_window = 0, foreseen = 0, seer_heard = 0, seer_foreseen = 0, seer_right = 0, seer_best = 0;
-    long calls_made = 0, calls_blind = 0;
+    long calls_made = 0, calls_blind = 0, chances = 0;
     Result result;
     const auto noisy = [&] {
         Senses senses{};
@@ -303,11 +357,12 @@ Result run(const Options& o, std::uint64_t seed) {
             result.right_seer = seer_heard ? seer_right / static_cast<double>(seer_heard) : 0.0;
             result.best_seer = seer_heard ? seer_best / static_cast<double>(seer_heard) : 0.0;
             result.blind_calls = calls_made ? calls_blind / static_cast<double>(calls_made) : 0.0;
+            result.calling = chances ? calls_made / static_cast<double>(chances) : 0.0;
             if (result.converged < 0 && result.action_bits >= needed) result.converged = trial;
             for (auto& row : said) std::fill(row.begin(), row.end(), 0);
             for (auto& row : done) std::fill(row.begin(), row.end(), 0);
             right = in_window = foreseen = seer_heard = seer_foreseen = seer_right = seer_best = 0;
-            calls_made = calls_blind = 0;
+            calls_made = calls_blind = chances = 0;
             if (result.converged >= 0 && trial >= result.converged + 5L * o.window) return true;  // held a while: enough
         }
         return false;
@@ -473,6 +528,10 @@ Result run(const Options& o, std::uint64_t seed) {
                 outs.push_back(out);
                 saw.push_back(sees);
             }
+            int heard_word = -1;  // the first calling voice's call, as a word
+            for (std::size_t v = 0; v < voices.size() && !o.deaf; ++v)
+                if (outs[v] - ACTION_COUNT >= FirstCall) { heard_word = word_id(outs[v] - ACTION_COUNT, seconds[v]); break; }
+            if (o.vocab > 0 && heard_word >= 0) read_word(heard, listening, heard_word);
             Brain& listener = brains[static_cast<std::size_t>(listening)];
             const Values listened = listener.values(heard);
             double heed = 0.0;
@@ -493,6 +552,7 @@ Result run(const Options& o, std::uint64_t seed) {
             const double gained = news && action == fact ? o.reward : 0.0;
             listener.learn(heard, action, gained, rate);
             bool any_call = false, seer_called = false;
+            chances += static_cast<long>(voices.size());
             for (std::size_t v = 0; v < voices.size(); ++v) {
                 if (outs[v] - ACTION_COUNT < FirstCall) continue;
                 any_call = true;
@@ -533,6 +593,8 @@ Result run(const Options& o, std::uint64_t seed) {
                     heard_for[static_cast<std::size_t>(listening)][static_cast<std::size_t>(about)] = {outs[v] - ACTION_COUNT, seconds[v]};
                     break;
                 }
+            if (o.vocab > 0 && news && heard_word >= 0)  // the word heard, against what then came
+                learn_word(listening, heard_word, o.vocab_blind ? static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.facts))) : fact);
             if (o.lexicon > 0 && news && !o.deaf) {
                 bool first_heard = false;
                 for (std::size_t v = 0; v < voices.size(); ++v) {
@@ -693,9 +755,15 @@ int main(int argc, char** argv) {
         else if (key == "--tilt-drift") o.tilt_drift = std::stod(value);
         else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
+        else if (key == "--reluctance") CALL_RELUCTANCE = std::stod(value);  // born quiet: how far below silence new brains value calls
         else if (key == "--busy") o.busy = std::stoi(value);
         else if (key == "--crowd") o.crowd = std::stod(value);
         else if (key == "--lexicon") o.lexicon = std::stod(value);
+        else if (key == "--vocab") o.vocab = std::stoi(value);
+        else if (key == "--prime") o.prime = std::stod(value);
+        else if (key == "--prime-heard") o.prime_heard = std::stod(value);
+        else if (key == "--prime-share") o.prime_share = std::stod(value);
+        else if (key == "--vocab-blind") o.vocab_blind = value != "0";
         else if (key == "--lexicon-keep") o.lexicon_keep = std::stod(value);
         else if (key == "--lexicon-inherit") o.lexicon_inherit = std::stod(value);
         else if (key == "--lexicon-blind") o.lexicon_blind = value != "0";
@@ -731,9 +799,9 @@ int main(int argc, char** argv) {
     std::vector<long> times;
     for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
         const Result r = run(o, static_cast<std::uint64_t>(seed));
-        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f, seer %.2f, other %.2f, blind calls %.2f, seer acted %.2f, seer best %.2f\n", seed,
+        std::printf("  seed %2d: %s  calls %.3f bits, actions %.3f bits, right %.2f, foresaw %.2f, seer %.2f, other %.2f, blind calls %.2f, seer acted %.2f, seer best %.2f, calling %.2f\n", seed,
                     r.converged >= 0 ? ("code by trial " + std::to_string(r.converged)).c_str() : "no code", r.call_bits,
-                    r.action_bits, r.accuracy, r.foresaw, r.foresaw_seer, r.foresaw_other, r.blind_calls, r.right_seer, r.best_seer);
+                    r.action_bits, r.accuracy, r.foresaw, r.foresaw_seer, r.foresaw_other, r.blind_calls, r.right_seer, r.best_seer, r.calling);
         if (r.converged >= 0) { ++converged; times.push_back(r.converged); }
         std::fflush(stdout);
     }
