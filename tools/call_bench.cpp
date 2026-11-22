@@ -86,6 +86,8 @@ struct Options {
     // not inherited). --echo-blind 1, the control: the call is remembered against a thing drawn at random.
     double echo = 0.0;
     int busy = 0;  // --busy n: other lessons per brain per trial (see busy_lessons)
+    double lexicon = 0.0, lexicon_keep = 0.98, lexicon_inherit = 0.5;  // --lexicon, --lexicon-keep, --lexicon-inherit
+    bool lexicon_blind = false;
     double habituate = 0.0, habit_rate = 0.3;  // --habituate h, --habit-rate r (see habituate)
     double focus = 1.0;  // --focus d: things out of focus sensed x d (1: off)
     std::string focus_by = "surprise";  // --focus-by surprise|random
@@ -140,6 +142,20 @@ Result run(const Options& o, std::uint64_t seed) {
     std::vector<int> lived(brains.size(), 0);
     // per brain, per fact: the call last heard before it (first sound, second or -1); -1 none
     std::vector<std::vector<std::pair<int, int>>> heard_for(brains.size(), std::vector<std::pair<int, int>>(static_cast<std::size_t>(o.facts), {-1, -1}));
+    // --lexicon x: per brain, per fact, a slowly fading tally of the sounds (first, then second place: stop or one of
+    // five) heard just before that fact came to it, and of its own calls about it that its listener understood. Seeing
+    // the fact, each sound is readier by x times its share of the tally. Fading by --lexicon-keep a tally; a newborn
+    // starts with --lexicon-inherit of a parent's. --lexicon-blind 1, the control: tallied against a fact at random.
+    constexpr int SECOND_CHOICES = CALL_COUNT + 1;
+    struct Words { std::array<double, CALL_COUNT> first{}; std::array<double, SECOND_CHOICES> second{}; };
+    std::vector<std::vector<Words>> lexicon(brains.size(), std::vector<Words>(static_cast<std::size_t>(o.facts)));
+    const auto tally = [&](int who, int about, int call, int second) {
+        Words& w = lexicon[static_cast<std::size_t>(who)][static_cast<std::size_t>(about)];
+        for (double& t : w.first) t *= o.lexicon_keep;
+        for (double& t : w.second) t *= o.lexicon_keep;
+        w.first[static_cast<std::size_t>(call - FirstCall)] += 1.0;
+        w.second[static_cast<std::size_t>(second + 1)] += 1.0;
+    };
     std::vector<std::array<int, 4>> cue(brains.size());  // per brain: the sound each fact tilts it towards
     {
         std::array<int, 4> species{};
@@ -156,6 +172,12 @@ Result run(const Options& o, std::uint64_t seed) {
         brains[static_cast<std::size_t>(who)] = Brain::inherit(brains[static_cast<std::size_t>(first)], brains[static_cast<std::size_t>(second)], rng);
         lived[static_cast<std::size_t>(who)] = 0;
         for (auto& h : heard_for[static_cast<std::size_t>(who)]) h = {-1, -1};
+        for (std::size_t k = 0; k < lexicon[static_cast<std::size_t>(who)].size(); ++k) {  // taught some of a parent's words
+            Words& child = lexicon[static_cast<std::size_t>(who)][k];
+            const Words& parent = lexicon[static_cast<std::size_t>(first)][k];
+            for (std::size_t s = 0; s < child.first.size(); ++s) child.first[s] = o.lexicon_inherit * parent.first[s];
+            for (std::size_t s = 0; s < child.second.size(); ++s) child.second[s] = o.lexicon_inherit * parent.second[s];
+        }
         cue[static_cast<std::size_t>(who)] = cue[static_cast<std::size_t>(first)];
         for (int& c : cue[static_cast<std::size_t>(who)])
             if (o.tilt > 0 && rng.random() < o.tilt_drift) c = FirstCall + static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(CALL_OPTIONS - FirstCall)));
@@ -385,6 +407,18 @@ Result run(const Options& o, std::uint64_t seed) {
                 weights_of.push_back(surprise);
                 const Values plain = felt;  // before any echo: --echo-odds keeps the odds of calling, and of stopping, as these give
                 bool echoed = false;
+                if (sees && o.lexicon > 0) {  // its words for this thing, by their share of its tally
+                    const Words& w = lexicon[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)];
+                    double total = 0.0, total2 = 0.0;
+                    for (double t : w.first) total += t;
+                    for (double t : w.second) total2 += t;
+                    if (total > 0)
+                        for (int c = FirstCall; c < CALL_OPTIONS; ++c)
+                            felt[static_cast<std::size_t>(call_output(c))] += o.lexicon * w.first[static_cast<std::size_t>(c - FirstCall)] / total;
+                    if (o.sounds >= 2 && total2 > 0)
+                        for (int s = -1; s < CALL_COUNT; ++s)
+                            felt[static_cast<std::size_t>(sound_output(1, s))] += o.lexicon * w.second[static_cast<std::size_t>(s + 1)] / total2;
+                }
                 if (sees && o.echo > 0) {  // speak as heard: the sounds last heard before this thing come readier
                     const auto [first, then] = heard_for[static_cast<std::size_t>(who)][static_cast<std::size_t>(fact)];
                     if (first >= FirstCall) {
@@ -499,6 +533,18 @@ Result run(const Options& o, std::uint64_t seed) {
                     heard_for[static_cast<std::size_t>(listening)][static_cast<std::size_t>(about)] = {outs[v] - ACTION_COUNT, seconds[v]};
                     break;
                 }
+            if (o.lexicon > 0 && news && !o.deaf) {
+                bool first_heard = false;
+                for (std::size_t v = 0; v < voices.size(); ++v) {
+                    if (outs[v] - ACTION_COUNT < FirstCall) continue;
+                    const int about = o.lexicon_blind ? static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(o.facts))) : fact;
+                    if (!first_heard) {  // the listener tallies the first calling voice's call against what came
+                        tally(listening, about, outs[v] - ACTION_COUNT, seconds[v]);
+                        first_heard = true;
+                    }
+                    if (saw[v] && action == fact) tally(voices[v], about, outs[v] - ACTION_COUNT, seconds[v]);  // understood
+                }
+            }
             if (o.busy > 0) {  // a life besides calling: each brain also learns other things on the same weights
                 std::vector<int> all = voices;
                 all.push_back(listening);
@@ -649,6 +695,10 @@ int main(int argc, char** argv) {
         else if (key == "--cost") o.cost = std::stod(value);
         else if (key == "--busy") o.busy = std::stoi(value);
         else if (key == "--crowd") o.crowd = std::stod(value);
+        else if (key == "--lexicon") o.lexicon = std::stod(value);
+        else if (key == "--lexicon-keep") o.lexicon_keep = std::stod(value);
+        else if (key == "--lexicon-inherit") o.lexicon_inherit = std::stod(value);
+        else if (key == "--lexicon-blind") o.lexicon_blind = value != "0";
         else if (key == "--habituate") o.habituate = std::stod(value);
         else if (key == "--habit-rate") o.habit_rate = std::stod(value);
         else if (key == "--focus") o.focus = std::stod(value);
