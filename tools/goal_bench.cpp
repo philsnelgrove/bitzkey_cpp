@@ -31,6 +31,9 @@ struct Options {
     double temperature = 0.1, intellect = 0.5, noise = 0.3;
     bool memory = true, distract = false;
     double recur = 0.0;  // --recur p: one life, a want that recurs (see run_recurring); 0 the delayed choice
+    int population = 1;  // --population N: with --life, N animals living side by side (see run_lives)
+    int life = 0;        // --life L: turns each lives, then a child of two takes its place, its brain inherited
+    bool select = false; // --select: parents the better of two at random by how often they were right (else at random)
 };
 
 Options parse(int argc, char** argv) {
@@ -54,10 +57,14 @@ Options parse(int argc, char** argv) {
         else if (flag == "--no-memory") o.memory = false;
         else if (flag == "--distract") o.distract = true;
         else if (flag == "--recur") o.recur = std::atof(next());
+        else if (flag == "--population") o.population = std::atoi(next());
+        else if (flag == "--life") o.life = std::atoi(next());
+        else if (flag == "--select") o.select = true;
         else {
             std::fprintf(stderr,
                          "goal_bench [--things K] [--delay D] [--steps S] [--seeds N] [--first-seed F] [--trials T] [--window W]\n"
-                         "           [--temperature T] [--intellect I] [--noise N] [--no-memory] [--distract] [--recur P]\n");
+                         "           [--temperature T] [--intellect I] [--noise N] [--no-memory] [--distract] [--recur P]\n"
+                         "           [--population N --life L] [--select]\n");
             std::exit(2);
         }
     }
@@ -152,11 +159,149 @@ void run_recurring(const Options& o, double rate) {
     std::printf("  (chance %.2f)\n", 1.0 / o.things);
 }
 
+// Lives (--recur p with --life L): --population animals, each its own want that recurs as in run_recurring, each a life
+// of L turns; at its end a child takes its place with a brain inherited from two (Brain::inherit, the world's way: the
+// parents' brains as they learnt them, mixed and mutated), its memory blank. --trials turns of the whole population.
+// Reported, over the last window: how often right by turns since seen, and for the young (the first fifth of a life)
+// apart, to see what is born knowing rather than learnt again.
+void run_lives(const Options& o, double rate) {
+    constexpr int GAPS = 9;
+    struct Animal {
+        Brain brain;
+        Held held{};
+        std::vector<Senses> seen;
+        int place = 0, since = 0, age = 0, right = 0;
+    };
+    std::array<double, GAPS> mean_all{}, mean_young{};
+    std::array<int, GAPS> with_all{}, with_young{};
+    for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
+        PyRandom rng(static_cast<std::uint64_t>(seed));
+        std::vector<Animal> animals;
+        for (int each = 0; each < std::max(2, o.population); ++each) {
+            Animal animal{Brain::random(rng)};
+            animal.age = static_cast<int>(rng.random() * o.life);  // ages spread, so deaths come one at a time
+            animal.place = static_cast<int>(rng.random() * o.things);
+            animals.push_back(std::move(animal));
+        }
+        std::vector<int> actions(static_cast<std::size_t>(o.things));
+        for (int k = 0; k < o.things; ++k) actions[static_cast<std::size_t>(k)] = k;
+        std::array<int, GAPS> right{}, counted{}, right_young{}, counted_young{};
+        long long generations = 0;
+        const auto parent = [&]() -> const Animal& {
+            const auto& one = animals[static_cast<std::size_t>(rng.random() * animals.size())];
+            if (!o.select) return one;
+            const auto& two = animals[static_cast<std::size_t>(rng.random() * animals.size())];
+            const double a = static_cast<double>(one.right) / std::max(1, one.age), b = static_cast<double>(two.right) / std::max(1, two.age);
+            return a >= b ? one : two;
+        };
+        for (int turn = 0; turn < o.trials; ++turn) {
+            for (std::size_t who = 0; who < animals.size(); ++who) {
+                Animal& animal = animals[who];
+                if (animal.age >= o.life) {  // its life over: a child of two takes its place
+                    const Animal& first = parent();
+                    const Animal& second = parent();
+                    Brain child = Brain::inherit(first.brain, second.brain, rng);
+                    animal.brain = std::move(child);
+                    animal.held = Held{};
+                    animal.seen.clear();
+                    animal.age = animal.right = 0;
+                    ++generations;
+                }
+                const bool sighted = animal.age == 0 || rng.random() < o.recur;
+                if (sighted) {
+                    animal.place = static_cast<int>(rng.random() * o.things);
+                    animal.since = 0;
+                } else {
+                    ++animal.since;
+                }
+                Senses senses{};
+                for (int sense = 0; sense < INPUT_SIZE; ++sense) {
+                    senses[static_cast<std::size_t>(sense)] = signed_sense(sense) ? o.noise * (2 * rng.random() - 1) : o.noise * rng.random();
+                }
+                for (int k = 0; k < o.things; ++k) senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(k)])] = 0.0;
+                if (sighted) {
+                    senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(animal.place)])] = 1.0;
+                } else if (o.distract) {
+                    const int decoy = static_cast<int>(rng.random() * o.things);
+                    senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(decoy)])] = 0.5;
+                }
+                for (int neuron = 0; neuron < MEMORY_NEURONS; ++neuron) {
+                    senses[static_cast<std::size_t>(SenseMemory + neuron)] = o.memory ? animal.held[static_cast<std::size_t>(neuron)] : 0.0;
+                }
+                const Values values = animal.brain.values(senses);
+                int choice = 0;
+                double roll = rng.random();
+                for (const auto& [action, chance] : choice_odds(values, actions, o.temperature)) {
+                    roll -= chance;
+                    choice = action;
+                    if (roll < 0) break;
+                }
+                const bool hit = choice == animal.place;
+                animal.brain.learn(senses, choice, hit ? 1.0 : 0.0, rate);
+                const int back = std::min(o.steps, static_cast<int>(animal.seen.size()));
+                if (o.memory && back > 0) {
+                    std::vector<const Senses*> past;
+                    for (int step = 0; step < back; ++step) past.push_back(&animal.seen[static_cast<std::size_t>(step)]);
+                    animal.brain.learn_memory(senses, past, choice, hit ? 1.0 : 0.0, rate * MEMORY_LEARNING);
+                }
+                animal.held = o.memory ? memory_after(values, animal.held) : Held{};
+                animal.seen.insert(animal.seen.begin(), senses);
+                if (static_cast<int>(animal.seen.size()) > MAX_MEMORY_STEPS) animal.seen.pop_back();
+                animal.right += hit;
+                if (turn >= o.trials - o.window) {
+                    const auto gap = static_cast<std::size_t>(std::min(animal.since, GAPS - 1));
+                    right[gap] += hit;
+                    ++counted[gap];
+                    if (animal.age < o.life / 5) {
+                        right_young[gap] += hit;
+                        ++counted_young[gap];
+                    }
+                }
+                ++animal.age;
+            }
+        }
+        std::printf("  seed %d (%lld generations born):\n    all:  ", seed, generations);
+        for (int gap = 0; gap < GAPS; ++gap) {
+            const auto g = static_cast<std::size_t>(gap);
+            if (counted[g] == 0) continue;
+            const double share = static_cast<double>(right[g]) / counted[g];
+            mean_all[g] += share;
+            ++with_all[g];
+            std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", share);
+        }
+        std::printf("\n    young:");
+        for (int gap = 0; gap < GAPS; ++gap) {
+            const auto g = static_cast<std::size_t>(gap);
+            if (counted_young[g] == 0) continue;
+            const double share = static_cast<double>(right_young[g]) / counted_young[g];
+            mean_young[g] += share;
+            ++with_young[g];
+            std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", share);
+        }
+        std::printf("\n");
+        std::fflush(stdout);
+    }
+    std::printf("mean all:  ");
+    for (int gap = 0; gap < GAPS; ++gap)
+        if (with_all[static_cast<std::size_t>(gap)]) std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", mean_all[static_cast<std::size_t>(gap)] / with_all[static_cast<std::size_t>(gap)]);
+    std::printf("\nmean young:");
+    for (int gap = 0; gap < GAPS; ++gap)
+        if (with_young[static_cast<std::size_t>(gap)]) std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", mean_young[static_cast<std::size_t>(gap)] / with_young[static_cast<std::size_t>(gap)]);
+    std::printf("  (chance %.2f)\n", 1.0 / o.things);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     const Options o = parse(argc, argv);
     const double rate = LEARNING_RATE * (LEARNING_FLOOR + o.intellect * (1 + LEARNING_BOOST * o.intellect));
+    if (o.recur > 0 && o.life > 0) {
+        std::printf("goal bench, lives: things %d, sighting %.2f a turn, steps %d, memory %s%s, %d animals living %d turns%s, %d turns\n",
+                    o.things, o.recur, o.steps, o.memory ? "on" : "WIPED", o.distract ? ", glimpses" : "", std::max(2, o.population), o.life,
+                    o.select ? ", parents selected" : "", o.trials);
+        run_lives(o, rate);
+        return 0;
+    }
     if (o.recur > 0) {
         std::printf("goal bench, a want that recurs: things %d, sighting %.2f a turn, steps %d, memory %s%s, %d turns\n", o.things, o.recur,
                     o.steps, o.memory ? "on" : "WIPED", o.distract ? ", glimpses" : "", o.trials);
