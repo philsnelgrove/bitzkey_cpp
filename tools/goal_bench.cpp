@@ -15,6 +15,7 @@
 #include "core/Simulation.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +30,7 @@ struct Options {
     int things = 4, delay = 1, steps = 1, seeds = 3, first_seed = 1, trials = 200000, window = 5000;
     double temperature = 0.1, intellect = 0.5, noise = 0.3;
     bool memory = true, distract = false;
+    double recur = 0.0;  // --recur p: one life, a want that recurs (see run_recurring); 0 the delayed choice
 };
 
 Options parse(int argc, char** argv) {
@@ -51,10 +53,11 @@ Options parse(int argc, char** argv) {
         else if (flag == "--noise") o.noise = std::atof(next());
         else if (flag == "--no-memory") o.memory = false;
         else if (flag == "--distract") o.distract = true;
+        else if (flag == "--recur") o.recur = std::atof(next());
         else {
             std::fprintf(stderr,
                          "goal_bench [--things K] [--delay D] [--steps S] [--seeds N] [--first-seed F] [--trials T] [--window W]\n"
-                         "           [--temperature T] [--intellect I] [--noise N] [--no-memory] [--distract]\n");
+                         "           [--temperature T] [--intellect I] [--noise N] [--no-memory] [--distract] [--recur P]\n");
             std::exit(2);
         }
     }
@@ -64,11 +67,102 @@ Options parse(int argc, char** argv) {
     return o;
 }
 
+// A want that recurs (--recur p): one long life of --trials turns. Each turn, with chance p, it sees where food is: one
+// of K places lit in its senses, the place then kept until the next sighting; on other turns nothing shows where (a
+// glimpse of a decoy with --distract). Every turn it chooses one of K places to go to and gains 1 when it goes where
+// the food was last seen, so holding the place pays each turn, not once at the end. It learns each turn as the world
+// does (learn, and learn_memory over --steps turns back). Reported: how often it is right on the last window's turns,
+// by how many turns since it last saw the food.
+void run_recurring(const Options& o, double rate) {
+    constexpr int GAPS = 9;  // turns since the sighting: 0 (seen now), 1 .. 7, 8 or more
+    std::array<double, GAPS> mean_right{};
+    std::array<int, GAPS> seeds_with{};
+    for (int seed = o.first_seed; seed < o.first_seed + o.seeds; ++seed) {
+        PyRandom rng(static_cast<std::uint64_t>(seed));
+        Brain brain = Brain::random(rng);
+        std::vector<int> actions(static_cast<std::size_t>(o.things));
+        for (int k = 0; k < o.things; ++k) actions[static_cast<std::size_t>(k)] = k;
+        Held held{};
+        std::vector<Senses> seen;  // the latest first, as many as memory may be taught back
+        int place = 0, since = 0;
+        std::array<int, GAPS> right{}, counted{};
+        for (int turn = 0; turn < o.trials; ++turn) {
+            const bool sighted = turn == 0 || rng.random() < o.recur;
+            if (sighted) {
+                place = static_cast<int>(rng.random() * o.things);
+                since = 0;
+            } else {
+                ++since;
+            }
+            Senses senses{};
+            for (int sense = 0; sense < INPUT_SIZE; ++sense) {
+                senses[static_cast<std::size_t>(sense)] = signed_sense(sense) ? o.noise * (2 * rng.random() - 1) : o.noise * rng.random();
+            }
+            for (int k = 0; k < o.things; ++k) senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(k)])] = 0.0;
+            if (sighted) {
+                senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(place)])] = 1.0;
+            } else if (o.distract) {
+                const int decoy = static_cast<int>(rng.random() * o.things);
+                senses[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(decoy)])] = 0.5;  // a glimpse
+            }
+            for (int neuron = 0; neuron < MEMORY_NEURONS; ++neuron) {
+                senses[static_cast<std::size_t>(SenseMemory + neuron)] = o.memory ? held[static_cast<std::size_t>(neuron)] : 0.0;
+            }
+            const Values values = brain.values(senses);
+            int choice = 0;
+            double roll = rng.random();
+            for (const auto& [action, chance] : choice_odds(values, actions, o.temperature)) {
+                roll -= chance;
+                choice = action;
+                if (roll < 0) break;
+            }
+            const double gained = choice == place ? 1.0 : 0.0;
+            brain.learn(senses, choice, gained, rate);
+            const int back = std::min(o.steps, static_cast<int>(seen.size()));
+            if (o.memory && back > 0) {
+                std::vector<const Senses*> past;
+                for (int step = 0; step < back; ++step) past.push_back(&seen[static_cast<std::size_t>(step)]);
+                brain.learn_memory(senses, past, choice, gained, rate * MEMORY_LEARNING);
+            }
+            held = o.memory ? memory_after(values, held) : Held{};
+            seen.insert(seen.begin(), senses);
+            if (static_cast<int>(seen.size()) > MAX_MEMORY_STEPS) seen.pop_back();
+            if (turn >= o.trials - o.window) {
+                const int gap = std::min(since, GAPS - 1);
+                right[static_cast<std::size_t>(gap)] += choice == place;
+                ++counted[static_cast<std::size_t>(gap)];
+            }
+        }
+        std::printf("  seed %d by turns since seen:", seed);
+        for (int gap = 0; gap < GAPS; ++gap) {
+            if (counted[static_cast<std::size_t>(gap)] == 0) continue;
+            const double share = static_cast<double>(right[static_cast<std::size_t>(gap)]) / counted[static_cast<std::size_t>(gap)];
+            mean_right[static_cast<std::size_t>(gap)] += share;
+            ++seeds_with[static_cast<std::size_t>(gap)];
+            std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", share);
+        }
+        std::printf("\n");
+        std::fflush(stdout);
+    }
+    std::printf("mean by turns since seen:");
+    for (int gap = 0; gap < GAPS; ++gap) {
+        if (seeds_with[static_cast<std::size_t>(gap)] > 0)
+            std::printf(" %d%s:%.2f", gap, gap == GAPS - 1 ? "+" : "", mean_right[static_cast<std::size_t>(gap)] / seeds_with[static_cast<std::size_t>(gap)]);
+    }
+    std::printf("  (chance %.2f)\n", 1.0 / o.things);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     const Options o = parse(argc, argv);
     const double rate = LEARNING_RATE * (LEARNING_FLOOR + o.intellect * (1 + LEARNING_BOOST * o.intellect));
+    if (o.recur > 0) {
+        std::printf("goal bench, a want that recurs: things %d, sighting %.2f a turn, steps %d, memory %s%s, %d turns\n", o.things, o.recur,
+                    o.steps, o.memory ? "on" : "WIPED", o.distract ? ", glimpses" : "", o.trials);
+        run_recurring(o, rate);
+        return 0;
+    }
     std::printf("goal bench: things %d, delay %d, steps %d, memory %s%s, temperature %.2f, rate %.4f, %d trials\n", o.things, o.delay,
                 o.steps, o.memory ? "on" : "WIPED", o.distract ? ", decoys" : "", o.temperature, rate, o.trials);
     double sum = 0.0;
