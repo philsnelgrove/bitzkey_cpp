@@ -85,6 +85,13 @@ struct Options {
     // there was news); when that thing next surprises it, the remembered sounds are lifted by e (a habit, not a lesson;
     // not inherited). --echo-blind 1, the control: the call is remembered against a thing drawn at random.
     double echo = 0.0;
+    int busy = 0;  // --busy n: other lessons per brain per trial (see busy_lessons)
+    double focus = 1.0;  // --focus d: things out of focus sensed x d (1: off)
+    std::string focus_by = "surprise";  // --focus-by surprise|random
+    bool focus_sense = false;  // --focus-sense 1: also sense how surprised it is by the thing in focus
+    double crowd_max = 1.0;   // --crowd-max m: things in view no closer than m (the news alone at 1)
+    double crowd_keep = 0.0;  // --crowd-keep r: surroundings per brain, redrawn with chance r a trial (0: fresh each time)
+    double crowd = 0.0;  // --crowd c: every brain senses each thing in view with chance c, at a random closeness (the news at 1)
     bool echo_blind = false, echo_even = false, echo_odds = false;
 };
 
@@ -175,13 +182,74 @@ Result run(const Options& o, std::uint64_t seed) {
     const auto noisy = [&] {
         Senses senses{};
         for (double& sense : senses) sense = o.noise * rng.random();
-        for (int k = 0; k < (g_outside ? OUTSIDE_SEEN : 4); ++k) senses[static_cast<std::size_t>(fact_sense(k))] = 0;
+        for (int k = 0; k < (g_outside ? OUTSIDE_SEEN : 4); ++k)  // --crowd c: each thing in view (at some distance) with chance c
+            senses[static_cast<std::size_t>(fact_sense(k))] = o.crowd > 0 && k < o.facts && rng.random() < o.crowd ? o.crowd_max * rng.random() : 0;
         for (int call = FirstCall; call < CALL_OPTIONS; ++call)
             for (int heard = 0; heard < HEARD_SENSES; ++heard) senses[static_cast<std::size_t>(heard_sense(call, heard))] = 0;
         if (o.sounds >= 2)
             for (int place = 0; place < MAX_SOUNDS; ++place)
                 for (int c = 0; c < CALL_COUNT; ++c) senses[static_cast<std::size_t>(utterance_sense(place, c))] = 0;
         return senses;
+    };
+    // --busy n: n lessons a turn on the world's other action outputs (past the bench's own), each a fixed task of the
+    // senses (a random weighting of them, the same all run), so calling shares the brain with a life, as in the world.
+    std::vector<std::vector<double>> busy_task;
+    if (o.busy > 0) {
+        PyRandom task_rng(seed ^ 0x42555359ULL);
+        busy_task.assign(ACTION_COUNT, std::vector<double>(Senses{}.size(), 0.0));
+        for (auto& row : busy_task)
+            for (double& w : row) w = 2.0 * task_rng.random() - 1.0;
+    }
+    const auto busy_lessons = [&](Brain& brain) {
+        for (int n = 0; n < o.busy; ++n) {
+            const Senses s = noisy();
+            const int out = o.facts + static_cast<int>(rng.randbelow(static_cast<std::uint64_t>(ACTION_COUNT - o.facts)));
+            double sum = 0;
+            for (std::size_t i = 0; i < s.size(); ++i) sum += busy_task[static_cast<std::size_t>(out)][i] * s[i];
+            brain.learn(s, out, std::tanh(sum / std::sqrt(static_cast<double>(s.size())) * 3.0), rate);
+        }
+    };
+    // --crowd-keep r: each brain's surroundings (the things in view, by --crowd) last, changing with chance r a trial,
+    // so the background is foreseeable and only the news is new, as in the world.
+    std::vector<std::vector<double>> background(brains.size(), std::vector<double>(static_cast<std::size_t>(o.facts), 0.0));
+    std::vector<bool> drawn(brains.size(), false);
+    const auto surround = [&](Senses& senses, int who) {
+        if (o.crowd_keep <= 0) return;
+        auto& bg = background[static_cast<std::size_t>(who)];
+        if (!drawn[static_cast<std::size_t>(who)] || rng.random() < o.crowd_keep) {
+            for (double& level : bg) level = rng.random() < o.crowd ? o.crowd_max * rng.random() : 0.0;
+            drawn[static_cast<std::size_t>(who)] = true;
+        }
+        for (int k = 0; k < o.facts; ++k) senses[static_cast<std::size_t>(fact_sense(k))] = bg[static_cast<std::size_t>(k)];
+    };
+    // --focus d: one thing at a time. Each brain holds one thing in focus and senses every other thing x d. --focus-by
+    // surprise: the thing it is most surprised by (its foresight of it, not seeing, against what is), as attention caught;
+    // random: any thing in view, the control.
+    const auto focus_on = [&](Senses& senses, Brain& brain, bool sees, int fact) {
+        if (o.focus >= 1.0) return;
+        int held = -1;
+        if (o.focus_by == "surprise") {
+            Senses unseen = senses;
+            for (int k = 0; k < o.facts; ++k) unseen[static_cast<std::size_t>(fact_sense(k))] = 0.0;
+            const Values expected = brain.values(unseen);
+            double most = -1.0;
+            for (int k = 0; k < o.facts; ++k) {
+                const double s = std::abs((sees && k == fact ? 1.0 : 0.0) - expected[fact_output(k)]);
+                if (s > most) { most = s; held = k; }
+            }
+        } else {
+            std::vector<int> in_view;
+            for (int k = 0; k < o.facts; ++k) if (senses[static_cast<std::size_t>(fact_sense(k))] > 0) in_view.push_back(k);
+            if (!in_view.empty()) held = in_view[static_cast<std::size_t>(rng.randbelow(in_view.size()))];
+        }
+        if (o.focus_sense && held >= 0) {  // --focus-sense 1: one sense, how surprised it is by the thing in focus
+            Senses unseen = senses;
+            for (int k = 0; k < o.facts; ++k) unseen[static_cast<std::size_t>(fact_sense(k))] = 0.0;
+            const double s = std::abs((sees && held == fact ? 1.0 : 0.0) - brain.values(unseen)[fact_output(held)]);
+            senses[static_cast<std::size_t>(fact_sense(OUTSIDE_SEEN - 1))] = std::clamp(s, 0.0, 1.0);  // a slot no fact uses
+        }
+        for (int k = 0; k < o.facts; ++k)
+            if (k != held) senses[static_cast<std::size_t>(fact_sense(k))] *= o.focus;
     };
     const auto close_window = [&](long trial) {  // a window full: measure, and say whether the code has held a while
         if (++in_window == o.window) {
@@ -259,6 +327,8 @@ Result run(const Options& o, std::uint64_t seed) {
             const int fact = draw_fact();
             const bool news = o.relevance >= 1 || rng.random() < o.relevance;
             Senses heard = noisy();
+            surround(heard, listening);
+            focus_on(heard, brains[static_cast<std::size_t>(listening)], false, fact);
             std::vector<int> seconds;  // per voice, its second sound (0..4), -1 none
             std::vector<Senses> spokens;
             std::vector<std::vector<double>> weights_of;  // per voice, how its speak-as-heard fit weighs each fact
@@ -267,8 +337,10 @@ Result run(const Options& o, std::uint64_t seed) {
             std::vector<bool> saw;
             for (const int who : voices) {
                 Senses spoken = noisy();
+                surround(spoken, who);
                 const bool sees = news && (o.seen >= 1 || rng.random() < o.seen);
                 if (sees) spoken[static_cast<std::size_t>(fact_sense(fact))] = 1.0;
+                focus_on(spoken, brains[static_cast<std::size_t>(who)], sees, fact);
                 Values felt = brains[static_cast<std::size_t>(who)].values(spoken);
                 // Its own surprise at each fact: how far what it senses is from what it would expect, not seeing.
                 std::vector<double> surprise(static_cast<std::size_t>(o.facts), 0.0);
@@ -409,6 +481,11 @@ Result run(const Options& o, std::uint64_t seed) {
                     heard_for[static_cast<std::size_t>(listening)][static_cast<std::size_t>(about)] = {outs[v] - ACTION_COUNT, seconds[v]};
                     break;
                 }
+            if (o.busy > 0) {  // a life besides calling: each brain also learns other things on the same weights
+                std::vector<int> all = voices;
+                all.push_back(listening);
+                for (const int who : all) busy_lessons(brains[static_cast<std::size_t>(who)]);
+            }
             for (const int who : voices) age(who);
             age(listening);
             if (!news) continue;
@@ -552,6 +629,13 @@ int main(int argc, char** argv) {
         else if (key == "--tilt-drift") o.tilt_drift = std::stod(value);
         else if (key == "--obverter-base") o.against_silence = value == "silence";
         else if (key == "--cost") o.cost = std::stod(value);
+        else if (key == "--busy") o.busy = std::stoi(value);
+        else if (key == "--crowd") o.crowd = std::stod(value);
+        else if (key == "--focus") o.focus = std::stod(value);
+        else if (key == "--focus-by") o.focus_by = value;
+        else if (key == "--focus-sense") o.focus_sense = value != "0";
+        else if (key == "--crowd-max") o.crowd_max = std::stod(value);
+        else if (key == "--crowd-keep") o.crowd_keep = std::stod(value);
         else if (key == "--seen") o.seen = std::stod(value);
         else if (key == "--predict") o.predict = std::stod(value);
         else if (key == "--influence") o.influence = std::stod(value);

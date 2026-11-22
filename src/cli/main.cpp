@@ -47,6 +47,7 @@ void usage() {
         "                              beside them (FILE.summary.txt)\n"
         "  --migration FILE            write, each season, whether animals moved ahead of the coming weather, and a summary\n"
         "  --export FILE               write every living Bitzkey at the end as JSON\n"
+        "  --export-only SPECIES:N     with --export, only N grown land animals of that species (e.g. grazer:20)\n"
         "  --load FILE                 carry on the world saved in FILE, by its own settings and rules, rather than start one\n"
         "  --save FILE                 save the whole world at the end, to load and carry on\n"
         "  --brain-report FILE         write the brain report at the end\n"
@@ -487,6 +488,7 @@ private:
 int main(int argc, char** argv) {
     Simulation::Settings settings;
     int turns = 400, report_every = 100;
+    int export_species = -1, export_count = 0;  // --export-only
     bool profile = false, year_length_given = false, digest = false;
     std::optional<int> probe_port;
     std::optional<std::string> trace_path, migration_path, export_path, report_path, diagnose_path, deaths_path, load_path, save_path;
@@ -549,6 +551,16 @@ int main(int argc, char** argv) {
             else if (flag == "--diagnose") diagnose_path = value;
             else if (flag == "--migration") migration_path = value;
             else if (flag == "--export") export_path = value;
+            else if (flag == "--export-only") {  // SPECIES:COUNT
+                const std::size_t colon = value.find(':');
+                const std::string name = value.substr(0, colon);
+                export_species = -1;
+                for (int species = 0; species < 4; ++species) {
+                    if (SPECIES[species] == name) export_species = species;
+                }
+                if (colon == std::string::npos || export_species < 0) throw std::invalid_argument("--export-only needs SPECIES:COUNT");
+                export_count = std::stoi(value.substr(colon + 1));
+            }
             else if (flag == "--load") load_path = value;
             else if (flag == "--save") save_path = value;
             else if (flag == "--probe") probe_port = std::stoi(value);
@@ -734,7 +746,19 @@ int main(int argc, char** argv) {
         const auto alive = world.living();
         if (save_path) WorldFile::save(world, *save_path);
         if (export_path) {
-            std::ofstream(*export_path) << export_bitzkeys(std::vector<const Bitzkey*>(alive.begin(), alive.end())) << '\n';
+            std::vector<const Bitzkey*> chosen;
+            if (export_count > 0) {  // --export-only: so many grown land animals of one species, spread over all there are
+                std::vector<const Bitzkey*> fit;
+                for (const Bitzkey* agent : alive) {
+                    if (static_cast<int>(agent->species) == export_species && agent->age > agent->infancy() &&
+                        decode_terrain(agent->dna) == Terrain::Terrestrial) fit.push_back(agent);
+                }
+                const std::size_t stride = std::max<std::size_t>(1, fit.size() / static_cast<std::size_t>(export_count));
+                for (std::size_t at = 0; at < fit.size() && static_cast<int>(chosen.size()) < export_count; at += stride) chosen.push_back(fit[at]);
+            } else {
+                chosen.assign(alive.begin(), alive.end());
+            }
+            std::ofstream(*export_path) << export_bitzkeys(chosen) << '\n';
         }
         if (report_path) {
             const std::vector<const Bitzkey*> animals(alive.begin(), alive.end());
