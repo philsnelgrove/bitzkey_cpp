@@ -1652,6 +1652,8 @@ Json Probe::language(Simulation& world) const {
         // The lexicon (see LEXICON_SIZE): who holds words, how many, who said or heard one as they last chose, and how
         // far they agree: for each thing two or more hold a word for, the share holding its commonest word.
         Json lexicon = nullptr;
+        Json names = nullptr;
+        Json deeds = nullptr;
         {
             long long holders = 0, words = 0, spoke = 0, heard = 0, alive = 0, agreeing = 0, counted = 0;
             long long judged = 0, heeded = 0, acted_good = 0, acted_same = 0, knows_good = 0, knows_bad = 0;
@@ -1767,6 +1769,109 @@ Json Probe::language(Simulation& world) const {
                     near_chance_good = good_sum / weight;
                 }
             }
+            // Names (see NAMES_SIZE): who holds any, how many, who has its own, and whether holders agree on a name with
+            // the one named (its own name); said, heard, heard its own; and came nearer one named, next turn.
+            {
+                long long name_holders = 0, held_names = 0, own_named = 0, matched = 0, named_checked = 0, said = 0, heard_name = 0, heard_own = 0;
+                long long name_judged = 0, name_heeded = 0;
+                for (const Bitzkey* agent : world.living()) {
+                    if (agent->species != species) continue;
+                    name_holders += !agent->names.empty();
+                    held_names += static_cast<long long>(agent->names.size());
+                    own_named += agent->own_call >= 0;
+                    said += agent->name_spoke_turn >= 0 && agent->name_spoke_turn == agent->call_turn;
+                    heard_name += agent->has_last_senses && agent->last_senses[SenseNamed + Named] > 0;
+                    heard_own += agent->has_last_senses && agent->last_senses[SenseNamed + NamedMe] > 0;
+                    if (agent->name_judged_turn >= 0 && agent->name_judged_turn == agent->call_turn) {
+                        ++name_judged;
+                        name_heeded += agent->name_heeded;
+                    }
+                    for (const LexiconWord& name : agent->names) {
+                        const Bitzkey* named = world.find_agent(name.thing);
+                        if (!named || !named->alive() || named->own_call < 0) continue;
+                        ++named_checked;
+                        matched += named->own_call == name.call && named->own_sounds == name.sounds;
+                    }
+                }
+                const Simulation::LexiconTally& got = world.name_tally()[static_cast<std::size_t>(species)];
+                names = {{"holders_share", ratio(static_cast<double>(name_holders), static_cast<double>(alive))},
+                         {"mean_names", ratio(static_cast<double>(held_names), static_cast<double>(alive))},
+                         {"own_named_share", ratio(static_cast<double>(own_named), static_cast<double>(alive))},
+                         {"agree_with_own_share", ratio(static_cast<double>(matched), static_cast<double>(named_checked))},
+                         {"spoke_name_share", ratio(static_cast<double>(said), static_cast<double>(alive))},
+                         {"heard_name_share", ratio(static_cast<double>(heard_name), static_cast<double>(alive))},
+                         {"heard_own_share", ratio(static_cast<double>(heard_own), static_cast<double>(alive))},
+                         {"judged", name_judged}, {"came_nearer_share", ratio(static_cast<double>(name_heeded), static_cast<double>(name_judged))},
+                         {"named_at_birth", got.named_at_birth}, {"agreed", got.agreed}, {"witnessed", got.witnessed},
+                         {"inherited", got.inherited}, {"confirmed", got.confirmed}, {"overridden", got.overridden}, {"refused", got.refused}};
+            }
+            {  // Deed-words (see DEEDS_SIZE): who holds any, how many, said and heard; whether holders agree on the word
+               // for each deed (the share holding its commonest word); and, judged on a deed-word, how many did the deed.
+                long long deed_holders = 0, held_deeds = 0, said = 0, heard_deed = 0, echoed = 0, deed_judged = 0, did = 0;
+                long long liked_judged = 0, liked_did = 0, named_judged = 0, named_did = 0, second_words = 0, callers = 0;
+                std::array<std::map<long long, long long>, ACTION_COUNT> words_for{};
+                for (const Bitzkey* agent : world.living()) {
+                    if (agent->species != species) continue;
+                    deed_holders += !agent->deeds.empty();
+                    if (agent->call_turn >= 0 && agent->last_call >= FirstCall) {  // its last call: of two words?
+                        ++callers;
+                        second_words += agent->last_call2 >= FirstCall;
+                    }
+                    held_deeds += static_cast<long long>(agent->deeds.size());
+                    said += agent->deed_spoke_turn >= 0 && agent->deed_spoke_turn == agent->call_turn;
+                    echoed += agent->echo_turn >= 0 && agent->echo_turn == agent->call_turn;
+                    if (agent->has_last_senses) {
+                        for (int deed = 0; deed < ACTION_COUNT; ++deed) {
+                            if (agent->last_senses[SenseMeantDeed + deed] > 0) {
+                                ++heard_deed;
+                                break;
+                            }
+                        }
+                    }
+                    if (agent->judged_turn >= 0 && agent->judged_turn == agent->call_turn && agent->judged_by_deed) {
+                        ++deed_judged;
+                        did += agent->acted_same;
+                        if (agent->judged_liked) {
+                            ++liked_judged;
+                            liked_did += agent->acted_same;
+                        }
+                        if (agent->judged_for_me) {  // an order: its own name with the deed-word
+                            ++named_judged;
+                            named_did += agent->acted_same;
+                        }
+                    }
+                    for (const LexiconWord& word : agent->deeds) {
+                        if (word.thing < 0 || word.thing >= ACTION_COUNT) continue;
+                        const long long key = static_cast<long long>(word.call) * 100 + (word.sounds[0] + 1) * 10 + (word.sounds[1] + 1);
+                        ++words_for[static_cast<std::size_t>(word.thing)][key];
+                    }
+                }
+                long long commonest = 0, counted_words = 0;
+                Json by_deed = Json::object();
+                for (int deed = 0; deed < ACTION_COUNT; ++deed) {
+                    long long most = 0, all = 0;
+                    for (const auto& [key, count] : words_for[static_cast<std::size_t>(deed)]) {
+                        most = std::max(most, count);
+                        all += count;
+                    }
+                    commonest += most;
+                    counted_words += all;
+                    if (all > 0) by_deed[std::string(ACTIONS[static_cast<std::size_t>(deed)])] = {{"holders", all}, {"agreement", static_cast<double>(most) / static_cast<double>(all)}};
+                }
+                const Simulation::LexiconTally& got = world.deed_tally()[static_cast<std::size_t>(species)];
+                deeds = {{"holders_share", ratio(static_cast<double>(deed_holders), static_cast<double>(alive))},
+                         {"mean_words", ratio(static_cast<double>(held_deeds), static_cast<double>(alive))},
+                         {"spoke_word_share", ratio(static_cast<double>(said), static_cast<double>(alive))},
+                         {"said_back_share", ratio(static_cast<double>(echoed), static_cast<double>(alive))},
+                         {"heard_word_share", ratio(static_cast<double>(heard_deed), static_cast<double>(alive))},
+                         {"agreement", ratio(static_cast<double>(commonest), static_cast<double>(counted_words))}, {"by_deed", by_deed},
+                         {"judged", deed_judged}, {"did_meant_share", ratio(static_cast<double>(did), static_cast<double>(deed_judged))},
+                         {"did_meant_liked_share", ratio(static_cast<double>(liked_did), static_cast<double>(liked_judged))},
+                         {"orders_judged", named_judged}, {"did_ordered_share", ratio(static_cast<double>(named_did), static_cast<double>(named_judged))},
+                         {"two_word_call_share", ratio(static_cast<double>(second_words), static_cast<double>(callers))},
+                         {"agreed", got.agreed}, {"witnessed", got.witnessed}, {"inherited", got.inherited},
+                         {"confirmed", got.confirmed}, {"overridden", got.overridden}, {"refused", got.refused}};
+            }
             const Simulation::LexiconTally& made = world.lexicon_tally()[static_cast<std::size_t>(species)];
             lexicon = {{"holders_share", ratio(static_cast<double>(holders), static_cast<double>(alive))},
                        {"mean_words", ratio(static_cast<double>(words), static_cast<double>(alive))},
@@ -1790,7 +1895,7 @@ Json Probe::language(Simulation& world) const {
                        {"confirmed", made.confirmed}, {"overridden", made.overridden}, {"refused", made.refused}};
         }
         result[std::string(species_name(species))] = {
-            {"choices", choices}, {"cues", cues}, {"lexicon", lexicon}, {"naming", naming}, {"calling_share", ratio(static_cast<double>(made), static_cast<double>(choices))}, {"calls", calls}, {"lift_spread", spread},
+            {"choices", choices}, {"cues", cues}, {"lexicon", lexicon}, {"names", names}, {"deeds", deeds}, {"naming", naming}, {"calling_share", ratio(static_cast<double>(made), static_cast<double>(choices))}, {"calls", calls}, {"lift_spread", spread},
             {"call_lengths", {{"one", lengths[0]}, {"two", lengths[1]}, {"three", lengths[2]}}}, {"utterances", table},
             {"first_sound_holds", holds}, {"habit_pull", habit_calls > 0 ? Json(habit_pull / static_cast<double>(habit_calls)) : Json(nullptr)},
             {"speak_as_heard", understood_calls > 0 ? Json(understood / static_cast<double>(understood_calls)) : Json(nullptr)},
