@@ -1664,12 +1664,17 @@ Json Probe::language(Simulation& world) const {
             // And near a speaker: those that heard a call that was no word they hold, as near a caller as the judged were.
             std::array<long long, OUTSIDE_SEEN> near_nearer{}, near_good{};
             long long nearby = 0, nearby_same = 0;
+            // Duty: its mean, and among the judged told by family or one regarded well, how many did the teller's deed,
+            // all and by the dutiful (above 1) and the rebellious (below 1); and of those told by others.
+            double duty_sum = 0.0;
+            long long liked = 0, liked_same = 0, unliked = 0, unliked_same = 0, dutiful = 0, dutiful_same = 0, rebel = 0, rebel_same = 0;
             std::array<std::map<long long, long long>, OUTSIDE_SEEN> by_thing{};
             for (const Bitzkey* agent : world.living()) {
                 if (agent->species != species) continue;
                 ++alive;
                 holders += !agent->lexicon.empty();
                 words += static_cast<long long>(agent->lexicon.size());
+                duty_sum += Simulation::duty(*agent);
                 spoke += agent->lexicon_spoke_turn >= 0 && agent->lexicon_spoke_turn == agent->call_turn;
                 heard += agent->has_last_senses && agent->last_senses[SenseMeant + Meant] > 0;
                 if (agent->judged_turn >= 0 && agent->judged_turn == agent->call_turn) {  // judged on a word as it last chose
@@ -1677,6 +1682,16 @@ Json Probe::language(Simulation& world) const {
                     heeded += agent->heeded;
                     acted_good += agent->acted_good;
                     acted_same += agent->acted_same;
+                    if (agent->judged_liked) {
+                        ++liked;
+                        liked_same += agent->acted_same;
+                        const double duty = Simulation::duty(*agent);
+                        if (duty > 1.0) ++dutiful, dutiful_same += agent->acted_same;
+                        if (duty < 1.0) ++rebel, rebel_same += agent->acted_same;
+                    } else {
+                        ++unliked;
+                        unliked_same += agent->acted_same;
+                    }
                     if (agent->judged_thing >= 0 && agent->judged_thing < OUTSIDE_SEEN) ++judged_things[static_cast<std::size_t>(agent->judged_thing)];
                     if (agent->judged_deed >= 0 && agent->judged_deed < ACTION_COUNT) {
                         ++judged_deeds[static_cast<std::size_t>(agent->judged_deed)];
@@ -1764,6 +1779,11 @@ Json Probe::language(Simulation& world) const {
                        {"heeded_by_chance_near", near_chance_nearer}, {"acted_good_by_chance_near", near_chance_good},
                        {"acted_same_by_chance_near", nearby > 0 ? Json(static_cast<double>(nearby_same) / static_cast<double>(nearby)) : Json(nullptr)},
                        {"heeded_by_chance", chance_nearer}, {"acted_good_by_chance", chance_good}, {"acted_same_by_chance", chance_same},
+                       {"duty_mean", ratio(duty_sum, static_cast<double>(alive))}, {"told_by_liked", liked},
+                       {"obeyed_liked_share", ratio(static_cast<double>(liked_same), static_cast<double>(liked))},
+                       {"obeyed_others_share", ratio(static_cast<double>(unliked_same), static_cast<double>(unliked))},
+                       {"obeyed_dutiful_share", ratio(static_cast<double>(dutiful_same), static_cast<double>(dutiful))},
+                       {"obeyed_rebel_share", ratio(static_cast<double>(rebel_same), static_cast<double>(rebel))},
                        {"things_found_good", ratio(static_cast<double>(knows_good), static_cast<double>(alive))},
                        {"things_found_bad", ratio(static_cast<double>(knows_bad), static_cast<double>(alive))},
                        {"agreed", made.agreed}, {"witnessed", made.witnessed}, {"inherited", made.inherited},

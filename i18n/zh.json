@@ -2293,5 +2293,9 @@
 "Lexicon fitting deed": "合乎词语的行为",
 "joy for each way what one did on hearing a word it holds was fitting: it went nearer the thing if its own life found that good, or further if bad; and it did what the speaker did": "听到熟知的词后所做之事合宜的每一种方式所得的喜悦：若自身经历认为该物好就靠近，认为坏就远离；以及做了说话者所做的事",
 "Lexicon worth rate": "价值学习速度",
-"how fast an animal learns from its own life how it fares nearer each thing, against further": "动物从自身经历中学习靠近每样事物与远离相比境况如何的速度"
+"how fast an animal learns from its own life how it fares nearer each thing, against further": "动物从自身经历中学习靠近每样事物与远离相比境况如何的速度",
+"Duty sway": "责任感的影响",
+"how strongly a sense of duty sways one told by a word from family or one it regards well: the teller's deed is its duty to this power times as likely (duty 1 is chance, 0 shuns it)": "责任感对听到家人或所敬重者一句话的个体影响多大:说话者的行为可能性变为其责任感的此次幂倍(责任感1为随机,0则回避)",
+"Duty felt": "责任的感受",
+"how much a sense of duty colours the joy of doing as told by family or one it regards well: times 1 plus this times its duty less 1, unease for a rebel": "责任感对照家人或所敬重者所说去做的喜悦影响多大:乘以1加此值乘(责任感减1),对叛逆者则为不安"
 }

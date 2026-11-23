@@ -3146,6 +3146,43 @@ TEST_CASE("heeding a word: nearer the thing next turn is felt, and more for goin
     CHECK(fled.situation.word_reward == doctest::Approx(LEXICON_ACT));
 }
 
+TEST_CASE("sense of duty rises with loyalty, kinship and sociability, falls with dominance, and colours doing as one it heeds said") {
+    Simulation simulation = world(40);
+    Bitzkey& hearer = simulation.add_agent(encode_dna(Species::Grazer), 12, 10);
+    hearer.mind[Loyalty] = hearer.mind[Kinship] = hearer.mind[Sociability] = 7.0;
+    hearer.mind[Dominance] = 0.0;
+    CHECK(Simulation::duty(hearer) == doctest::Approx(TRAIT_MAX));
+    hearer.mind[Dominance] = 3.5;
+    CHECK(Simulation::duty(hearer) == doctest::Approx(TRAIT_MAX / 2.0));
+    hearer.mind[Dominance] = 7.0;
+    CHECK(Simulation::duty(hearer) == doctest::Approx(0.0));  // a rebel
+    hearer.mind[Dominance] = 0.0;
+    hearer.mind[Loyalty] = hearer.mind[Kinship] = hearer.mind[Sociability] = 1.0;
+    CHECK(Simulation::duty(hearer) == doctest::Approx(1.0));  // left to chance
+    // Did as told by one it regards well: the deed's joy times 1 plus DUTY_FELT times its duty less 1.
+    simulation.index_cells();
+    hearer.mind[Loyalty] = hearer.mind[Kinship] = hearer.mind[Sociability] = 7.0;
+    hearer.close_turn = hearer.meant_turn = simulation.turn() - 1;
+    hearer.meant_thing = 7;
+    hearer.meant_close = hearer.was_close[7];  // neither nearer nor further
+    hearer.meant_deed = hearer.last_choice = Rest;
+    hearer.meant_liked = true;
+    auto dutiful = simulation.sense(hearer);
+    CHECK(hearer.judged_liked);
+    CHECK(dutiful.situation.word_reward == doctest::Approx(LEXICON_ACT * (1.0 + DUTY_FELT * (TRAIT_MAX - 1.0))));
+    hearer.mind[Dominance] = 7.0;  // a rebel feels it as unease
+    hearer.close_turn = hearer.meant_turn = simulation.turn() - 1;
+    hearer.meant_close = hearer.was_close[7];
+    hearer.meant_liked = true;
+    auto rebel = simulation.sense(hearer);
+    CHECK(rebel.situation.word_reward == doctest::Approx(LEXICON_ACT * (1.0 - DUTY_FELT)));
+    hearer.close_turn = hearer.meant_turn = simulation.turn() - 1;  // told by a stranger: as before
+    hearer.meant_close = hearer.was_close[7];
+    hearer.meant_liked = false;
+    auto stranger = simulation.sense(hearer);
+    CHECK(stranger.situation.word_reward == doctest::Approx(LEXICON_ACT));
+}
+
 TEST_CASE("heeding a word: an animal learns how it fares going nearer each thing, and further") {
     Simulation simulation = world(40);
     Bitzkey& animal = simulation.add_agent(encode_dna(Species::Grazer), 10, 10);

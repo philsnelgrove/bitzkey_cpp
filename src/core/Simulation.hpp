@@ -438,6 +438,13 @@ inline double LEXICON_INHERIT = 0.5;
 inline double LEXICON_HEED = 0.1;
 inline double LEXICON_ACT = 0.2;
 inline double LEXICON_WORTH_RATE = 0.05;
+// Sense of duty (the user's idea), a hidden trait from 0 to 7: TRAIT_MAX times the mean of its loyalty, kinship and
+// sociability, times one less its dominance. Told (a word it holds heard from one it regards well, or family) and the
+// teller's deed among its options, it is that many times as likely to do it, raised to DUTY_SWAY: 1 leaves it to
+// chance, 0 a rebel who shuns it. And doing it, its LEXICON_ACT for the deed is felt times 1 plus DUTY_FELT times its
+// duty less 1: more for the dutiful, less, or unease, for the rebel.
+inline double DUTY_SWAY = 1.0;
+inline double DUTY_FELT = 0.5;
 struct LexiconWord {
     int call = -1;                                    // its first sound, as a call
     std::array<int, MAX_SOUNDS - 1> sounds{-1, -1};   // and its later sounds, -1 where it stops
@@ -1324,6 +1331,7 @@ struct Bitzkey {
     int judged_turn = -1;               // the last turn it was judged on a word heard, and how: (see LEXICON_HEED)
     bool heeded = false, acted_good = false, acted_same = false;
     int judged_thing = -1, judged_deed = -1;  // the thing and the speaker's deed it was judged on
+    bool meant_liked = false, judged_liked = false;  // whether the speaker was family or regarded well (see DUTY_SWAY)
     // For the probe's chance, near a speaker: the last turn it heard a call that was no word it holds, the caller's deed
     // then, and whether it did the same next turn (judged when unknown_judged_turn).
     int unknown_turn = -1, unknown_deed = -1, unknown_judged_turn = -1;
@@ -2378,6 +2386,7 @@ public:
     }
     void add_scruples(const Bitzkey& agent, Values& valued, const Situation& s) const;
     int sight_now(const Bitzkey& agent) const;  // its sight, less out of its own hours (OFF_HOURS_SIGHT)
+    static double duty(const Bitzkey& agent);  // sense of duty, 0..7: 1 is chance (see DUTY_SWAY)
     static double gluttony(const Bitzkey& agent);  // a half, plus half its appetite, less half its kinship, 0..1
     static double gluttony_unease(const Bitzkey& agent, double hunger_before);  // for a meal begun that hungry
     static double generosity(const Bitzkey& agent);  // the strongest of patience, sociability and empathy, less that of dominance, aggression and appetite

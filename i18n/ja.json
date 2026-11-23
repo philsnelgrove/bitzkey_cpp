@@ -2293,5 +2293,9 @@
 "Lexicon fitting deed": "語にふさわしい行い",
 "joy for each way what one did on hearing a word it holds was fitting: it went nearer the thing if its own life found that good, or further if bad; and it did what the speaker did": "知っている語を聞いて取った行いがふさわしかった方法ごとの喜び：自分の生でそのものを良いと知れば近づき、悪いと知れば遠ざかった。そして話し手と同じことをした",
 "Lexicon worth rate": "価値を学ぶ速さ",
-"how fast an animal learns from its own life how it fares nearer each thing, against further": "動物が自分の生から、各ものの近くでどう過ごせるかを遠くと比べて学ぶ速さ"
+"how fast an animal learns from its own life how it fares nearer each thing, against further": "動物が自分の生から、各ものの近くでどう過ごせるかを遠くと比べて学ぶ速さ",
+"Duty sway": "義務感の影響",
+"how strongly a sense of duty sways one told by a word from family or one it regards well: the teller's deed is its duty to this power times as likely (duty 1 is chance, 0 shuns it)": "家族や好意を持つ相手から言葉で告げられた者を義務感がどれだけ動かすか:話し手の行動が、義務感のこの値乗倍だけ起こりやすくなる(義務感1は偶然、0は避ける)",
+"Duty felt": "感じる義務",
+"how much a sense of duty colours the joy of doing as told by family or one it regards well: times 1 plus this times its duty less 1, unease for a rebel": "家族や好意を持つ相手に言われた通りにする喜びを義務感がどれだけ彩るか:1+この値×(義務感−1)倍、反抗者には不快"
 }

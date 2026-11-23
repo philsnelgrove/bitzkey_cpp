@@ -254,6 +254,8 @@ std::vector<Rule> make_rules() {
         {"LEXICON_HEED", "Mind", "Lexicon heed", "joy for one that heard a word it holds and by the next turn has come nearer the thing it means", 0.0, 2.0, 0.05, false, &LEXICON_HEED},
         {"LEXICON_ACT", "Mind", "Lexicon fitting deed", "joy for each way what one did on hearing a word it holds was fitting: it went nearer the thing if its own life found that good, or further if bad; and it did what the speaker did", 0.0, 2.0, 0.05, false, &LEXICON_ACT},
         {"LEXICON_WORTH_RATE", "Mind", "Lexicon worth rate", "how fast an animal learns from its own life how it fares nearer each thing, against further", 0.0, 1.0, 0.01, false, &LEXICON_WORTH_RATE},
+        {"DUTY_SWAY", "Mind", "Duty sway", "how strongly a sense of duty sways one told by a word from family or one it regards well: the teller's deed is its duty to this power times as likely (duty 1 is chance, 0 shuns it)", 0.0, 3.0, 0.1, false, &DUTY_SWAY},
+        {"DUTY_FELT", "Mind", "Duty felt", "how much a sense of duty colours the joy of doing as told by family or one it regards well: times 1 plus this times its duty less 1, unease for a rebel", 0.0, 2.0, 0.05, false, &DUTY_FELT},
         {"MAP_BLIND", "Mind", "Map blind", "for experiments: 1 withholds the mental map senses and the way back to the last meal, so only its own memory can hold where things are", 0, 1, 1, true, &MAP_BLIND},
         {"CALL_FATIGUE", "Mind", "Call fatigue", "stamina each sound of a call costs its caller, the alert among them, as an action's tiredness is counted (an action alone costs 10)", 0.0, 50.0, 0.5, false, &CALL_FATIGUE},
         {"TUTOR_COST", "Mind", "Tutor cost", "hunger a lesson costs the one who tutors", 0.0, 5.0, 0.05, false, &TUTOR_COST},

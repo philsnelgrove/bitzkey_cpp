@@ -2760,6 +2760,10 @@ void Simulation::think_all(const std::vector<Bitzkey*>& agents) {
         add_instincts(agent, valued, options, agent.hunger, hungriest);
         add_scruples(agent, valued, situation);
         hope_for_untried(agent, valued, options);
+        if (agent.meant_turn == turn_ && agent.meant_liked && agent.meant_deed >= 0 && DUTY_SWAY != 0 &&
+            std::find(options.begin(), options.end(), agent.meant_deed) != options.end()) {  // told: its duty sways it
+            valued[agent.meant_deed] += TEMPERATURE * DUTY_SWAY * std::log(std::max(0.01, duty(agent)));
+        }
         if (!imagined[index].empty()) {  // each against the others, so imagining favours none of them over the rest of its options
             double mean = 0.0;
             for (const auto& [option, sight] : imagined[index]) mean += worth(sight) / static_cast<double>(imagined[index].size());
@@ -4407,6 +4411,7 @@ Simulation::Sensed Simulation::sense(Bitzkey& agent, bool surveyed) {
             agent.meant_thing = word.thing;
             agent.meant_close = agent.was_close[static_cast<std::size_t>(word.thing)];
             agent.meant_deed = caller->last_choice;
+            agent.meant_liked = family(agent, *caller) || regard_for(agent, *caller) > 0;
             agent.unknown_turn = -1;
             break;
         }
@@ -4637,7 +4642,9 @@ void Simulation::heed_words(Bitzkey& agent, Situation& s, const Senses& senses) 
         agent.heeded = now > then;
         agent.acted_good = (worth > 0 && now > then) || (worth < 0 && now < then);
         agent.acted_same = agent.meant_deed >= 0 && agent.last_choice == agent.meant_deed;
-        agent.word_reward = LEXICON_HEED * agent.heeded + LEXICON_ACT * (agent.acted_good + agent.acted_same);
+        const double dutiful = agent.meant_liked ? 1.0 + DUTY_FELT * (duty(agent) - 1.0) : 1.0;  // told by one it heeds
+        agent.word_reward = LEXICON_HEED * agent.heeded + LEXICON_ACT * (agent.acted_good + dutiful * agent.acted_same);
+        agent.judged_liked = agent.meant_liked;
         agent.judged_turn = turn_;
         agent.judged_thing = agent.meant_thing;
         agent.judged_deed = agent.meant_deed;
@@ -6431,6 +6438,11 @@ void Simulation::add_scruples(const Bitzkey& agent, Values& valued, const Situat
     }
     if (s.quarry && !is_prey(agent, *s.quarry)) valued[Hunt] -= tolerance;  // a foe, not food
     if (s.prey && !is_prey(agent, *s.prey)) valued[Attack] -= tolerance;
+}
+
+double Simulation::duty(const Bitzkey& agent) {
+    const double bond = (agent.feeling(Loyalty) + agent.feeling(Kinship) + agent.feeling(Sociability)) / 3.0;
+    return std::clamp(TRAIT_MAX * bond * (1.0 - agent.feeling(Dominance)), 0.0, static_cast<double>(TRAIT_MAX));
 }
 
 double Simulation::gluttony(const Bitzkey& agent) {
