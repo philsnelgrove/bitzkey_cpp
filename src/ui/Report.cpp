@@ -226,7 +226,7 @@ std::vector<std::string> goals_table(const Bitzkey& animal, int turn) {
         const std::string target = animal.goal_kind == GoalForThing ? tr("near") + " " + thing_name(animal.goal_target)
                                  : animal.goal_kind == GoalForDeed ? tr("do") + " " + tr(short_action(animal.goal_target))
                                                                    : tr("a companion") + format(" #%03d", animal.goal_target);
-        const std::string why = animal.goal_desire ? tr("desired")
+        const std::string why = animal.goal_desire ? tr("desired") : animal.goal_project ? tr("its project") : animal.goal_instructed ? tr("instructed")
                               : tr("for") + " " + tr(NEED_NAMES[static_cast<std::size_t>(std::clamp(animal.goal_need, 0, GOAL_NEEDS - 1))]);
         lines.push_back(tr("Seeking") + ": " + target + " (" + why + ")");
         lines.push_back(tr("Urgency") + ": " + fixed(animal.goal_urgency, 2) + "   " + tr("Held for") + ": " + std::to_string(turn - animal.goal_turn) + " " + tr("turns"));
@@ -237,6 +237,19 @@ std::vector<std::string> goals_table(const Bitzkey& animal, int turn) {
             lines.push_back(tr("Steps toward it") + ": " + steps);
         }
     }
+    lines.insert(lines.end(), {"", tr("PROJECT")});  // its long aim (see PROJECT_PULL)
+    if (animal.project_aim < 0) {
+        lines.push_back(tr("No project now."));
+    } else {
+        const std::string way = animal.project_dir > 0 ? tr("raise") : tr("lower");
+        lines.push_back(tr("Aim") + ": " + way + " " + tr(AIM_NAMES[static_cast<std::size_t>(animal.project_aim)]) +
+                        (animal.project_confided ? " (" + tr("confided by") + format(" #%03d)", animal.project_from) : std::string()));
+        if (AIM_TARGET[static_cast<std::size_t>(animal.project_aim)] == TargetSite)
+            lines.push_back(tr("Site") + format(": %d, %d", animal.project_x, animal.project_y));
+        lines.push_back(tr("Held for") + ": " + std::to_string(turn - animal.project_turn) + " " + tr("turns") + "   " + tr("last progress") + ": " +
+                        std::to_string(turn - animal.project_progress_turn) + " " + tr("turns ago"));
+    }
+    if (animal.goal_kind != NoGoal && animal.goal_instructed) lines.push_back(tr("Following an instruction from") + format(" #%03d", animal.instructed_by));
     // what it has found eases its worst need most, and what it likes most
     const auto worst = static_cast<std::size_t>(std::max_element(animal.needs.begin(), animal.needs.end()) - animal.needs.begin());
     std::vector<std::pair<double, int>> eases, likes;
@@ -281,6 +294,11 @@ std::vector<std::string> goals_table(const Bitzkey& animal, int turn) {
     count("steps given up", animal.steps_given_up);
     count("turns stuck", animal.stuck_turns);
     count("calls while stuck", animal.stuck_calls);
+    count("projects taken up", animal.projects_taken);
+    count("projects given up", animal.projects_given_up);
+    count("instructions done", animal.instructions_taken);
+    count("plans confided", animal.confided);
+    count("plans confided to it", animal.confided_to);
     return lines;
 }
 
