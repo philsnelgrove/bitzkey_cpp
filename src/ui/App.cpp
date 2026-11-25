@@ -234,7 +234,11 @@ App::Result App::run() {
             window_.handle(event);
             if (event.type == SDL_QUIT) return Result::Quit;
             if (report_) {
-                if (report_->handle(event, window_.width(), window_.height())) report_.reset();
+                if (report_->handle(event, window_.width(), window_.height())) {
+                    report_.reset();
+                    if (report_resumes_ && !simulation_->ended()) playing_ = true;  // paused only to look
+                    report_resumes_ = false;
+                }
             } else if (dialog_) {
                 if (const auto choice = dialog_->handle(event, window_.width(), window_.height())) {
                     Dialog current = *dialog_;
@@ -1618,6 +1622,7 @@ void App::draw(Canvas& canvas) {
 }
 
 void App::open_death_report() {
+    report_resumes_ = false;
     report_.emplace("Death report",
                     format("Every death in this world up to turn %d: %d in all, by cause and species, who killed whom and what "
                            "the killers were doing, and the deadliest killers.", simulation_->turn(), simulation_->deaths()),
@@ -1631,11 +1636,19 @@ void App::inspect_brains() {
         say("Only a living animal has a brain to inspect.");
         return;
     }
+    report_resumes_ = playing_;
     playing_ = false;
     report_.emplace(format("Brains of #%03d, %s", agent->identifier, std::string(species_name(agent->species)).c_str()),
-                    "Its chance of choosing each action open to it, in each standard situation, with its temperament now. "
-                    "* marks the likeliest; \u00b7 an action not open.",
-                    brain_matrix_table(*agent));
+                    std::vector<Report::Tab>{
+                        {tr("CHOICES"), "Its chance of choosing each action open to it, in each standard situation, with its temperament now. "
+                                        "* marks the likeliest; \u00b7 an action not open.",
+                         brain_matrix_table(*agent)},
+                        {tr("LEXICON"), "The words, names and deed-words it has settled with others: what each means to it, how much it "
+                                        "regarded the one it settled it with, and how often it has said or heard it since. Sounds are numbered 1 to 5.",
+                         lexicon_table(*agent)},
+                        {tr("GOALS"), "Its needs now, the goal it holds and any steps toward it, what it has found eases its worst need and "
+                                      "what it likes, what it has learnt opens what, and its goals so far in its life.",
+                         goals_table(*agent, simulation_->turn())}});
 }
 
 void App::draw_header(Canvas& canvas) {

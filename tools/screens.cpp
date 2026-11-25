@@ -187,6 +187,11 @@ struct Screens {
         app.inspect_brains();
         app.draw(canvas);
         save(canvas, folder / "app-brains.bmp");
+        for (const auto& [tab, name] : {std::pair{1, "app-brains-lexicon.bmp"}, std::pair{2, "app-brains-goals.bmp"}}) {  // its other tabs
+            app.report_->choose(tab);
+            app.draw(canvas);
+            save(canvas, folder / name);
+        }
         app.report_.reset();
         app.exemplar_menu_ = 6;  // the right column's second card, its menu of statistics open
         app.draw(canvas);

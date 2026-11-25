@@ -186,6 +186,7 @@ private:
     std::optional<Dialog> dialog_;
     LanguageMenu language_menu_;
     std::optional<Report> report_;        // the death report or a brain inspected, while open
+    bool report_resumes_ = false;         // whether the world plays on when the report closes (it was playing as it opened)
     std::optional<Rect> deaths_button_;   // on the insights panel
     std::optional<Rect> brains_button_;   // beside the selected Bitzkey's heading
     std::string dialog_kind_;

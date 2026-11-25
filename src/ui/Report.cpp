@@ -7,6 +7,7 @@
 #include <map>
 
 #include "core/PyFormat.hpp"
+#include "core/Simulation.hpp"
 #include "ui/Language.hpp"
 #include "ui/Ui.hpp"
 
@@ -137,9 +138,11 @@ std::vector<std::string> brain_matrix_table(const Bitzkey& animal) {
     return lines;
 }
 
-Report::Layout Report::layout(int width, int height) const {
-    Layout places;
-    int widest = 0;  // the tables' columns and the gaps between them, or the widest line beside them
+namespace {
+constexpr int TAB_ROW = 36;  // design pixels the tabs take, when there are tabs
+
+int widest_of(const std::vector<std::string>& lines) {  // the tables' columns and the gaps between them, or the widest line beside them
+    int widest = 0;
     for (const auto& [count, columns] : column_widths(lines)) {
         int table = 0;
         for (const int column : columns) table += column + UI(GAP);
@@ -148,11 +151,159 @@ Report::Layout Report::layout(int width, int height) const {
     for (const std::string& line : lines) {
         if (line.find('\t') == std::string::npos) widest = std::max(widest, Canvas::text_width(UI.font(Face::Mono, 13), line));
     }
+    return widest;
+}
+}  // namespace
+
+void Report::choose(int tab) {
+    if (tabs.empty()) return;
+    active = std::clamp(tab, 0, static_cast<int>(tabs.size()) - 1);
+    note = tabs[static_cast<std::size_t>(active)].note;
+    lines = tabs[static_cast<std::size_t>(active)].lines;
+    scroll = 0;
+}
+
+namespace {
+std::string word_text(const LexiconWord& word) {  // its sounds, numbered 1 to 5
+    std::string text = std::to_string(word.call - FirstCall + 1);
+    for (const int sound : word.sounds) {
+        if (sound < 0) break;
+        text += "-" + std::to_string(sound + 1);
+    }
+    return text;
+}
+
+std::string thing_name(int thing) {  // an outside thing, as "wood pile"
+    std::string name(SENSES[static_cast<std::size_t>(OUTSIDE_SENSES[static_cast<std::size_t>(thing)])]);
+    if (const std::size_t end = name.rfind("_closeness"); end != std::string::npos) name.resize(end);
+    std::replace(name.begin(), name.end(), '_', ' ');
+    return tr(name);
+}
+
+std::string node_name(int node) {  // a thing to come near, or a deed to do (see OPENS_RATE)
+    return node < OUTSIDE_SEEN ? tr("near") + " " + thing_name(node) : tr("do") + " " + tr(short_action(node - OUTSIDE_SEEN));
+}
+
+constexpr std::array<std::string_view, GOAL_NEEDS> NEED_NAMES = {"hunger", "fatigue", "pain", "fear", "loneliness", "discomfort"};
+
+std::string fixed(double value, int places) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.*f", places, value);
+    return buffer;
+}
+}  // namespace
+
+std::vector<std::string> lexicon_table(const Bitzkey& animal) {
+    std::vector<std::string> lines;
+    const auto table = [&](const std::string& heading, const std::string& meaning, const std::vector<LexiconWord>& words, auto&& means) {
+        if (!lines.empty()) lines.push_back("");
+        lines.push_back(with_tabs({heading, tr(meaning), tr("REGARD"), tr("USES")}));
+        if (words.empty()) lines.push_back(tr("None yet."));
+        std::vector<const LexiconWord*> sorted;
+        for (const LexiconWord& word : words) sorted.push_back(&word);
+        std::stable_sort(sorted.begin(), sorted.end(), [](const LexiconWord* a, const LexiconWord* b) { return a->uses > b->uses; });
+        for (const LexiconWord* word : sorted) lines.push_back(with_tabs({word_text(*word), means(word->thing), fixed(word->regard, 2), std::to_string(word->uses)}));
+    };
+    table(tr("WORD"), "MEANS", animal.lexicon, [](int thing) { return thing >= 0 && thing < OUTSIDE_SEEN ? thing_name(thing) : std::string("?"); });
+    table(tr("NAME"), "FOR", animal.names, [](int one) { return format("#%03d", one); });
+    table(tr("DEED-WORD"), "DEED", animal.deeds, [](int deed) { return deed >= 0 && deed < ACTION_COUNT ? tr(short_action(deed)) : std::string("?"); });
+    if (animal.own_call >= FirstCall) {
+        LexiconWord own;
+        own.call = animal.own_call;
+        own.sounds = animal.own_sounds;
+        lines.insert(lines.end(), {"", tr("Its own name") + ": " + word_text(own)});
+    }
+    return lines;
+}
+
+std::vector<std::string> goals_table(const Bitzkey& animal, int turn) {
+    std::vector<std::string> lines = {with_tabs({tr("NEED"), tr("NOW")})};
+    for (std::size_t need = 0; need < GOAL_NEEDS; ++need) lines.push_back(with_tabs({tr(NEED_NAMES[need]), py_percent(animal.needs[need], 0)}));
+    lines.insert(lines.end(), {"", tr("GOAL")});
+    if (animal.goal_kind == NoGoal) {
+        lines.push_back(tr("No goal now."));
+    } else {
+        const std::string target = animal.goal_kind == GoalForThing ? tr("near") + " " + thing_name(animal.goal_target)
+                                 : animal.goal_kind == GoalForDeed ? tr("do") + " " + tr(short_action(animal.goal_target))
+                                                                   : tr("a companion") + format(" #%03d", animal.goal_target);
+        const std::string why = animal.goal_desire ? tr("desired")
+                              : tr("for") + " " + tr(NEED_NAMES[static_cast<std::size_t>(std::clamp(animal.goal_need, 0, GOAL_NEEDS - 1))]);
+        lines.push_back(tr("Seeking") + ": " + target + " (" + why + ")");
+        lines.push_back(tr("Urgency") + ": " + fixed(animal.goal_urgency, 2) + "   " + tr("Held for") + ": " + std::to_string(turn - animal.goal_turn) + " " + tr("turns"));
+        if (animal.stuck) lines.push_back(tr("Stuck: shut to it"));
+        if (!animal.goal_steps.empty()) {
+            std::string steps;
+            for (auto it = animal.goal_steps.rbegin(); it != animal.goal_steps.rend(); ++it) steps += (steps.empty() ? "" : " > ") + node_name(*it);
+            lines.push_back(tr("Steps toward it") + ": " + steps);
+        }
+    }
+    // what it has found eases its worst need most, and what it likes most
+    const auto worst = static_cast<std::size_t>(std::max_element(animal.needs.begin(), animal.needs.end()) - animal.needs.begin());
+    std::vector<std::pair<double, int>> eases, likes;
+    for (int thing = 0; thing < OUTSIDE_SEEN; ++thing) {
+        eases.emplace_back(animal.relief_things[worst][static_cast<std::size_t>(thing)], thing);
+        likes.emplace_back(animal.want_things[static_cast<std::size_t>(thing)], thing);
+    }
+    for (int deed = 0; deed < ACTION_COUNT; ++deed) {
+        eases.emplace_back(animal.relief_deeds[worst][static_cast<std::size_t>(deed)], OUTSIDE_SEEN + deed);
+        likes.emplace_back(animal.want_deeds[static_cast<std::size_t>(deed)], OUTSIDE_SEEN + deed);
+    }
+    const auto top = [&](const std::string& heading, std::vector<std::pair<double, int>>& found, std::size_t count) {
+        std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        lines.insert(lines.end(), {"", heading});
+        std::size_t shown = 0;
+        for (const auto& [value, node] : found) {
+            if (value <= 0 || shown == count) break;
+            lines.push_back("  " + node_name(node) + "   " + fixed(value, 3));
+            ++shown;
+        }
+        if (shown == 0) lines.push_back("  " + tr("None yet."));
+    };
+    top(tr("EASES ITS WORST NEED MOST") + " (" + tr(NEED_NAMES[worst]) + ")", eases, 5);
+    top(tr("LIKES MOST"), likes, 6);
+    lines.insert(lines.end(), {"", tr("LEARNT TO OPEN")});
+    std::vector<OpensLink> links = animal.opens;
+    std::stable_sort(links.begin(), links.end(), [](const OpensLink& a, const OpensLink& b) { return a.strength > b.strength; });
+    if (links.empty()) lines.push_back("  " + tr("None yet."));
+    for (std::size_t at = 0; at < std::min<std::size_t>(8, links.size()); ++at)
+        lines.push_back("  " + node_name(links[at].from) + " " + tr("opens") + " " + node_name(links[at].to) + "   " + fixed(links[at].strength, 2));
+    lines.insert(lines.end(), {"", tr("IN ITS LIFE")});
+    const auto count = [&](const char* label, long long value) { lines.push_back(with_tabs({tr(label), std::to_string(value)})); };
+    count("goals formed", animal.goals_formed);
+    count("reached", animal.goals_reached);
+    count("given up", animal.goals_abandoned);
+    count("switched", animal.goals_switched);
+    count("let go", animal.goals_dropped);
+    count("desires formed", animal.desires_formed);
+    count("desires reached", animal.desires_reached);
+    count("chains begun", animal.chains_begun);
+    count("steps reached", animal.steps_reached);
+    count("steps given up", animal.steps_given_up);
+    count("turns stuck", animal.stuck_turns);
+    count("calls while stuck", animal.stuck_calls);
+    return lines;
+}
+
+Report::Layout Report::layout(int width, int height) const {
+    Layout places;
+    // as large as its largest tab, so it keeps its size as the tabs are chosen
+    int widest = widest_of(lines), longest = static_cast<int>(lines.size());
+    for (const Tab& tab : tabs) {
+        widest = std::max(widest, widest_of(tab.lines));
+        longest = std::max(longest, static_cast<int>(tab.lines.size()));
+    }
+    const int tab_row = tabs.empty() ? 0 : UI(TAB_ROW);
     places.panel = Rect{0, 0, std::min(width - UI(40), std::max(UI(560), widest + UI(48))),
-                        std::min(height - UI(40), UI(160) + UI(LINE) * static_cast<int>(lines.size()))}
+                        std::min(height - UI(40), UI(160) + tab_row + UI(LINE) * longest)}
                        .center_at(width / 2, height / 2);
     const Rect& panel = places.panel;
-    places.body = {panel.x + UI(24), panel.y + UI(84), panel.w - UI(48), panel.h - UI(84 + 70)};
+    int x = panel.x + UI(24);
+    for (const Tab& tab : tabs) {
+        const int w = Canvas::text_width(UI.font(Face::Sans, 13, true), tab.name) + UI(28);
+        places.tabs.push_back({x, panel.y + UI(52), w, UI(28)});
+        x += w + UI(8);
+    }
+    places.body = {panel.x + UI(24), panel.y + UI(84) + tab_row, panel.w - UI(48), panel.h - UI(84 + 70) - tab_row};
     places.close = Rect{0, 0, UI(110), UI(40)}.bottomright_at(panel.right() - UI(24), panel.bottom() - UI(18));
     return places;
 }
@@ -171,10 +322,19 @@ bool Report::handle(const SDL_Event& event, int width, int height) {
         else if (key == SDLK_UP) scroll_by(-1, width, height);
         else if (key == SDLK_PAGEDOWN) scroll_by(10, width, height);
         else if (key == SDLK_PAGEUP) scroll_by(-10, width, height);
+        else if (key == SDLK_RIGHT && !tabs.empty()) choose((active + 1) % static_cast<int>(tabs.size()));
+        else if (key == SDLK_LEFT && !tabs.empty()) choose((active + static_cast<int>(tabs.size()) - 1) % static_cast<int>(tabs.size()));
     } else if (event.type == SDL_MOUSEWHEEL) {
         scroll_by(-3 * event.wheel.y, width, height);
     } else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-        return layout(width, height).close.contains(event.button.x, event.button.y);
+        const Layout places = layout(width, height);
+        for (std::size_t tab = 0; tab < places.tabs.size(); ++tab) {
+            if (places.tabs[tab].contains(event.button.x, event.button.y)) {
+                choose(static_cast<int>(tab));
+                return false;
+            }
+        }
+        return places.close.contains(event.button.x, event.button.y);
     }
     return false;
 }
@@ -186,7 +346,13 @@ void Report::draw(Canvas& canvas) {
     canvas.rect(panel, {30, 40, 40}, 0, UI(8));
     canvas.rect(panel, {80, 99, 85}, 1, UI(8));
     canvas.text(UI.font(Face::Sans, 22, true), title, {229, 239, 220}, panel.x + UI(24), panel.y + UI(20));
-    canvas.text(UI.fitting(UI.font(Face::Sans, 13), note, panel.w - UI(48)), note, {144, 170, 151}, panel.x + UI(24), panel.y + UI(54));
+    const int tab_row = tabs.empty() ? 0 : UI(TAB_ROW);
+    for (std::size_t tab = 0; tab < places.tabs.size(); ++tab) {  // the tabs, the chosen one lit
+        const bool chosen = static_cast<int>(tab) == active;
+        canvas.rect(places.tabs[tab], chosen ? Color{131, 205, 143} : Color{44, 58, 57}, 0, UI(6));
+        canvas.label(UI.font(Face::Sans, 13, true), tabs[tab].name, chosen ? Color{19, 26, 27} : Color{187, 199, 181}, places.tabs[tab]);
+    }
+    canvas.text(UI.fitting(UI.font(Face::Sans, 13), note, panel.w - UI(48)), note, {144, 170, 151}, panel.x + UI(24), panel.y + UI(54) + tab_row);
     const int count = shown(canvas.width(), canvas.height());
     scroll = std::max(0, std::min(std::max(0, static_cast<int>(lines.size()) - count), scroll));
     canvas.set_clip(body);
@@ -222,7 +388,7 @@ void Report::draw(Canvas& canvas) {
     if (static_cast<int>(lines.size()) > count) {
         const std::string more = "lines " + std::to_string(scroll + 1) + "-" +
                                  std::to_string(std::min(static_cast<int>(lines.size()), scroll + count)) + " of " +
-                                 std::to_string(lines.size()) + "   (wheel or UP/DOWN)";
+                                 std::to_string(lines.size()) + (tabs.empty() ? "   (wheel or UP/DOWN)" : "   (wheel or UP/DOWN; LEFT/RIGHT for tabs)");
         canvas.text(UI.font(Face::Sans, 12), more, {116, 139, 124}, panel.x + UI(24), panel.bottom() - UI(44));
     }
     canvas.rect(places.close, {131, 205, 143}, 0, UI(6));
