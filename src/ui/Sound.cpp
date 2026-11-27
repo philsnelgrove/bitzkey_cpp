@@ -17,7 +17,9 @@ namespace {
 constexpr int RATE = 44100;
 constexpr double LENGTH = 0.25;   // seconds
 constexpr double PITCH = 1600.0;  // the beep's, in hertz
-constexpr std::size_t VOICES = 12;  // sounding at once at most: the click, and the calls
+constexpr std::size_t VOICES = 12;  // calls sounding at once at most, beside the click
+constexpr double SHORTENED = 6.0;  // each of the five sounds a sixth as long as it was, so a whole call fits a turn
+constexpr double GAP = 0.012;  // seconds between one sound of a call and the next
 
 SDL_AudioDeviceID device = 0;
 std::vector<float> click;
@@ -31,6 +33,8 @@ struct Voice {
     const std::vector<float>* samples;
     std::size_t at = 0;
     float left = 1.0f, right = 1.0f;
+    std::size_t wait = 0;  // samples still to wait before it starts, its call's sounds before it
+    int call = -1;         // which heard call it is a sound of, to count the calls sounding
 };
 std::vector<Voice> voices;  // guarded by the device's lock, as the mixer reads them
 
@@ -40,7 +44,9 @@ void SDLCALL mix(void*, Uint8* stream, int bytes) {
     std::fill(out, out + 2 * frames, 0.0f);
     for (Voice& voice : voices) {
         const std::vector<float>& samples = *voice.samples;
-        for (std::size_t index = 0; index < frames && voice.at < samples.size(); ++index, ++voice.at) {
+        const std::size_t waited = std::min(voice.wait, frames);
+        voice.wait -= waited;
+        for (std::size_t index = waited; index < frames && voice.at < samples.size(); ++index, ++voice.at) {
             out[2 * index] += samples[voice.at] * voice.left;
             out[2 * index + 1] += samples[voice.at] * voice.right;
         }
@@ -95,13 +101,16 @@ std::vector<float> call_sound(int call, int rate) {
     // The alert, a sharp double yelp; then the five: a rising chirp, a low hoot, a warbling trill, a croak, and a
     // falling whistle.
     constexpr std::array<double, CALL_OPTIONS> lengths = {0.0, 0.26, 0.14, 0.32, 0.26, 0.16, 0.22};
+    // The five, a sixth as long, each a quick blip of the same shape (`time` below runs on its old, longer clock);
+    // the alert, sounded on its own, as long as it was.
+    const double slower = call == AlertCall ? 1.0 : SHORTENED;
     const double length = lengths[static_cast<std::size_t>(call)];
-    const int count = static_cast<int>(length * rate);
+    const int count = static_cast<int>(length / slower * rate);
     std::vector<float> samples(static_cast<std::size_t>(count));
     double phase = 0.0;
     std::uint32_t noise = 0x2545F491u + static_cast<std::uint32_t>(call);
     for (int index = 0; index < count; ++index) {
-        const double time = static_cast<double>(index) / rate, share = time / length;
+        const double time = static_cast<double>(index) * slower / rate, share = time / length;
         double pitch = 0.0, envelope = 1.0, harmonics = 0.0, rasp = 0.0;
         switch (call) {
             case AlertCall: {  // two quick falling yelps
@@ -135,7 +144,7 @@ std::vector<float> call_sound(int call, int rate) {
                 envelope = std::sin(std::numbers::pi * share);
                 break;
         }
-        phase += 2 * std::numbers::pi * pitch / rate;
+        phase += 2 * std::numbers::pi * pitch / rate;  // its pitch as it was: only its length is shortened
         noise = noise * 1664525u + 1013904223u;
         const double hiss = static_cast<double>(noise >> 8) / (1u << 24) * 2 - 1;
         double tone = std::sin(phase) + harmonics * (std::sin(2 * phase) / 2 + std::sin(3 * phase) / 3);
@@ -175,14 +184,27 @@ void calls_heard(std::span<const HeardCall> heard_calls) {
     std::vector<HeardCall> loudest(heard_calls.begin(), heard_calls.end());
     std::sort(loudest.begin(), loudest.end(), [](const HeardCall& a, const HeardCall& b) { return a.loudness > b.loudness; });
     SDL_LockAudioDevice(device);
+    static int next_call = 0;
+    std::vector<int> sounding;
+    for (const Voice& voice : voices) {
+        if (voice.call >= 0 && std::find(sounding.begin(), sounding.end(), voice.call) == sounding.end()) sounding.push_back(voice.call);
+    }
+    std::size_t calls_on = sounding.size();
     for (const HeardCall& call : loudest) {
-        if (voices.size() >= VOICES) break;
-        if (call.call <= Silent || call.call >= CALL_OPTIONS || call.loudness <= 0) continue;
+        if (calls_on >= VOICES) break;
+        if (call.sounds.empty() || call.loudness <= 0) continue;
         const double pan = std::clamp(call.pan, -1.0, 1.0), loudness = std::min(1.0, call.loudness);
-        // Panned with equal power, so a call sounds as loud wherever it comes from.
+        // Panned with equal power, so a call sounds as loud wherever it comes from; its sounds one after another.
         const double angle = (pan + 1) * std::numbers::pi / 4;
-        voices.push_back({&calls[static_cast<std::size_t>(call.call)], 0, static_cast<float>(loudness * std::cos(angle)),
-                          static_cast<float>(loudness * std::sin(angle))});
+        const int which = next_call++;
+        std::size_t wait = 0;
+        for (const int sound : call.sounds) {
+            if (sound <= Silent || sound >= CALL_OPTIONS) continue;
+            const std::vector<float>& samples = calls[static_cast<std::size_t>(sound)];
+            voices.push_back({&samples, 0, static_cast<float>(loudness * std::cos(angle)), static_cast<float>(loudness * std::sin(angle)), wait, which});
+            wait += samples.size() + static_cast<std::size_t>(GAP * RATE);
+        }
+        ++calls_on;
     }
     SDL_UnlockAudioDevice(device);
 }

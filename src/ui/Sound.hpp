@@ -27,14 +27,16 @@ void frame_shown();
 // The click and beep, as samples at its rate, for the tests.
 std::vector<float> click_sound(int rate);
 
-// A call heard on the map: which (Brain.hpp's Call: the alert, or one of the five), how loud, 0 to 1, and where
-// across the view it came from, -1 at its left edge to 1 at its right.
+// A call heard on the map: its sounds in the order made (each Brain.hpp's Call: the alert, or one of the five: its
+// first word's, its second's, then its message's units'), how loud, 0 to 1, and where across the view it came from,
+// -1 at its left edge to 1 at its right.
 struct HeardCall {
-    int call = 0;
+    std::vector<int> sounds;
     double loudness = 0.0;
     double pan = 0.0;
 };
-// Played at once, the loudest first, as many as can sound together.
+// Played at once, the loudest first, as many as can sound together: each call's sounds one after another, short
+// enough that both words and the units after them are heard within a turn.
 void calls_heard(std::span<const HeardCall> calls);
 // A call's sound, as samples at a rate, at full loudness; none for silence. For the tests.
 std::vector<float> call_sound(int call, int rate);

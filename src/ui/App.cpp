@@ -1903,7 +1903,32 @@ void App::draw_world(Canvas& canvas) {
         if (hearing && agent->alive() && agent->call != Silent && agent->call_turn == simulation_->turn() && view.contains(px, py)) {
             const double whisper = agent->spoke_alone() ? 0.25 : 1.0;  // said to one alone, beside it
             const double loudness = whisper * CALL_VOLUME * (0.3 + 0.7 * nearness) * (0.25 + 0.75 * agent->physique(Size));
-            heard.push_back({agent->call, loudness, (px - view.centerx()) / (view.w / 2.0)});
+            std::vector<int> sounds{agent->call};  // its sounds in order: its first word, its second, its message's units
+            if (agent->call >= FirstCall) {
+                for (const int sound : agent->sounds) {
+                    if (sound < 0) break;
+                    sounds.push_back(FirstCall + sound);
+                }
+                if (agent->call2 >= FirstCall) {
+                    sounds.push_back(agent->call2);
+                    for (const int sound : agent->sounds2) {
+                        if (sound < 0) break;
+                        sounds.push_back(FirstCall + sound);
+                    }
+                }
+                if (agent->units_turn == agent->call_turn) {
+                    for (int place = 0; place < agent->unit_count; ++place) {
+                        const MessageUnit& unit = agent->units[static_cast<std::size_t>(place)];
+                        if (unit.call < FirstCall) continue;
+                        sounds.push_back(unit.call);
+                        for (const int sound : unit.sounds) {
+                            if (sound < 0) break;
+                            sounds.push_back(FirstCall + sound);
+                        }
+                    }
+                }
+            }
+            heard.push_back({std::move(sounds), loudness, (px - view.centerx()) / (view.w / 2.0)});
         }
         const int radius = dot_radius(agent->body[Size], largest, smallest);
         draw_bitzkey(canvas, agent->dna, px, py, radius, RING_WIDTH, agent->alive(), corpse_opacity(*agent));
